@@ -1,7 +1,8 @@
 (ns glitter.test-runner
   (:require [clojure.test]
             [glitter.hiccup-test]
-            [glitter.assert-test]))
+            [glitter.assert-test]
+            [glitter.asserts-test]))
 
 (defn -main [& args]
-  (clojure.test/run-tests 'glitter.hiccup-test 'glitter.assert-test))
+  (clojure.test/run-tests 'glitter.hiccup-test 'glitter.assert-test 'glitter.asserts-test))

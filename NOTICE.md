@@ -39,6 +39,8 @@ Ported files (path in glitter — original path in replicant):
 - `src/glitter/console_logger.clj` — `src/replicant/console_logger.cljc`
 - `src/glitter/errors.clj` — `src/replicant/errors.cljc`
 - `src/glitter/assert.clj` — `src/replicant/assert.cljc`
+- `src/glitter/vdom.clj` — `src/replicant/vdom.cljc`
+- `src/glitter/asserts.clj` — `src/replicant/asserts.cljc`
 
 <!-- appended to by each porting task -->
 
