@@ -1,0 +1,6 @@
+(ns glitter.test-runner
+  (:require [clojure.test]
+            [glitter.hiccup-test]))
+
+(defn -main [& args]
+  (clojure.test/run-tests 'glitter.hiccup-test))

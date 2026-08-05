@@ -33,6 +33,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Ported files (path in glitter — original path in replicant):
 
+- `src/glitter/protocols.clj` — `src/replicant/protocols.cljc`
+- `src/glitter/hiccup.clj` — `src/replicant/hiccup.cljc`
+- `src/glitter/hiccup_headers.clj` — `src/replicant/hiccup_headers.cljc`
+- `src/glitter/console_logger.clj` — `src/replicant/console_logger.cljc`
+
 <!-- appended to by each porting task -->
 
 ## glimmer
