@@ -100,3 +100,11 @@
   test-helper, because entries are constructed pre-formatted above)."
   [r]
   @(:log (meta r)))
+
+(defn reset-events!
+  "Clear renderer instance `r`'s accumulated log in place — useful between
+  two sequential `core/reconcile` calls against the same renderer/el when a
+  test wants to inspect only the second call's mutations (e.g. isolating a
+  reorder's effects from the preceding mount's)."
+  [r]
+  (reset! (:log (meta r)) []))
