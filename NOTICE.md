@@ -37,6 +37,8 @@ Ported files (path in glitter — original path in replicant):
 - `src/glitter/hiccup.clj` — `src/replicant/hiccup.cljc`
 - `src/glitter/hiccup_headers.clj` — `src/replicant/hiccup_headers.cljc`
 - `src/glitter/console_logger.clj` — `src/replicant/console_logger.cljc`
+- `src/glitter/errors.clj` — `src/replicant/errors.cljc`
+- `src/glitter/assert.clj` — `src/replicant/assert.cljc`
 
 <!-- appended to by each porting task -->
 
