@@ -9,8 +9,13 @@
 
 (defn configure!
   "Set a config key (e.g. :glitter/dev?, :glitter/asserts?,
-  :glitter/catch-exceptions?) used by enabled?/dev?. Defaults to dev-permissive
-  (asserts on, exceptions caught) until called."
+  :glitter/catch-exceptions?) used by enabled?/dev?. Until called, defaults
+  are dev-permissive in the sense of 'loud, not silent': :glitter/asserts?
+  defaults on, but :glitter/catch-exceptions? defaults OFF (mirrors
+  glitter.errors/catch-exceptions?'s (not (dev?)) computation — in dev,
+  exceptions propagate instead of being swallowed; call
+  (configure! :glitter/catch-exceptions? true) to opt into catching, e.g. for
+  a release build or a test exercising the catching path itself)."
   [k v]
   (swap! config assoc k v))
 

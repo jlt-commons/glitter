@@ -4,7 +4,6 @@
             [glitter.hiccup-headers :as hiccup])
   (:refer-clojure :exclude [assert])
   #?(:cljs (:require-macros [glitter.assert])))
-
 ;; Ported from replicant.assert (https://github.com/cjohansen/replicant),
 ;; commit 379bb3c1ad4d5d3002c57e67ab647d12f3c2d322. Copyright 2023-2025
 ;; Christian Johansen. MIT License — see NOTICE.md.
@@ -31,12 +30,12 @@
              alias# (:alias @current-context)
              fd# (:data @current-context)]
          (reset! error
-                 (cond-> {:title ~title
-                          :message ~message
-                          :hiccup (or ~hiccup @current-node)}
-                   fn# (assoc :fname fn#)
-                   alias# (assoc :alias alias#)
-                   fd# (assoc :data fd#)))))))
+          (cond-> {:title ~title
+                   :message ~message
+                   :hiccup (or ~hiccup @current-node)}
+            fn# (assoc :fname fn#)
+            alias# (assoc :alias alias#)
+            fd# (assoc :data fd#)))))))
 
 ;; API
 
