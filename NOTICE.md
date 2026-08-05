@@ -42,6 +42,7 @@ Ported files (path in glitter — original path in replicant):
 - `src/glitter/vdom.clj` — `src/replicant/vdom.cljc`
 - `src/glitter/asserts.clj` — `src/replicant/asserts.cljc`
 - `src/glitter/core.clj` — `src/replicant/core.cljc` (one deliberate deviation: build-event-map's :clj branch reads :glitter/node from e instead of hardcoding nil — see file header)
+- `src/glitter/alias.clj` — `src/replicant/alias.cljc`
 
 <!-- appended to by each porting task -->
 
