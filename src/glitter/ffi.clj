@@ -96,6 +96,7 @@
 (ffi/defcfn gtk-label-set-max-width-chars "gtk_label_set_max_width_chars" [:pointer :int] :void)
 (ffi/defcfn gtk-label-set-lines         "gtk_label_set_lines"          [:pointer :int] :void)
 (ffi/defcfn gtk-label-set-ellipsize     "gtk_label_set_ellipsize"      [:pointer :int] :void)
+(ffi/defcfn gtk-label-get-text          "gtk_label_get_text"          [:pointer] :string)
 
 (ffi/defcfn gtk-entry-new               "gtk_entry_new"               [] :pointer)
 ;; GtkEditable interface (implemented by GtkEntry):
