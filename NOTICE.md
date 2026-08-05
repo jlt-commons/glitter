@@ -53,4 +53,8 @@ The following files under `src/glitter/` are forked from
 glitter — no license file, no attribution obligation, listed here for
 provenance only):
 
+- `src/glitter/ffi.clj` — `src/glimmer/ffi.clj` (+ g-signal-handler-disconnect, gtk-box-insert-child-after)
+- `src/glitter/widget.clj` — `src/glimmer/widget.clj` (+ insert-child-after!, signal-name)
+- `src/glitter/genum.clj` — `src/glimmer/genum.clj`
+
 <!-- appended to by each forking task -->
