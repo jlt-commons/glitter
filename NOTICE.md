@@ -56,5 +56,6 @@ provenance only):
 - `src/glitter/ffi.clj` — `src/glimmer/ffi.clj` (+ g-signal-handler-disconnect, gtk-box-insert-child-after)
 - `src/glitter/widget.clj` — `src/glimmer/widget.clj` (+ insert-child-after!, signal-name)
 - `src/glitter/genum.clj` — `src/glimmer/genum.clj`
+- `src/glitter/app.clj` — adapted from `src/glimmer/core.clj`'s non-reactive app-loop functions (post-to-gui, on-gui, run*, run); mount/unmount!/reload!/live-root/make-rerender-watcher are NOT ported (glimmer-reconciler-specific)
 
 <!-- appended to by each forking task -->
