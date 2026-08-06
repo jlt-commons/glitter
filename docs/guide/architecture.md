@@ -33,6 +33,39 @@ on the live tree goes through the `IRender`/`IMemory` protocols in
 (`glitter.gtk` for real widgets, `glitter.test-renderer` for headless unit
 tests) possible from the same reconciler.
 
+## Composing views: plain function calls, not hiccup tags
+
+glimmer/Reagent hiccup recognizes a function value in tag position —
+`[my-component args...]` — and calls it, recursively rendering whatever it
+returns. glitter's hiccup, ported from Replicant, does not: `glitter.hiccup/
+hiccup?` requires a literal *keyword* in position 0
+(`(and (vector? sexp) (keyword? (first sexp)))`). A vector whose first
+element is a function value fails that check, so it isn't recognized as an
+element to expand at all — it falls through to being treated as an opaque
+child *value*, which `glitter.gtk`'s `create-text-node` then stringifies
+with `str`. The failure is silent and easy to miss: no exception, just a
+child that renders as literal text like `[#object[my_ns$my_component
+0x1234 "..."] arg1 arg2]` instead of the intended widget tree.
+
+**The fix is to call the helper as an ordinary function, splicing its
+return value directly into the parent vector**: `(my-component args...)`,
+not `[my-component args...]`. Since a glitter view is just a pure function
+returning data, this works exactly like any other Clojure code — no
+special hiccup convention needed for an in-file layout helper.
+
+Replicant's *real* reusable-component mechanism is
+[`glitter.alias`](porting-and-attribution.md): `defalias` registers a
+function under a **qualified keyword**, and `[my-ns/my-component args...]`
+in hiccup — a vector whose first element genuinely *is* a keyword — is
+recognized and expanded via that registry (`glitter.alias/alias-hiccup?`
+checks `qualified-keyword?`, not `fn?`). Reach for `defalias` when a
+fragment needs to be referenced by a stable name across files or
+registered once for reuse throughout an app; use a plain function call for
+an ordinary same-file layout helper. `examples/glitter/aliased.clj`
+exercises the alias path; `examples/glitter/todo.clj`'s `stat-card`/
+`task-row` are the plain-function-call case (and were the live bug that
+surfaced this distinction — see `AGENTS.md`'s conventions list).
+
 ## `mount!` — the state-atom watcher
 
 `glitter.gtk/mount!` is Replicant's `state-atom.md` pattern, adapted from

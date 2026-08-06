@@ -30,7 +30,16 @@
                  {:text "Add one of your own"          :done false}]
          :draft ""}))
 
-;; A small "stat card": a big number over a muted label.
+;; A small "stat card": a big number over a muted label. Called as a plain
+;; function returning hiccup — (stat-card n label), NOT [stat-card n label].
+;; Unlike glimmer/Reagent, glitter's hiccup (ported from Replicant) has no
+;; function-as-tag convention: glitter.hiccup/hiccup? requires a KEYWORD in
+;; position 0, so a vector whose first element is a function value fails
+;; that check and falls through to being treated as an opaque child value
+;; (stringified via `str`) rather than expanded. Replicant's real component
+;; mechanism is glitter.alias/defalias + a qualified-keyword tag (see
+;; examples/glitter/aliased.clj) — for a helper this small and non-reusable,
+;; a plain function call is simpler than registering an alias for it.
 (defn- stat-card [n label]
   [:vbox {:spacing 0 :margin-start 14 :margin-end 14 :margin-top 10 :margin-bottom 10}
    [:label {:markup (str "<span size='xx-large' weight='bold'>" n "</span>") :halign :start}]
@@ -57,9 +66,9 @@
      [:label {:markup "<span size='xx-large' weight='bold'>Tasks</span>" :halign :start}]
 
      [:hbox {:spacing 8}
-      [stat-card total "total"]
-      [stat-card done  "done"]
-      [stat-card left  "left"]]
+      (stat-card total "total")
+      (stat-card done  "done")
+      (stat-card left  "left")]
 
      [:frame {:label (str left " remaining") :vexpand true}
       [:vbox {:spacing 6 :margin 12}
@@ -67,7 +76,7 @@
          [[:label {:markup "<span color='#888888'>Nothing here yet — add a task below.</span>"
                    :halign :start}]]
          (for [[idx t] (map-indexed vector tasks)]
-           [task-row idx t]))]]
+           (task-row idx t)))]]
 
      [:hbox {:spacing 8}
       [:entry {:text draft :placeholder "Add a task…"
