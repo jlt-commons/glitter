@@ -91,6 +91,24 @@
 (ffi/defcfn gtk-button-new-with-label   "gtk_button_new_with_label"   [:string] :pointer)
 (ffi/defcfn gtk-button-set-label        "gtk_button_set_label"        [:pointer :string] :void)
 
+;; GtkLinkButton extends GtkButton (gtk/gtklinkbutton.h includes
+;; gtk/gtkbutton.h — the standard GTK header pattern for a parent-class
+;; include), so it inherits "clicked" for free, same reuse story as
+;; :toggle-button's "toggled". gtk_button_set_label (above) works on it
+;; directly. get-uri exists only for smoke-test verification.
+(ffi/defcfn gtk-link-button-new            "gtk_link_button_new"            [:string] :pointer)
+(ffi/defcfn gtk-link-button-new-with-label "gtk_link_button_new_with_label" [:string :string] :pointer)
+(ffi/defcfn gtk-link-button-set-uri        "gtk_link_button_set_uri"        [:pointer :string] :void)
+(ffi/defcfn gtk-link-button-get-uri        "gtk_link_button_get_uri"        [:pointer] :string)
+
+;; gtk_widget_activate simulates a real Enter/Space activation on any
+;; focusable widget — for a GtkButton (and subclasses), this is the actual
+;; code path that ends in emitting "clicked" (traced through
+;; gtk_button_finish_activate in gtk/gtkbutton.c), so it's the correct way
+;; to fire a genuine "clicked" signal from a smoke test, not just a
+;; same-effect workaround.
+(ffi/defcfn gtk-widget-activate "gtk_widget_activate" [:pointer] :int)
+
 (ffi/defcfn gtk-label-new               "gtk_label_new"               [:string] :pointer)
 (ffi/defcfn gtk-label-set-text          "gtk_label_set_text"          [:pointer :string] :void)
 (ffi/defcfn gtk-label-set-label         "gtk_label_set_label"         [:pointer :string] :void)
@@ -126,6 +144,16 @@
 (ffi/defcfn gtk-toggle-button-new-with-label  "gtk_toggle_button_new_with_label"  [:string] :pointer)
 (ffi/defcfn gtk-toggle-button-set-active      "gtk_toggle_button_set_active"      [:pointer :int] :void)
 (ffi/defcfn gtk-toggle-button-get-active      "gtk_toggle_button_get_active"      [:pointer] :int)
+
+;; GtkSwitch's real interaction signal, "state-set", does NOT fit the
+;; uniform void(widget, user_data) shape every signal above uses — it's
+;; gboolean (*)(GtkSwitch*, gboolean, gpointer), 3 args + non-void return
+;; (confirmed against gtk/gtkswitch.c's g_signal_new call). See
+;; glitter.widget's signal-callable-shape table and
+;; docs/guide/gtk-widget-layer.md for the full mechanism this required.
+(ffi/defcfn gtk-switch-new        "gtk_switch_new"        [] :pointer)
+(ffi/defcfn gtk-switch-set-active "gtk_switch_set_active" [:pointer :int] :void)
+(ffi/defcfn gtk-switch-get-active "gtk_switch_get_active" [:pointer] :int)
 
 (ffi/defcfn gtk-separator-new           "gtk_separator_new"           [:int] :pointer)
 

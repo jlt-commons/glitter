@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and five automated smokes that drive a *real* GTK4 window
+fake renderer, and eleven automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter — several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Nine examples under `examples/glitter/` each open a real GTK window,
+Eleven examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -70,6 +70,8 @@ on mismatch:
 | `jolt class-smoke` | `:class` reaches real GTK CSS classes — add, coexist, and remove on a re-render diff | reads class membership back via `gtk_widget_has_css_class`, asserting a built-in class and a custom class both apply on mount, then that dropping one class while adding another in the same re-render calls both `add-class` and `remove-class` correctly — see [`gtk-widget-layer.md`](gtk-widget-layer.md#known-gap-removing-a-key-is-a-no-op) |
 | `jolt leaf-widgets-smoke` | `:spinner`/`:progress-bar`/`:image` construction + re-render land on real GTK state | reads each widget's actual state back (`gtk_spinner_get_spinning`/`gtk_progress_bar_get_fraction`/`gtk_image_get_icon_name`) on mount and after a re-render with different values — see [`gtk-widget-layer.md`](gtk-widget-layer.md#spinnerprogress-barimage--display-only-widgets-need-no-signal) |
 | `jolt toggle-level-smoke` | `:toggle-button` reuses `:checkbutton`'s `"toggled"` signal correctly for a second GTK4 class; `:level-bar` construction + re-render | a real FFI `gtk_toggle_button_set_active` call simulates a click (bypassing `set-toggle-button-active!`), asserting the dispatched state and dispatch count both before and after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#toggle-button--reusing-toggled-for-a-second-gtk4-class) |
+| `jolt link-button-smoke` | `:link-button` reuses `:button`'s `"clicked"` signal correctly for a class that only *extends* `GtkButton`; a real click reaches dispatch | a deferred `gtk_widget_activate` call (via `future`/`Thread/sleep`/`app/on-gui`, timed past both window-realization and the button's own 250ms press-animation delay) simulates a real Enter/Space activation, asserting the click actually dispatched — see [`gtk-widget-layer.md`](gtk-widget-layer.md#link-button--a-second-free-signal-reuse-plus-a-real-gtk4-timing-gotcha) |
+| `jolt switch-smoke` | `:switch`'s `"state-set"` signal (3-arg, non-void return — a generalized `foreign-callable` shape) delivers the correct boolean, and a programmatic state sync doesn't cause a spurious second dispatch | a real FFI `gtk_switch_set_active` call simulates a live toggle (bypassing `set-switch-active!`), asserting the dispatched boolean and dispatch count both before and after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#switch--generalizing-set-event-handler) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo
@@ -105,13 +107,15 @@ bb test                # jolt -M:test
 bb counter              # interactive demo
 bb todo                 # interactive task-board demo
 bb smoke | keyed | replace-child | aliased | main-thread-smoke
+bb scale-smoke | class-smoke | leaf-widgets-smoke | toggle-level-smoke
+bb link-button-smoke | switch-smoke
                         # individual live-GTK smokes
-bb smokes               # all five smokes in sequence; stops at first failure
+bb smokes               # all eleven smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly — never the
 `jolt <task>` shorthand — so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all five smokes with a plain
+CI gate on their own. `bb smokes` chains all eleven smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

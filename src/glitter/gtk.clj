@@ -106,22 +106,53 @@
         (swap! el update :handlers dissoc event))
       (when-let [signal (w/signal-name (keyword (str "on-" (name event))))]
         (let [value-fn (w/signal-value-fn signal)
-              cb (jolt.ffi/foreign-callable
-                  (fn [src-widget _data]
-                    ;; Skip emissions triggered by our OWN programmatic
-                    ;; setters (set-entry-text!/set-checkbutton-active!)
-                    ;; — found live-verified during the final
-                    ;; whole-branch review that connecting directly
-                    ;; (bypassing glitter.widget/connect-signals!, which
-                    ;; we can't use since it doesn't expose the
-                    ;; connection id real disconnect needs) meant this
-                    ;; guard was never consulted, so a purely
-                    ;; programmatic value change fired a real dispatch
-                    ;; the user never triggered.
-                    (when-not (w/suppressing? src-widget)
-                      (handler (cond-> {:glitter/node el :glitter/gtk-widget src-widget}
-                                 value-fn (assoc :glitter/value (value-fn src-widget))))))
-                  [:pointer :pointer] :void :collect-safe)
+              ;; Dispatches through `handler`, shared by every callable
+              ;; shape below regardless of how many raw args GTK actually
+              ;; passes — every value-bearing signal's value-fn re-reads
+              ;; the widget's own property AFTER the signal fires
+              ;; (verified live, per-signal, that the property already
+              ;; reflects the new value by then — see e.g. "state-set"'s
+              ;; value-fn in glitter.widget), so no signal needs its own
+              ;; raw argument threaded through here.
+              ;;
+              ;; Skip emissions triggered by our OWN programmatic setters
+              ;; (set-entry-text!/set-checkbutton-active!/etc.) — found
+              ;; live-verified during the final whole-branch review that
+              ;; connecting directly (bypassing glitter.widget/
+              ;; connect-signals!, which we can't use since it doesn't
+              ;; expose the connection id real disconnect needs) meant
+              ;; this guard was never consulted, so a purely programmatic
+              ;; value change fired a real dispatch the user never
+              ;; triggered.
+              dispatch! (fn [src-widget]
+                          (when-not (w/suppressing? src-widget)
+                            (handler (cond-> {:glitter/node el :glitter/gtk-widget src-widget}
+                                       value-fn (assoc :glitter/value (value-fn src-widget))))))
+              ;; Almost every GTK signal glitter connects is
+              ;; void(widget, user_data), covered by the default branch.
+              ;; GtkSwitch's "state-set" doesn't fit: its real C signature
+              ;; is gboolean(GtkSwitch*, gboolean, gpointer) — 3 args,
+              ;; non-void return (confirmed against gtk/gtkswitch.c's
+              ;; g_signal_new call, not assumed) — so it needs its own
+              ;; foreign-callable call with a literal 3-arg fn and literal
+              ;; [:pointer :int :pointer]/:int argtypes/rettype.
+              ;;
+              ;; This can't be collapsed into one data-driven call: jolt's
+              ;; foreign-callable/__ccallable is a compile-time special
+              ;; form — verified live (twice, isolated from this codebase)
+              ;; that passing argtypes/rettype as a let-bound local (even
+              ;; holding the exact literal value) throws "Don't know how
+              ;; to create ISeq from: clojure.lang.Symbol" at compile
+              ;; time. Every distinct callable shape needs its own literal
+              ;; call site; add a new `signal` branch here for the next
+              ;; one, don't try to generalize further.
+              cb (if (= signal "state-set")
+                   (jolt.ffi/foreign-callable
+                    (fn [src-widget _state _data] (dispatch! src-widget) 0)
+                    [:pointer :int :pointer] :int :collect-safe)
+                   (jolt.ffi/foreign-callable
+                    (fn [src-widget _data] (dispatch! src-widget))
+                    [:pointer :pointer] :void :collect-safe))
               id (g/g-signal-connect-data (ptr el) signal cb jolt.ffi/null jolt.ffi/null g/CONNECT-DEFAULT)]
           (w/retain-callable! cb)
           (swap! el assoc-in [:handlers event] {:id id :cb cb})))

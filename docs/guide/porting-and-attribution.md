@@ -63,23 +63,32 @@ listed here for provenance, not legal requirement:
   `gtk-progress-bar-get-fraction`, `gtk-image-new`,
   `gtk-image-new-from-icon-name`, `gtk-image-new-from-file`,
   `gtk-image-set-from-icon-name`, `gtk-image-set-from-file`,
-  `gtk-image-set-pixel-size`, `gtk-image-get-icon-name`), and ten more for
+  `gtk-image-set-pixel-size`, `gtk-image-get-icon-name`), ten more for
   `:toggle-button`/`:level-bar` (`gtk-toggle-button-new`,
   `gtk-toggle-button-new-with-label`, `gtk-toggle-button-set-active`,
   `gtk-toggle-button-get-active`, `gtk-level-bar-new`,
   `gtk-level-bar-set-value`, `gtk-level-bar-set-min-value`,
   `gtk-level-bar-set-max-value`, `gtk-level-bar-set-inverted`,
-  `gtk-level-bar-get-value`).
+  `gtk-level-bar-get-value`), and eight more for `:link-button`/`:switch`
+  (`gtk-link-button-new`, `gtk-link-button-new-with-label`,
+  `gtk-link-button-set-uri`, `gtk-link-button-get-uri`,
+  `gtk-widget-activate`, `gtk-switch-new`, `gtk-switch-set-active`,
+  `gtk-switch-get-active`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
   value-bearing custom-signal path — see
   [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal)),
   the display-only `:spinner`/`:progress-bar`/`:image`/`:level-bar` widget
-  specs (no signal wiring — driven entirely by re-applied props), and
-  `set-toggle-button-active!` + the `:toggle-button` widget spec (reuses
-  the existing `:on-toggled` -> `"toggled"` entry verbatim — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#toggle-button--reusing-toggled-for-a-second-gtk4-class))
+  specs (no signal wiring — driven entirely by re-applied props),
+  `set-toggle-button-active!` + the `:toggle-button` widget spec and
+  `link-button-spec`/`:link-button` (both reuse an existing `signals`
+  entry verbatim — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#toggle-button--reusing-toggled-for-a-second-gtk4-class)),
+  and `set-switch-active!` + the `:switch` widget spec + the new
+  `:on-state-set` signal entry (the widget that needed
+  `glitter.gtk/set-event-handler` itself generalized — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#switch--generalizing-set-event-handler))
   as new public accessors, and one behavioral deviation: `replace-child!`'s `:box`
   branch captures the old child's previous sibling via
   `gtk_widget_get_prev_sibling` and re-inserts via

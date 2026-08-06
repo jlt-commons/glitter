@@ -58,15 +58,17 @@ live GTK widget tree in sync.
   branch, `replace-child!`'s prev-sibling capture), `:scale`'s
   value-bearing custom signal, `:class`'s real GTK CSS-class wiring, the
   display-only `:spinner`/`:progress-bar`/`:image`/`:level-bar` widgets,
-  `:toggle-button`'s signal reuse, and why `GtkSwitch` was surveyed and
-  deliberately not added yet.
+  `:toggle-button`'s and `:link-button`'s signal reuse (including a real
+  GTK4 button-activation timing gotcha), and `:switch` — the widget that
+  needed `glitter.gtk/set-event-handler` itself generalized beyond the
+  uniform 2-arg-void signal shape.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the nine automated live-GTK
+  headless fake-`IRender` test renderer, the eleven automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

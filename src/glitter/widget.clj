@@ -146,19 +146,22 @@
     props))
 
 ;; --- signal registry ---------------------------------------------------------
-;; event keyword -> GTK signal name. A handler has the GTK signature
-;; void(widget, user_data); our callable ignores both args and invokes the
-;; captured jolt handler, so one table covers every widget type. An atom so
-;; third-party extensions can add events via register-signal! without editing
-;; this ns; :on-value-changed (scale's slider-drag signal) is a first-party
-;; entry here, same as the other four — see signal-value below for its
-;; value-fn.
+;; event keyword -> GTK signal name. MOST handlers have the GTK signature
+;; void(widget, user_data), and our callable ignores both args and invokes
+;; the captured jolt handler, so one table covers every widget type of that
+;; shape — see signal-callable-shape below for the (currently one) exception.
+;; An atom so third-party extensions can add events via register-signal!
+;; without editing this ns; :on-value-changed (scale's slider-drag signal)
+;; and :on-state-set (switch's interaction signal) are first-party entries
+;; here, same as the original four — see signal-value below for their
+;; value-fns.
 (def signals
   (atom {:on-click          "clicked"
          :on-change         "changed"
          :on-activate       "activate"
          :on-toggled        "toggled"
-         :on-value-changed  "value-changed"}))
+         :on-value-changed  "value-changed"
+         :on-state-set      "state-set"}))
 
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
@@ -166,7 +169,7 @@
 ;; they read; the :apply closures below call them, so declare them here. A
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
-(declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active!)
+(declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -195,6 +198,21 @@
               (when (contains? p :label)   (g/gtk-button-set-label w (:label p)))
               (when (:tooltip p)           (g/gtk-widget-set-tooltip-text w (:tooltip p)))
               (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :none})
+
+(defn- link-button-spec []
+  ;; GtkLinkButton extends GtkButton — reuses :on-click -> "clicked"
+  ;; verbatim (no new signal wiring, same free-reuse story as
+  ;; :toggle-button's "toggled") and gtk-button-set-label/tooltip/sensitive
+  ;; directly, since those are inherited GtkButton/GtkWidget methods.
+  {:ctor  (fn [p] (if (:label p)
+                    (g/gtk-link-button-new-with-label (or (:uri p) "") (:label p))
+                    (g/gtk-link-button-new (or (:uri p) ""))))
+   :apply (fn [w p]
+            (when (contains? p :uri)       (g/gtk-link-button-set-uri w (:uri p)))
+            (when (contains? p :label)     (g/gtk-button-set-label w (:label p)))
+            (when (:tooltip p)             (g/gtk-widget-set-tooltip-text w (:tooltip p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
 
 (defn- label-spec []
@@ -338,16 +356,27 @@
             (when (contains? p :inverted)  (g/gtk-level-bar-set-inverted w (->bool (:inverted p)))))
    :container :none})
 
+(defn- switch-spec []
+  ;; The widget signal-callable-shape (below) exists FOR: "state-set" isn't
+  ;; the uniform void(widget, user_data) shape, so it needs a registered
+  ;; entry there or glitter.gtk's set-event-handler would build the wrong
+  ;; callable signature. See signal-callable-shape's own docstring.
+  {:ctor  (fn [_] (g/gtk-switch-new))
+   :apply (fn [w p] (when (contains? p :active) (set-switch-active! w (:active p))))
+   :container :none})
+
 ;; hiccup tag -> widget spec. An atom so extensions register new widget types
 ;; via register-widget! without editing this ns.
 (def specs
   (atom {:window        (window-spec)
          :box           (box-spec)
          :button        (button-spec)
+         :link-button   (link-button-spec)
          :label         (label-spec)
          :entry         (entry-spec)
          :checkbutton   (checkbutton-spec)
          :toggle-button (toggle-button-spec)
+         :switch        (switch-spec)
          :separator     (separator-spec)
          :frame         (frame-spec)
          :scrolled      (scrolled-spec)
@@ -457,6 +486,21 @@
       (g/gtk-toggle-button-set-active widget target)
       (swap! suppressing disj widget))))
 
+(defn- set-switch-active!
+  "Set a switch's active state, but only when it differs from the widget's
+  current state, and while suppressing the :on-state-set handler for the
+  synchronous 'state-set' emission gtk_switch_set_active causes (verified
+  live: unlike GtkButton's activate path, GtkSwitch's own source sets
+  self->is_active THEN synchronously emits state-set — no animation
+  timeout involved). Same set-compare-suppress shape as
+  set-checkbutton-active!/set-toggle-button-active!."
+  [widget active?]
+  (let [target (->bool active?)]
+    (when (not= target (g/gtk-switch-get-active widget))
+      (swap! suppressing conj widget)
+      (g/gtk-switch-set-active widget target)
+      (swap! suppressing disj widget))))
+
 (defn- set-scale-value!
   "Set a scale's value, but only when it differs from the widget's current
   value, and while suppressing the :on-value-changed handler for the
@@ -475,9 +519,41 @@
 ;; without editing this table. "value-changed" (scale's slider drag) is the
 ;; second first-party entry here, reading the current double back via
 ;; gtk_range_get_value — GtkScale extends GtkRange and inherits its API.
+;; "state-set" (switch) reads gtk_switch_get_active AFTER the signal fires,
+;; not from the signal's own second argument — verified live against
+;; gtk/gtkswitch.c's gtk_switch_set_active: self->is_active is set BEFORE
+;; g_signal_emit(STATE_SET) runs, so by the time any handler sees the
+;; signal, the getter already reflects the new value. A plain (fn [widget])
+;; value-fn works here exactly like every other signal's, with no need to
+;; read the raw signal argument the callable receives.
 (def ^:private signal-value
   (atom {"changed"       (fn [widget] (g/gtk-editable-get-text widget))
-         "value-changed" (fn [widget] (g/gtk-range-get-value widget))}))
+         "value-changed" (fn [widget] (g/gtk-range-get-value widget))
+         "state-set"     (fn [widget] (g/gtk-switch-get-active widget))}))
+
+;; Almost every GTK signal glitter connects has the uniform
+;; void(widget, user_data) shape glitter.gtk's set-event-handler builds by
+;; default. GtkSwitch's "state-set" doesn't: its real C signature is
+;; gboolean (*)(GtkSwitch*, gboolean, gpointer) — 3 args, non-void return —
+;; confirmed against gtk/gtkswitch.c's g_signal_new call, not assumed.
+;;
+;; Unlike `signals`/`signal-value` above, this is NOT a data table a
+;; third-party extension can register into: jolt's `foreign-callable` /
+;; `__ccallable` is a compile-time special form, and argtypes/rettype must
+;; be literal at the call site — verified live (twice, isolated in a
+;; throwaway namespace before touching this file) that passing them as a
+;; let-bound local, even holding the exact literal value, throws "Don't
+;; know how to create ISeq from: clojure.lang.Symbol" at compile time. A
+;; data-driven `{gtk-signal {:argtypes [...] ...}}` table that
+;; `set-event-handler` looks up at runtime and splices into one generic
+;; `foreign-callable` call — the first design tried here — cannot work.
+;; glitter.gtk/set-event-handler instead branches explicitly on `signal`
+;; and calls `foreign-callable` at two separate literal call sites (the
+;; default 2-arg-void one, and one for `"state-set"`). Adding a THIRD
+;; non-default shape means adding a third literal call site there, by
+;; hand — there is no generic extension point for this, and
+;; `register-signal!` intentionally has no `shape` parameter, because it
+;; could never actually be honored.
 
 (defn register-signal!
   "Register an :on-* event key -> GTK signal name. With `value-fn` (a widget ->

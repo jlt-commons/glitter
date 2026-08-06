@@ -52,6 +52,8 @@ failure:
 | `jolt class-smoke` | `:class` reaches real GTK CSS classes — add, coexist, and remove on a re-render diff |
 | `jolt leaf-widgets-smoke` | `:spinner`/`:progress-bar`/`:image` construction + re-render land on real GTK state |
 | `jolt toggle-level-smoke` | `:toggle-button`'s `toggled` signal delivers correctly (reused from `:checkbutton`), `:level-bar` construction + re-render |
+| `jolt link-button-smoke` | `:link-button` reuses `:on-click`; a real click (via `gtk_widget_activate`) reaches dispatch |
+| `jolt switch-smoke` | `:switch`'s `state-set` signal (3-arg, non-void return — a generalized callable shape) delivers correctly, no spurious dispatch |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -136,11 +138,14 @@ rationale on both.
 
 Early. Widget set: window/box/button/label/entry/checkbutton/separator/
 frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
-`:progress-bar`/`:image`/`:toggle-button`/`:level-bar` (first-party, added
-directly to glitter; see `docs/guide/gtk-widget-layer.md`) —
-`:spinner`/`:progress-bar`/`:image`/`:level-bar` are display-only props
-with no signal to wire; `:toggle-button` reuses `:checkbutton`'s existing
-`:on-toggled` signal entry verbatim. Hiccup
+`:progress-bar`/`:image`/`:toggle-button`/`:level-bar`/`:link-button`/
+`:switch` (first-party, added directly to glitter; see
+`docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
+`:level-bar` are display-only props with no signal to wire;
+`:toggle-button`/`:link-button` reuse `:checkbutton`'s `:on-toggled` and
+`:button`'s `:on-click` signal entries verbatim; `:switch` needed
+`glitter.gtk/set-event-handler` itself generalized beyond the uniform
+2-arg-void callable shape (see below). Hiccup
 `:class` reaches real GTK CSS classes (`gtk_widget_add/remove_css_class`
 — GTK4's built-in classes like `"flat"`/`"suggested-action"`/
 `"destructive-action"`/`"pill"` work with zero app-provided CSS); `:style`
@@ -148,6 +153,20 @@ still doesn't — GTK4 has no DOM-`style`-attribute equivalent, only
 class-based styling, so an inline `:style` prop has no direct GTK
 counterpart to wire to. No animated mount/unmount transitions yet — see
 `NOTICE.md`'s file-by-file notes for exactly what's ported vs. new.
+
+**Non-standard GTK signals.** Almost every GTK signal glitter connects is
+`void(widget, user_data)` — `glitter.gtk/set-event-handler` builds that
+shape by default. `GtkSwitch`'s real interaction signal, `"state-set"`, is
+`gboolean(GtkSwitch*, gboolean, gpointer)` — 3 args, non-void return —
+confirmed by reading `gtk/gtkswitch.c`'s `g_signal_new` call directly, not
+assumed. `jolt.ffi/foreign-callable`'s `argtypes`/`rettype` must be
+compile-time literals (verified live that a let-bound local, even holding
+the exact same value, throws a compile error), so `set-event-handler`
+branches explicitly on the GTK signal name and uses a second, separately
+written `foreign-callable` call for `"state-set"` — there's no
+data-driven way to add a third non-standard shape; it needs its own
+literal branch. See `docs/guide/gtk-widget-layer.md` for the full story,
+including the design that was tried first and didn't work.
 
 Known v1 limitations:
 

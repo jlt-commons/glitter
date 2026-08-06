@@ -336,6 +336,13 @@ in hiccup but silently not round-trip, a worse trap than not shipping it
 at all. Left as an explicitly open decision (see `AGENTS.md`'s Scope
 section) rather than resolved either way.
 
+**Resolved two rounds later** — see
+["`:switch` — generalizing `set-event-handler`"](#switch--generalizing-set-event-handler)
+below. This section is kept as-written rather than rewritten: the
+investigation and the "not worth a quiet half-measure" judgment call were
+both correct and are exactly the reasoning that later justified the real
+architecture work.
+
 ## `:toggle-button` — reusing `"toggled"` for a second GTK4 class
 
 `GtkToggleButton` is the widget `:switch` isn't: checked its actual
@@ -382,6 +389,204 @@ inside it (same ordering concern `:scale`'s `:apply` already has for
 re-ranging before setting `:value`). `:mode` (continuous vs. discrete
 segments) is out of scope for v1, matching `:progress-bar`'s minimal
 display-widget scope.
+
+## `:link-button` — a second free signal reuse, plus a real GTK4 timing gotcha
+
+`GtkLinkButton` is the same story as `:toggle-button`, one level up:
+`gtk/gtklinkbutton.h` `#include`s `gtk/gtkbutton.h` — the standard
+GTK header pattern for a parent-class include — confirming `GtkLinkButton`
+genuinely *extends* `GtkButton`, not just resembles it. It inherits
+`"clicked"` for free: `:link-button` needed no `signals`/`signal-value`
+entry at all, only its own `gtk_link_button_new`/`_with_label`/
+`set_uri`/`get_uri` FFI calls and a `link-button-spec` that reuses
+`gtk_button_set_label`/`gtk_widget_set_tooltip_text`/
+`gtk_widget_set_sensitive` directly, since those are inherited
+`GtkButton`/`GtkWidget` methods `button-spec` already calls.
+
+Writing this widget's smoke surfaced a genuine GTK4 timing gotcha, worth
+pinning precisely because it would silently break any future test (or
+application code) that tries to simulate a button click programmatically.
+`gtk_widget_activate` — the public function that simulates a real
+Enter/Space key activation — does **not** synchronously emit `"clicked"`
+for a `GtkButton`. Traced through `gtk/gtkbutton.c`:
+
+```c
+#define ACTIVATE_TIMEOUT 250
+...
+static void
+gtk_real_button_activate (GtkButton *button)
+{
+  ...
+  if (gtk_widget_get_realized (widget) && !priv->activate_timeout)
+    {
+      priv->activate_timeout = g_timeout_add_once (ACTIVATE_TIMEOUT, button_activate_timeout, button);
+      ...
+    }
+}
+```
+
+Two traps stacked here, both found live rather than assumed:
+
+1. **`"clicked"` fires ~250ms later**, via a `g_timeout_add_once` — the
+   press-animation delay. `gtk_widget_activate` returns before that
+   timeout runs, so checking any dispatched result immediately after
+   calling it reads stale state. `examples/glitter/link_button_smoke.clj`
+   defers its check via a `future` + `Thread/sleep 400` + `app/on-gui`,
+   the same cross-thread-marshalling primitives
+   `main_thread_smoke.clj` already established, applied to a different
+   timing problem (there, marshalling *onto* the main thread from a
+   worker; here, giving the main thread's own event sources time to run).
+2. **The timeout is only scheduled `if (gtk_widget_get_realized
+   (widget) ...)`.** `glitter.app/run*`'s `:activate` handler calls
+   `on-activate` (where `gtk/mount!` and any smoke-test interaction code
+   runs) *before* `gtk_window_present` — so activating a button
+   immediately inside `on-activate` is a **silent no-op**: `gtk_widget_
+   activate` still returns `TRUE` (that only means "an activate-signal
+   handler ran," not "clicked will follow"), but the widget isn't
+   realized yet, so the whole timeout-scheduling branch is skipped and
+   `"clicked"` never fires at all. The smoke defers the *activate call
+   itself* (not just the check) via the same future, giving the window
+   time to present and realize first.
+
+## `:switch` — generalizing `set-event-handler`
+
+`GtkSwitch` was
+[surveyed and deliberately not added](#surveyed-and-deliberately-not-added-gtkswitch)
+two widget-additions ago, specifically because its interaction signal,
+`"state-set"`, doesn't fit the uniform `void(widget, user_data)` shape
+every other glitter signal's `foreign-callable` uses — confirmed against
+`gtk/gtkswitch.c`'s `g_signal_new` call: `gboolean (*state_set)
+(GtkSwitch *widget, gboolean state, gpointer user_data)`, 3 args, a
+`gboolean` return GTK uses to decide whether its own default handler
+should also run.
+
+### The design that was tried first, and doesn't work
+
+The natural-looking fix: a data table mapping GTK signal name to its
+callable shape, looked up at runtime inside `set-event-handler`, spliced
+into one generic `foreign-callable` call:
+
+```clojure
+;; DOES NOT WORK — kept here as a documented dead end, not a suggestion
+(def signal-callable-shape
+  (atom {"state-set" {:argtypes [:pointer :int :pointer] :rettype :int :return 0}}))
+
+(let [{:keys [argtypes rettype return]} (get @signal-callable-shape signal default-shape)
+      cb (jolt.ffi/foreign-callable (fn [w & _] ... return) argtypes rettype :collect-safe)]
+  ...)
+```
+
+This compiles the *shape* of the idea correctly but fails at the
+`foreign-callable` call itself. `jolt.ffi/foreign-callable` (and the
+`__ccallable` special form it expands to) is a **compile-time**
+construct — `argtypes`/`rettype` must be literal at the call site, not a
+runtime value. Verified live, twice, in throwaway namespaces isolated
+from this codebase before touching `glitter.gtk` at all:
+
+```clojure
+;; Literal argtypes/rettype: compiles and runs fine.
+(jolt.ffi/foreign-callable (fn [a & _] a) [:pointer :int :pointer] :int :collect-safe)
+
+;; The SAME values, let-bound first: fails to compile.
+(let [argtypes [:pointer :int :pointer] rettype :int]
+  (jolt.ffi/foreign-callable (fn [a b c] a) argtypes rettype :collect-safe))
+;; => Unhandled exception: java.lang.IllegalArgumentException:
+;;    Don't know how to create ISeq from: clojure.lang.Symbol
+;;    ex-data: {:jolt/error {:type :analysis-error, ...}}
+```
+
+Same error, both times — `argtypes`/`rettype` reaching the macro as a
+symbol (a local binding) rather than a literal vector/keyword breaks the
+special form's compile-time analysis. A variadic handler function
+(`(fn [a & rest] ...)`) works fine on its own (also verified in
+isolation) — it's specifically the *runtime-computed argtypes/rettype*
+that can't work, not the handler's arity.
+
+### What actually works: explicit branching, one literal call site per shape
+
+`glitter.gtk/set-event-handler` branches on the GTK signal name in plain
+Clojure code, and uses a **separate, fully literal** `foreign-callable`
+call for each distinct shape:
+
+```clojure
+(let [dispatch! (fn [src-widget]
+                  (when-not (w/suppressing? src-widget)
+                    (handler (cond-> {:glitter/node el :glitter/gtk-widget src-widget}
+                               value-fn (assoc :glitter/value (value-fn src-widget))))))
+      cb (if (= signal "state-set")
+           (jolt.ffi/foreign-callable
+            (fn [src-widget _state _data] (dispatch! src-widget) 0)
+            [:pointer :int :pointer] :int :collect-safe)
+           (jolt.ffi/foreign-callable
+            (fn [src-widget _data] (dispatch! src-widget))
+            [:pointer :pointer] :void :collect-safe))]
+  ...)
+```
+
+The dispatch logic (suppressing-guard + calling `handler`) is factored
+into a shared `dispatch!` closure so it isn't duplicated between
+branches, but the `foreign-callable` calls themselves — the part that
+actually has the compile-time-literal constraint — stay separate and
+literal. **There is no generic extension point for adding a third
+non-standard shape**: it means adding a third literal branch here, by
+hand. `glitter.widget/register-signal!` intentionally has no `shape`
+parameter for this reason — accepting one and storing it in a table
+would silently promise a capability `set-event-handler` can't actually
+honor.
+
+`"state-set"`'s value-fn doesn't need the signal's own second argument
+(the new boolean state) either, despite that value being right there in
+the callable's parameter list. Verified against `gtk_switch_set_active`
+in `gtk/gtkswitch.c` directly:
+
+```c
+if (self->is_active != is_active)
+  {
+    self->is_active = is_active;                       /* set FIRST */
+    ...
+    g_signal_emit (self, signals[STATE_SET], 0, is_active, &handled);  /* emitted AFTER */
+```
+
+`self->is_active` (what `gtk_switch_get_active` reads) is updated
+*before* `"state-set"` is emitted — so by the time any handler runs,
+`gtk_switch_get_active` already reflects the new value. `"state-set"`'s
+`signal-value` entry is a plain `(fn [widget] (g/gtk-switch-get-active
+widget))`, exactly the same shape as `:scale`'s and `:change`'s, with no
+special argument threading needed:
+
+```clojure
+"state-set" (fn [widget] (g/gtk-switch-get-active widget))
+```
+
+Returning `0`/`FALSE` from the "state-set" callable (the `:return`-shaped
+value baked into the branch above) matters for a second reason beyond
+"satisfy the C ABI": GTK's docs say the signal handler should return
+`TRUE` to *prevent* the default handler from running. Returning `FALSE`
+lets that default handler (`gtk_switch_set_state`, which keeps the
+switch's internal visual `::state` sub-property in sync with `::active`)
+also run — verified live that this doesn't conflict with glitter's own
+dispatch, since both independently react to the same already-updated
+`::active` value; glitter never needs to call `gtk_switch_set_state`
+itself.
+
+`set-switch-active!` is the usual set-compare-suppress helper, structurally
+identical to `set-checkbutton-active!`/`set-toggle-button-active!` — the
+suppressing guard works identically for a 3-arg/non-void-return signal as
+it does for the standard 2-arg-void ones, since suppression is checked
+inside `dispatch!`, before the shape-specific branch ever matters.
+
+Verified live end-to-end (`examples/glitter/switch_smoke.clj`, the full
+three-part rigor every value-bearing widget's smoke uses): a real
+interaction (direct FFI `gtk_switch_set_active`, bypassing
+`set-switch-active!` so the actual `"state-set"` signal fires) reaches
+`*dispatch*` with the correct value at `(get-in event [:glitter/dom-event
+:glitter/value])`; a subsequent programmatic `reset!` pushes the widget
+back in sync; and that programmatic push does **not** trigger a second,
+spurious dispatch — the suppressing guard proven to work for this signal
+shape too, not just the standard ones. `jolt -M:test` and `bb smokes`
+(all prior smokes) were re-run after this change to confirm zero
+regression in the shared `set-event-handler` path every other interactive
+widget depends on, before this shipped.
 
 ## Boolean props: `some?`, not truthiness
 

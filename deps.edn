@@ -42,7 +42,10 @@
            :leaf-widgets-smoke {:extra-paths ["examples"]
                                 :main-opts ["-m" "glitter.leaf-widgets-smoke"]}
            :toggle-level-smoke {:extra-paths ["examples"]
-                                :main-opts ["-m" "glitter.toggle-level-smoke"]}}
+                                :main-opts ["-m" "glitter.toggle-level-smoke"]}
+           :link-button-smoke {:extra-paths ["examples"]
+                               :main-opts ["-m" "glitter.link-button-smoke"]}
+           :switch-smoke {:extra-paths ["examples"] :main-opts ["-m" "glitter.switch-smoke"]}}
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"
@@ -55,4 +58,6 @@
          scale-smoke "jolt -M:scale-smoke"
          class-smoke "jolt -M:class-smoke"
          leaf-widgets-smoke "jolt -M:leaf-widgets-smoke"
-         toggle-level-smoke "jolt -M:toggle-level-smoke"}}
+         toggle-level-smoke "jolt -M:toggle-level-smoke"
+         link-button-smoke "jolt -M:link-button-smoke"
+         switch-smoke "jolt -M:switch-smoke"}}
