@@ -56,9 +56,19 @@
                  (swap! log conj [:insert-before (or (:tag-name @child-node) (:text @child-node))
                                   (or (:tag-name @reference-node) (:text @reference-node))
                                   :in (:tag-name @el)])
+                 ;; Remove child-node from wherever it currently sits first
+                 ;; (a no-op if it wasn't tracked yet — the fresh-insert
+                 ;; case), then re-splice immediately before reference-node.
+                 ;; Found live-verified during the final whole-branch
+                 ;; review: without this, a keyed move left a stale
+                 ;; duplicate entry in :children instead of relocating it —
+                 ;; the same class of bug as glitter.gtk's insert-before had
+                 ;; before Task 10's review fixed it there. Mirrors that fix.
                  (swap! el update :children
-                        (fn [cs] (let [idx (.indexOf cs reference-node)]
-                                   (into (conj (subvec cs 0 idx) child-node) (subvec cs idx)))))
+                        (fn [cs]
+                          (let [without (vec (remove #(= % child-node) cs))
+                                idx (.indexOf without reference-node)]
+                            (into (conj (subvec without 0 idx) child-node) (subvec without idx)))))
                  nil)
 
                (append-child [_ el child-node]

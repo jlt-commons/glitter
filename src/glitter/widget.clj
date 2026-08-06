@@ -442,11 +442,19 @@
     nil))
 
 (defn replace-child!
-  "Replace `old-child` with `new-child` at the same position in `parent`."
+  "Replace `old-child` with `new-child` at the same position in `parent`.
+  For :box, gtk_box_append always inserts at the END — found live-verified
+  during the final whole-branch review that replacing a non-final child
+  silently relocated it there, desyncing every consumer's positional
+  tracking. Capture old-child's current previous sibling BEFORE removing
+  it (removal loses that information), then insert new-child at that same
+  anchor via gtk_box_insert_child_after."
   [parent-tag parent old-child new-child]
   (case (container-kind parent-tag)
-    :box    (do (g/gtk-box-remove parent old-child)
-                (g/gtk-box-append parent new-child))
+    :box    (let [prev (g/gtk-widget-get-prev-sibling old-child)
+                  prev (when-not (or (nil? prev) (zero? prev)) prev)]
+              (g/gtk-box-remove parent old-child)
+              (g/gtk-box-insert-child-after parent new-child (or prev ffi/null)))
     :window (g/gtk-window-set-child parent new-child)
     :frame  (g/gtk-frame-set-child parent new-child)
     :scrolled (g/gtk-scrolled-window-set-child parent new-child)

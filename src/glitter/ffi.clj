@@ -77,6 +77,7 @@
 ;; actual child order back (e.g. to verify keyed reordering).
 (ffi/defcfn gtk-widget-get-first-child  "gtk_widget_get_first_child"  [:pointer] :pointer)
 (ffi/defcfn gtk-widget-get-next-sibling "gtk_widget_get_next_sibling" [:pointer] :pointer)
+(ffi/defcfn gtk-widget-get-prev-sibling "gtk_widget_get_prev_sibling" [:pointer] :pointer)
 
 ;; --- widgets -----------------------------------------------------------------
 (ffi/defcfn gtk-button-new              "gtk_button_new"              [] :pointer)
