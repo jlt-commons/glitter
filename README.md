@@ -79,9 +79,20 @@ on failure and are safe to use as a CI gate.
 - `glitter.gtk`, `glitter.test-renderer`, `glitter.env` — new code specific
   to glitter.
 
-Full design rationale: see the design spec this project shipped from (not
-included in this repo — routed to the centralized planning store per this
-project's convention).
+## Documentation
+
+- **[`docs/guide/index.md`](docs/guide/index.md)** — the full guide: the
+  reconcile → `IRender`/`IMemory` architecture, the GTK4-specific widget/
+  signal-lifecycle mechanics, cross-thread marshalling, the porting/
+  attribution ledger, testing, and every known v1 limitation in depth.
+  Mirrored to [`b12n-wikis/glitter`](https://github.com/burinc/b12n-wikis/tree/main/glitter)
+  for browsing outside a checkout.
+- **[`AGENTS.md`](AGENTS.md)** — canonical context for coding agents working
+  in this repo (architecture summary, build/run commands, conventions and
+  gotchas not to regress). `CLAUDE.md` imports it for Claude Code.
+- Design spec / implementation plan: not included in this repo — they live
+  at `~/dev/b12n-sp-docs/glitter/{specs,plans}/` (the centralized
+  superpowers planning store) for anyone with access to that store.
 
 ## Status
 
