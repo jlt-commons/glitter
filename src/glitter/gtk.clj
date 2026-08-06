@@ -54,11 +54,39 @@
     (set-attribute [_ el a v _opt]
       (w/apply-props! (:tag @el) (ptr el) {(keyword a) v})
       nil)
+    ;; KNOWN V1 LIMITATION, found live-verified during review: this is a
+    ;; no-op. w/apply-props! (glitter.widget) filters out any key whose
+    ;; value is nil before it ever reaches a widget's :apply closure —
+    ;; so {(keyword a) nil} always reduces to {} and the underlying GTK
+    ;; property is left completely untouched. Confirmed against real
+    ;; GTK state: set a checkbutton's :active true, then "remove" it —
+    ;; gtk_check_button_get_active still returns 1. GTK has no generic
+    ;; "unset a property" API the way DOM/CSS does (removeAttribute has
+    ;; an obvious browser meaning; there's no GTK equivalent), so
+    ;; there's no clean mechanical fix at this layer — a real fix would
+    ;; need per-widget-type default values designed into glitter.widget's
+    ;; :apply closures, out of scope for v1 (matches this project's
+    ;; existing "no CSS wiring" / "no animations" v1 boundaries —
+    ;; human-approved: document, don't fix). Setting an attribute to a
+    ;; NEW value always works correctly; removing it entirely so it
+    ;; reverts to a type default does not.
     (remove-attribute [_ el a]
       (w/apply-props! (:tag @el) (ptr el) {(keyword a) nil})
       nil)
 
     (set-event-handler [_ el event handler _opt]
+      ;; Disconnect any existing connection for this event FIRST — found
+      ;; live-verified during review: glitter.core's update-event-listeners
+      ;; calls set-event-handler whenever the handler VALUE changes between
+      ;; renders, but only calls remove-event-handler when the
+      ;; :glitter.event/* OPTIONS change — these are different conditions.
+      ;; Without this guard, a handler whose data changes (but whose opts
+      ;; don't) leaves the old GTK signal connection orphaned (still live,
+      ;; still fires) while only the new id is tracked — an unbounded
+      ;; per-render handler leak.
+      (when-let [id (get-in @el [:handlers event])]
+        (g/g-signal-handler-disconnect (ptr el) id)
+        (swap! el update :handlers dissoc event))
       (when-let [signal (w/signal-name (keyword (str "on-" (name event))))]
         (let [cb (jolt.ffi/foreign-callable
                   (fn [src-widget _data] (handler {:glitter/node el :glitter/gtk-widget src-widget}))
@@ -75,13 +103,38 @@
       nil)
 
     (insert-before [_ el child-node reference-node]
+      ;; insert-before is called for TWO different cases, mirroring DOM's
+      ;; own insertBefore auto-move semantics: (a) a genuinely new,
+      ;; never-yet-parented child, and (b) repositioning a child that's
+      ;; ALREADY a child of el (keyed reconciliation moving an existing
+      ;; row). GTK does not unify these the way DOM does — found live-
+      ;; verified during review: gtk_box_insert_child_after asserts its
+      ;; child arg is UNPARENTED (gtk_widget_get_parent(child) == NULL)
+      ;; and throws a GTK-CRITICAL + silently no-ops when called on an
+      ;; already-parented child, which is exactly what a keyed reorder
+      ;; does. GTK's real API for repositioning an EXISTING child is
+      ;; gtk_box_reorder_child_after (glimmer's own reorder-child!,
+      ;; already proven correct for this exact case) — so branch on
+      ;; whether child-node is already tracked in el's :children.
       (let [cs (:children @el)
             idx (.indexOf cs reference-node)
             prev-sibling (when (pos? idx) (ptr (nth cs (dec idx))))]
-        (w/insert-child-after! (:tag @el) (ptr el) (ptr child-node) prev-sibling))
+        (if (some #(= % child-node) cs)
+          (w/reorder-child! (:tag @el) (ptr el) (ptr child-node) prev-sibling)
+          (w/insert-child-after! (:tag @el) (ptr el) (ptr child-node) prev-sibling)))
+      ;; Bookkeeping: remove child-node from wherever it currently sits
+      ;; (a no-op if it wasn't tracked yet — the fresh-insert case), then
+      ;; re-splice it immediately before reference-node. This single
+      ;; formula is correct for both cases: GTK repositioning one child
+      ;; never changes any OTHER child's tree position, so reference-
+      ;; node's neighbor (prev-sibling, computed above from the
+      ;; PRE-removal cs) stays a valid physical anchor regardless of
+      ;; where child-node itself used to be.
       (swap! el update :children
-             (fn [cs] (let [idx (.indexOf cs reference-node)]
-                        (into (conj (subvec cs 0 idx) child-node) (subvec cs idx)))))
+             (fn [cs]
+               (let [without (vec (remove #(= % child-node) cs))
+                     idx (.indexOf without reference-node)]
+                 (into (conj (subvec without 0 idx) child-node) (subvec without idx)))))
       nil)
 
     (append-child [_ el child-node]
