@@ -344,6 +344,28 @@
   [event]
   (@signals event))
 
+(defn suppressing?
+  "True if `widget` currently has its signal emission suppressed — a
+  programmatic setter's own synchronous echo (see the `suppressing` set
+  above, set/cleared by set-entry-text!/set-checkbutton-active!). New
+  relative to the glimmer original: glimmer only ever wires this guard
+  through connect-signals!; glitter.gtk connects its own signals directly
+  (it needs the raw connection id connect-signals! doesn't expose, to
+  support real per-event disconnect) but still needs to see this guard to
+  avoid dispatching spurious programmatic-setter-triggered events — found
+  live-verified during the final whole-branch review."
+  [widget]
+  (contains? @suppressing widget))
+
+(defn signal-value-fn
+  "The `(fn [widget]) -> value` registered for GTK signal name `signal`
+  (e.g. \"changed\" -> reads the entry's current text via
+  gtk_editable_get_text), or nil if this signal carries no extracted
+  value. See register-signal!'s optional value-fn arg and the
+  signal-value table above."
+  [signal]
+  (@signal-value signal))
+
 (defn connect-signals!
   "For every :on-* key in `props`, wrap its handler in a :collect-safe
   foreign-callable (GTK fires it from the blocking g_application_run loop) and

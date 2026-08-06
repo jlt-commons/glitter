@@ -9,9 +9,12 @@
   widget pointers — because GTK4 has no O(1) indexed-child-lookup API
   (gtk_widget_get_first_child/get_next_sibling is an O(n) walk). Each atom
   holds {:tag <hiccup tag keyword> :widget <GTK widget pointer> :children
-  [<child atom> ...] :handlers {<event keyword> <signal connection id>}},
-  mirroring glimmer.core's own instance-tree pattern. IMemory keys off the
-  el atom itself (already a stable Clojure identity), not the raw pointer."
+  [<child atom> ...] :handlers {<event keyword> {:id <signal connection id>
+  :cb <retained foreign-callable>}}} — :cb alongside :id (added during the
+  final whole-branch review) so disconnect can also release-callable! the
+  callable, not just disconnect the signal — mirroring glimmer.core's own
+  instance-tree pattern. IMemory keys off the el atom itself (already a
+  stable Clojure identity), not the raw pointer."
   (:require [glitter.alias :as alias]
             [glitter.app :as app]
             [glitter.core :as core]
@@ -75,30 +78,46 @@
       nil)
 
     (set-event-handler [_ el event handler _opt]
-      ;; Disconnect any existing connection for this event FIRST — found
-      ;; live-verified during review: glitter.core's update-event-listeners
-      ;; calls set-event-handler whenever the handler VALUE changes between
-      ;; renders, but only calls remove-event-handler when the
-      ;; :glitter.event/* OPTIONS change — these are different conditions.
-      ;; Without this guard, a handler whose data changes (but whose opts
-      ;; don't) leaves the old GTK signal connection orphaned (still live,
-      ;; still fires) while only the new id is tracked — an unbounded
-      ;; per-render handler leak.
-      (when-let [id (get-in @el [:handlers event])]
+      ;; Disconnect any existing connection for this event FIRST (handler
+      ;; DATA can change between renders without :glitter.event/* OPTIONS
+      ;; changing — glitter.core's update-event-listeners calls
+      ;; set-event-handler on the former but only remove-event-handler on
+      ;; the latter). Release its callable too — found live-verified
+      ;; during the final whole-branch review that disconnecting the
+      ;; signal alone (already fixed) still left the foreign-callable
+      ;; pinned in glitter.widget's retain set forever, an unbounded leak
+      ;; for any handler whose data changes across renders.
+      (when-let [{:keys [id cb]} (get-in @el [:handlers event])]
         (g/g-signal-handler-disconnect (ptr el) id)
+        (w/release-callable! cb)
         (swap! el update :handlers dissoc event))
       (when-let [signal (w/signal-name (keyword (str "on-" (name event))))]
-        (let [cb (jolt.ffi/foreign-callable
-                  (fn [src-widget _data] (handler {:glitter/node el :glitter/gtk-widget src-widget}))
+        (let [value-fn (w/signal-value-fn signal)
+              cb (jolt.ffi/foreign-callable
+                  (fn [src-widget _data]
+                    ;; Skip emissions triggered by our OWN programmatic
+                    ;; setters (set-entry-text!/set-checkbutton-active!)
+                    ;; — found live-verified during the final
+                    ;; whole-branch review that connecting directly
+                    ;; (bypassing glitter.widget/connect-signals!, which
+                    ;; we can't use since it doesn't expose the
+                    ;; connection id real disconnect needs) meant this
+                    ;; guard was never consulted, so a purely
+                    ;; programmatic value change fired a real dispatch
+                    ;; the user never triggered.
+                    (when-not (w/suppressing? src-widget)
+                      (handler (cond-> {:glitter/node el :glitter/gtk-widget src-widget}
+                                 value-fn (assoc :glitter/value (value-fn src-widget))))))
                   [:pointer :pointer] :void :collect-safe)
               id (g/g-signal-connect-data (ptr el) signal cb jolt.ffi/null jolt.ffi/null g/CONNECT-DEFAULT)]
           (w/retain-callable! cb)
-          (swap! el assoc-in [:handlers event] id)))
+          (swap! el assoc-in [:handlers event] {:id id :cb cb})))
       nil)
 
     (remove-event-handler [_ el event _opt]
-      (when-let [id (get-in @el [:handlers event])]
+      (when-let [{:keys [id cb]} (get-in @el [:handlers event])]
         (g/g-signal-handler-disconnect (ptr el) id)
+        (w/release-callable! cb)
         (swap! el update :handlers dissoc event))
       nil)
 
