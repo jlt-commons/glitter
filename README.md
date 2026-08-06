@@ -34,7 +34,15 @@ handlers instead of closures. No component-local state anywhere.
 
 Run `jolt counter` for the full interactive demo, `jolt smoke` for the
 automated smoke test, `jolt keyed` for the live keyed-reconciliation smoke,
-`jolt test` for the unit suite.
+`jolt replace-child` for the live replace-in-place smoke, `jolt test` for the
+unit suite.
+
+**In CI, invoke the alias form, not the task form** — `jolt -M:test`,
+`jolt -M:keyed`, `jolt -M:replace-child`. Verified against jolt v0.6.3: a
+deps.edn `:tasks` entry does not propagate its child process's exit status, so
+`jolt test` reports failures on stdout and still exits 0, while `jolt -M:test`
+correctly exits 1. The task shorthand is fine interactively; it cannot gate a
+build.
 
 ## Architecture
 

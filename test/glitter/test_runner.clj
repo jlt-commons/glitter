@@ -19,11 +19,22 @@
               (println "  caused by:" (.getName (class c)) ":" (ex-message c))))
         (prn e)))))
 
-(defn- exit [code]
-  (cond
-    (resolve 'jolt.host/exit) ((resolve 'jolt.host/exit) code)
-    (resolve 'System/exit)    ((resolve 'System/exit) code)
-    :else nil))
+(defn- exit
+  "Terminate the process with `code`.
+
+  Call System/exit DIRECTLY. `System/exit` is a static-method interop FORM,
+  not a var, so `(resolve 'System/exit)` is ALWAYS nil — under Jolt and on the
+  JVM alike. A cond guarded on that resolve therefore never fires and silently
+  falls through to nil, which is what the previous version of this fn did: the
+  suite printed its failures and still exited 0, so `jolt test` could not fail
+  CI at all. `jolt.host` ships no `exit` either (checked against ns-publics),
+  so that branch was dead for the same reason.
+
+  Verified during the final whole-branch review: `(System/exit 7)` yields
+  shell status 7, both before `glitter.app/run` and after it returns, so the
+  GTK main-loop hop does not interfere."
+  [code]
+  (System/exit code))
 
 (defn -main [& _]
   (let [namespaces '[glitter.hiccup-test glitter.assert-test glitter.asserts-test

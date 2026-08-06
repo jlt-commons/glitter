@@ -52,14 +52,11 @@
     (println :final-order @captured)
     (when (not= ["Item C" "Item A" "Item B"] @captured)
       (println :FAIL "expected [Item C Item A Item B], got" @captured)
-      ;; Robust exit, matching test_runner.clj's own fallback pattern —
-      ;; found live-verified during review that a bare
-      ;; ((resolve 'jolt.host/exit) 1) can resolve to nil in this file's
-      ;; standalone -main execution path (unlike test_runner.clj's
-      ;; context, where jolt.host is already loaded), throwing "class nil
-      ;; cannot be cast to class clojure.lang.IFn" instead of exiting 1 —
-      ;; masking the real :FAIL with a confusing secondary crash.
-      (cond
-        (resolve 'jolt.host/exit) ((resolve 'jolt.host/exit) 1)
-        (resolve 'System/exit)    ((resolve 'System/exit) 1)
-        :else nil))))
+      ;; Call System/exit directly. The previous resolve-guarded cond was
+      ;; right that `((resolve 'jolt.host/exit) 1)` throws — but its
+      ;; replacement never exited either: System/exit is a static-method
+      ;; interop FORM, not a var, so `(resolve 'System/exit)` is always nil
+      ;; and the cond fell through to `:else nil`. This example printed
+      ;; :FAIL and still exited 0, i.e. it could not fail CI. See
+      ;; test_runner.clj/exit for the full explanation.
+      (System/exit 1))))
