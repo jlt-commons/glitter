@@ -9,11 +9,15 @@
   g-object-ref-sink, and lets containers manage their children.
 
   Signal handlers are connected with g-signal-connect-data — the canonical C
-  symbol behind the g_signal_connect macro. Handlers are jolt fns wrapped by
-  glitter.gtk (reconciler-driven events) or glitter.widget/connect-signals!
-  (create!'s direct-props path) via jolt.ffi/foreign-callable (:collect-safe),
-  because GTK invokes them from inside the blocking g_application_run main
-  loop."
+  symbol behind the g_signal_connect macro. Handlers are jolt fns wrapped via
+  jolt.ffi/foreign-callable (:collect-safe), because GTK invokes them from
+  inside the blocking g_application_run main loop. Every :collect-safe
+  wrapper in the project goes through this same mechanism — not just
+  widget-level event handlers (glitter.gtk for reconciler-driven events,
+  glitter.widget/connect-signals! for create!'s direct-props path), but also
+  glitter.app's own app-lifecycle callbacks (the \"activate\" signal, the
+  auto-quit timeout, and the idle-source used to marshal work onto the main
+  thread)."
   (:require [jolt.ffi :as ffi]))
 
 ;; --- constants ---------------------------------------------------------------

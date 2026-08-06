@@ -360,8 +360,9 @@
    nil))
 
 (defn signal-name
-  "The GTK signal name registered for hiccup event key `event` (e.g. :click ->
-  \"clicked\"), or nil if unregistered. New relative to the glimmer original:
+  "The GTK signal name registered for hiccup event key `event` (e.g.
+  :on-click -> \"clicked\"), or nil if unregistered. New relative to the
+  glimmer original:
   glimmer's connect-signals! looks the signal name up internally and never
   exposes it, because it connects+wires in one call and never needs to
   disconnect later. glitter.gtk's IRender/set-event-handler +

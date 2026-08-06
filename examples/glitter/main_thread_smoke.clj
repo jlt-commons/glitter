@@ -55,8 +55,13 @@
        (gtk/mount! window view state)
        (let [main-thread (Thread/currentThread)]
          (future
-           ;; let the loop settle, then mutate from OFF the main thread
-           (Thread/sleep 100)
+           ;; Let the loop settle, then mutate from OFF the main thread.
+           ;; 300ms (was 100ms — widened during the final whole-branch
+           ;; review's follow-up pass as a bigger margin against a loaded
+           ;; CI box; there's no clean observable signal for "the main
+           ;; loop is actively pumping g_idle_add sources" to poll on
+           ;; instead) against the 1500ms auto-quit-ms budget below.
+           (Thread/sleep 300)
            (reset! worker-differed? (not= main-thread (Thread/currentThread)))
            (reset! render-thread nil)
            (reset! state {:txt "from-worker"})
@@ -65,7 +70,7 @@
                          (reset! captured (first-label-text window))
                          (reset! rendered-on-main? (= main-thread @render-thread)))))))
      :title "glitter main-thread smoke" :width 240 :height 160
-     :app-id "glitter.main-thread-smoke" :auto-quit-ms 800)
+     :app-id "glitter.main-thread-smoke" :auto-quit-ms 1500)
     (println :worker-was-a-different-thread @worker-differed?)
     (println :label-after-cross-thread-swap @captured)
     (println :render-ran-on-gtk-main-thread @rendered-on-main?)
