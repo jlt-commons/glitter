@@ -51,6 +51,22 @@ deps.edn `:tasks` entry does not propagate its child process's exit status, so
 correctly exits 1. The task shorthand is fine interactively; it cannot gate a
 build.
 
+### Or via `bb`
+
+If you have [Babashka](https://babashka.org/) installed, `bb.edn` wraps the
+same tasks with a grouped cheat-sheet:
+
+```
+bb info      # start here — grouped task list
+bb test      # jolt -M:test
+bb counter   # interactive demo
+bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure)
+```
+
+`bb.edn`'s tasks all shell out to the `-M:<alias>` form directly (never the
+deps.edn `jolt <task>` shorthand), so `bb test` and `bb smokes` exit non-zero
+on failure and are safe to use as a CI gate.
+
 ## Architecture
 
 - `glitter.core`, `glitter.protocols`, `glitter.hiccup*`, `glitter.vdom`,

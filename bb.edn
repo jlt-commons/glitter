@@ -1,0 +1,61 @@
+;; Babashka runner for glitter — a Replicant-style GTK4 renderer for Jolt.
+;;   bb info               grouped task cheat-sheet (start here)
+;;   bb test                run the unit suite (jolt -M:test)
+;;   bb counter              interactive counter demo (state atom + action dispatch)
+;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke
+;;                           individual live-GTK smokes (each exits non-zero on failure)
+;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
+;; NOTE: task bodies are EDN-parsed — no #"regex", @deref, or #(...) reader macros.
+;; NOTE: every task below shells out to `jolt -M:<alias>`, never the deps.edn
+;; `jolt <task>` shorthand — verified against jolt v0.6.3, the task form does not
+;; propagate its child process's exit status, so a failing smoke would print FAIL
+;; on stdout and still exit 0 (see README's CI note). `-M:<alias>` exits correctly.
+{:min-bb-version "1.3.0"
+ :tasks
+ {info {:doc "Grouped task cheat-sheet (start here; easier to scan than `bb tasks`)"
+        :task
+        (let [esc (str (char 27) "[")
+              col (fn [c s] (str esc c "m" s esc "0m"))
+              hdr (fn [s] (println (str "\n" (col "35" (str "── " s " ──")))))
+              row (fn [t d] (println (str "  " (col "36" (format "%-22s" (str "bb " t))) d)))]
+          (println (col "1;35" "\nglitter — Replicant-style GTK4 renderer for Jolt"))
+          (hdr "Verify")
+          (row "test" "run the unit suite (jolt -M:test)")
+          (hdr "Run")
+          (row "counter" "interactive demo: state atom + action dispatch")
+          (hdr "Smoke (live GTK, each exits non-zero on failure)")
+          (row "smoke" "mount a tree and run the loop without an exception escaping")
+          (row "keyed" "keyed reorder lands in the right GTK order")
+          (row "replace-child" "a replaced child stays at its position, not the end")
+          (row "aliased" "aliases expand through the real renderer, on mount and update")
+          (row "main-thread-smoke" "an off-main-thread swap! renders ON the GTK main thread")
+          (row "smokes" "run every smoke above in sequence; stops at the first failure")
+          (println (str "\n" (col "2" "first run: bb test, then bb counter  ·  CI gate: bb test && bb smokes"))))}
+
+  test {:doc "Run the unit suite"
+        :task (shell "jolt" "-M:test")}
+
+  counter {:doc "Interactive counter demo (state atom + action dispatch)"
+           :task (shell "jolt" "-M:counter")}
+
+  smoke {:doc "Live-GTK smoke: mount a tree, run the loop without an exception escaping"
+         :task (shell "jolt" "-M:smoke")}
+
+  keyed {:doc "Live-GTK smoke: keyed reorder lands in the right GTK order"
+         :task (shell "jolt" "-M:keyed")}
+
+  replace-child {:doc "Live-GTK smoke: a replaced child stays at its position, not the end"
+                 :task (shell "jolt" "-M:replace-child")}
+
+  aliased {:doc "Live-GTK smoke: aliases expand through the real renderer, on mount and update"
+           :task (shell "jolt" "-M:aliased")}
+
+  main-thread-smoke {:doc "Live-GTK smoke: an off-main-thread swap! renders ON the GTK main thread"
+                     :task (shell "jolt" "-M:main-thread-smoke")}
+
+  smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
+          :task (do (shell "jolt" "-M:smoke")
+                    (shell "jolt" "-M:keyed")
+                    (shell "jolt" "-M:replace-child")
+                    (shell "jolt" "-M:aliased")
+                    (shell "jolt" "-M:main-thread-smoke"))}}}
