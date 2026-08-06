@@ -52,4 +52,14 @@
     (println :final-order @captured)
     (when (not= ["Item C" "Item A" "Item B"] @captured)
       (println :FAIL "expected [Item C Item A Item B], got" @captured)
-      ((resolve 'jolt.host/exit) 1))))
+      ;; Robust exit, matching test_runner.clj's own fallback pattern —
+      ;; found live-verified during review that a bare
+      ;; ((resolve 'jolt.host/exit) 1) can resolve to nil in this file's
+      ;; standalone -main execution path (unlike test_runner.clj's
+      ;; context, where jolt.host is already loaded), throwing "class nil
+      ;; cannot be cast to class clojure.lang.IFn" instead of exiting 1 —
+      ;; masking the real :FAIL with a confusing secondary crash.
+      (cond
+        (resolve 'jolt.host/exit) ((resolve 'jolt.host/exit) 1)
+        (resolve 'System/exit)    ((resolve 'System/exit) 1)
+        :else nil))))
