@@ -50,17 +50,29 @@ listed here for provenance, not legal requirement:
 
 - `glitter.ffi` — forked from `glimmer.ffi`, plus the original four new
   bindings (`g-signal-handler-disconnect`, `gtk-box-insert-child-after`,
-  `gtk-label-get-text`, `gtk-widget-get-prev-sibling`) and seven more for
-  `:scale` (`gtk-scale-new-with-range`, `gtk-scale-set-digits`,
+  `gtk-label-get-text`, `gtk-widget-get-prev-sibling`), seven for `:scale`
+  (`gtk-scale-new-with-range`, `gtk-scale-set-digits`,
   `gtk-scale-set-draw-value`, `gtk-range-set-value`, `gtk-range-get-value`,
-  `gtk-range-set-range`, `gtk-range-set-increments`).
+  `gtk-range-set-range`, `gtk-range-set-increments`), three for `:class`
+  (`gtk-widget-add-css-class`, `gtk-widget-remove-css-class`,
+  `gtk-widget-has-css-class`), and thirteen for the display-only widgets
+  `:spinner`/`:progress-bar`/`:image` (`gtk-spinner-new`,
+  `gtk-spinner-set-spinning`, `gtk-spinner-get-spinning`,
+  `gtk-progress-bar-new`, `gtk-progress-bar-set-fraction`,
+  `gtk-progress-bar-set-text`, `gtk-progress-bar-set-show-text`,
+  `gtk-progress-bar-get-fraction`, `gtk-image-new`,
+  `gtk-image-new-from-icon-name`, `gtk-image-new-from-file`,
+  `gtk-image-set-from-icon-name`, `gtk-image-set-from-file`,
+  `gtk-image-set-pixel-size`, `gtk-image-get-icon-name`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
   value-bearing custom-signal path — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal))
-  as new public accessors, and one behavioral deviation: `replace-child!`'s
-  `:box` branch captures the old child's previous sibling via
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal)),
+  plus the display-only `:spinner`/`:progress-bar`/`:image` widget specs
+  (no signal wiring — driven entirely by re-applied props) as new public
+  accessors, and one behavioral deviation: `replace-child!`'s `:box`
+  branch captures the old child's previous sibling via
   `gtk_widget_get_prev_sibling` and re-inserts via
   `gtk_box_insert_child_after`, where glimmer used `gtk_box_remove` +
   `gtk_box_append` — `append` always lands at the *end* of the box, which

@@ -119,6 +119,37 @@
 
 (ffi/defcfn gtk-separator-new           "gtk_separator_new"           [:int] :pointer)
 
+;; --- spinner (indeterminate "loading" indicator) ------------------------------
+;; No signals of interest — a display-only widget, driven entirely by :spinning.
+;; get-spinning exists only for smoke-test verification, same reasoning as
+;; gtk-widget-has-css-class.
+(ffi/defcfn gtk-spinner-new          "gtk_spinner_new"          [] :pointer)
+(ffi/defcfn gtk-spinner-set-spinning "gtk_spinner_set_spinning" [:pointer :int] :void)
+(ffi/defcfn gtk-spinner-get-spinning "gtk_spinner_get_spinning" [:pointer] :int)
+
+;; --- progress bar --------------------------------------------------------------
+;; Display-only, same as spinner — no signals; driven by :fraction/:text.
+;; get-fraction exists only for smoke-test verification.
+(ffi/defcfn gtk-progress-bar-new           "gtk_progress_bar_new"           [] :pointer)
+(ffi/defcfn gtk-progress-bar-set-fraction  "gtk_progress_bar_set_fraction"  [:pointer :double] :void)
+(ffi/defcfn gtk-progress-bar-set-text      "gtk_progress_bar_set_text"      [:pointer :string] :void)
+(ffi/defcfn gtk-progress-bar-set-show-text "gtk_progress_bar_set_show_text" [:pointer :int] :void)
+(ffi/defcfn gtk-progress-bar-get-fraction  "gtk_progress_bar_get_fraction"  [:pointer] :double)
+
+;; --- image (icon-name or file) --------------------------------------------------
+;; Display-only, same as spinner/progress-bar — no signals. GtkImage's storage
+;; type (icon vs. file vs. paintable) switches automatically per whichever
+;; setter was called last, so re-applying a different key on re-render just
+;; works with no explicit "clear" step needed. get-icon-name exists only for
+;; smoke-test verification.
+(ffi/defcfn gtk-image-new                "gtk_image_new"                [] :pointer)
+(ffi/defcfn gtk-image-new-from-icon-name "gtk_image_new_from_icon_name" [:string] :pointer)
+(ffi/defcfn gtk-image-new-from-file      "gtk_image_new_from_file"      [:string] :pointer)
+(ffi/defcfn gtk-image-set-from-icon-name "gtk_image_set_from_icon_name" [:pointer :string] :void)
+(ffi/defcfn gtk-image-set-from-file      "gtk_image_set_from_file"      [:pointer :string] :void)
+(ffi/defcfn gtk-image-set-pixel-size     "gtk_image_set_pixel_size"     [:pointer :int] :void)
+(ffi/defcfn gtk-image-get-icon-name      "gtk_image_get_icon_name"      [:pointer] :string)
+
 ;; --- generic widget state & layout -------------------------------------------
 ;; The margin/halign/hexpand setters are GtkWidget props — they apply to every
 ;; widget, not just a specific kind, so glitter.widget applies them to all tags.

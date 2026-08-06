@@ -50,6 +50,7 @@ failure:
 | `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread |
 | `jolt scale-smoke` | `:scale`'s `value-changed` signal delivers the right double, no spurious dispatch on programmatic sync |
 | `jolt class-smoke` | `:class` reaches real GTK CSS classes — add, coexist, and remove on a re-render diff |
+| `jolt leaf-widgets-smoke` | `:spinner`/`:progress-bar`/`:image` construction + re-render land on real GTK state |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -133,8 +134,11 @@ rationale on both.
 ## Status
 
 Early. Widget set: window/box/button/label/entry/checkbutton/separator/
-frame/scrolled (forked from glimmer) plus `:scale` (a slider — first-party,
-added directly to glitter; see `docs/guide/gtk-widget-layer.md`). Hiccup
+frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
+`:progress-bar`/`:image` (first-party, added directly to glitter; see
+`docs/guide/gtk-widget-layer.md`) — the latter three are display-only
+props with no signal to wire (`:spinning`/`:fraction`+`:text`/
+`:icon-name`+`:file`+`:pixel-size` respectively). Hiccup
 `:class` reaches real GTK CSS classes (`gtk_widget_add/remove_css_class`
 — GTK4's built-in classes like `"flat"`/`"suggested-action"`/
 `"destructive-action"`/`"pill"` work with zero app-provided CSS); `:style`

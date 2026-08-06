@@ -260,6 +260,82 @@ that programmatic push does **not** trigger a second, spurious dispatch —
 confirming the suppressing guard works for this widget exactly as it does
 for entry and checkbutton.
 
+## `:spinner`/`:progress-bar`/`:image` — display-only widgets need no signal
+
+Three widgets with a genuinely simpler shape than everything above:
+`:spinner` (an indeterminate "loading" indicator, one boolean prop
+`:spinning`), `:progress-bar` (`:fraction`/`:text`/`:show-text`), and
+`:image` (`:icon-name`/`:file`/`:pixel-size`). None of them have a signal
+worth wiring — they exist purely to *display* state the application
+already tracks elsewhere, so `:apply` re-applying whatever props are
+present on every render is the entire implementation:
+
+```clojure
+(defn- spinner-spec []
+  {:ctor  (fn [_] (g/gtk-spinner-new))
+   :apply (fn [w p] (when (contains? p :spinning) (g/gtk-spinner-set-spinning w (->bool (:spinning p)))))
+   :container :none})
+```
+
+`:image`'s `:ctor` picks whichever of `:icon-name`/`:file` is present at
+construction time (falling back to the empty constructor), and `:apply`
+re-applies either key on a later render — no explicit "clear the old
+content" step is needed, because `GtkImage`'s internal storage type
+(icon name vs. file vs. paintable) switches automatically to whatever
+setter was called most recently.
+
+Verified live (`examples/glitter/leaf_widgets_smoke.clj`): all three
+widgets' construction-time props land correctly, and re-rendering with
+different values (a different fraction, a different icon name, spinning
+flipped off) is reflected in real GTK state — read back via
+`gtk_spinner_get_spinning`/`gtk_progress_bar_get_fraction`/
+`gtk_image_get_icon_name`, not glitter's own bookkeeping.
+
+## Surveyed and deliberately not added: `GtkSwitch`
+
+`GtkSwitch` looked like a fourth simple leaf widget from its construction
+API alone (`gtk_switch_new`, `gtk_switch_set_active`/`get_active` — just
+as trivial as checkbutton's). Its *interaction* signal is where it stops
+fitting the pattern. Checked directly against `gtk/gtkswitch.c`'s
+`g_signal_new` calls: `GtkSwitch` has exactly two signals.
+
+- `"activate"` — the simple `void(widget, user_data)` shape every other
+  glitter signal uses, but GTK's own doc comment on it is explicit:
+  *"Emitted to animate the switch. Applications should never connect to
+  this signal, but use the [property@Gtk.Switch:active] property."* It
+  fires on keyboard activation (Space/Enter) only, not on a mouse click,
+  and using it to detect interaction would silently miss the common case
+  while looking like it worked.
+- `"state-set"` — the actual interaction signal, but its C signature is
+  `gboolean (*state_set) (GtkSwitch *widget, gboolean state, gpointer
+  user_data)`: **three** arguments (not two) and a **`gboolean` return**
+  (not `void`) that GTK uses to decide whether to run its own default
+  handler. `glitter.gtk`'s `set-event-handler` hardcodes every signal's
+  foreign-callable to `[:pointer :pointer] :void` — this doesn't fit, and
+  wiring it correctly would mean either generalizing that callable shape
+  (real new architecture, not a small addition) or connecting a
+  differently-shaped callable as a one-off special case for this single
+  widget.
+
+The `:connect` key in a widget spec (see `register-widget!`'s docstring:
+*"for widgets whose signals don't fit the uniform void(widget,data)
+shape, e.g. a GtkGLArea's realize/render/resize"*) looks like an escape
+hatch, but doesn't actually solve this: `:connect` runs **once at mount**
+with whatever `props` were current then, the same one-time-connection
+model `connect-signals!` already uses for `create!`'s direct-props path.
+`:switch`'s handler needs the same reconciler-driven re-wiring
+`set-event-handler`/`remove-event-handler` give every other interactive
+widget (so a handler *closure* never goes stale when the action data
+changes between renders, without the widget's identity changing) — and
+`:connect` doesn't provide that.
+
+Shipping `:switch` state-settable-but-non-interactive (readable via
+`:active`, but never dispatching back on user toggle) was considered and
+rejected as a quiet half-measure: it would look identical to `:checkbutton`
+in hiccup but silently not round-trip, a worse trap than not shipping it
+at all. Left as an explicitly open decision (see `AGENTS.md`'s Scope
+section) rather than resolved either way.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

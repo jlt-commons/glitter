@@ -277,19 +277,53 @@
             (when (contains? p :draw-value)  (g/gtk-scale-set-draw-value w (->bool (:draw-value p)))))
    :container :none})
 
+(defn- spinner-spec []
+  ;; Display-only — driven entirely by :spinning, no signal to wire.
+  {:ctor  (fn [_] (g/gtk-spinner-new))
+   :apply (fn [w p] (when (contains? p :spinning) (g/gtk-spinner-set-spinning w (->bool (:spinning p)))))
+   :container :none})
+
+(defn- progress-bar-spec []
+  ;; Display-only — driven by :fraction/:text/:show-text, no signal to wire.
+  {:ctor  (fn [_] (g/gtk-progress-bar-new))
+   :apply (fn [w p]
+            (when (contains? p :fraction)  (g/gtk-progress-bar-set-fraction w (double (:fraction p))))
+            (when (contains? p :text)      (g/gtk-progress-bar-set-text w (:text p)))
+            (when (contains? p :show-text) (g/gtk-progress-bar-set-show-text w (->bool (:show-text p)))))
+   :container :none})
+
+(defn- image-spec []
+  ;; Display-only — driven by :icon-name/:file/:pixel-size, no signal to wire.
+  ;; GtkImage's storage type switches automatically per whichever setter ran
+  ;; last, so :ctor picking whichever of :icon-name/:file is present (falling
+  ;; back to the empty constructor) and :apply re-applying either key on a
+  ;; later render both just work with no explicit "clear the old one" step.
+  {:ctor  (fn [p] (cond
+                    (:icon-name p) (g/gtk-image-new-from-icon-name (:icon-name p))
+                    (:file p)      (g/gtk-image-new-from-file (:file p))
+                    :else          (g/gtk-image-new)))
+   :apply (fn [w p]
+            (when (contains? p :icon-name)  (g/gtk-image-set-from-icon-name w (:icon-name p)))
+            (when (contains? p :file)       (g/gtk-image-set-from-file w (:file p)))
+            (when (contains? p :pixel-size) (g/gtk-image-set-pixel-size w (:pixel-size p))))
+   :container :none})
+
 ;; hiccup tag -> widget spec. An atom so extensions register new widget types
 ;; via register-widget! without editing this ns.
 (def specs
-  (atom {:window      (window-spec)
-         :box         (box-spec)
-         :button      (button-spec)
-         :label       (label-spec)
-         :entry       (entry-spec)
-         :checkbutton (checkbutton-spec)
-         :separator   (separator-spec)
-         :frame       (frame-spec)
-         :scrolled    (scrolled-spec)
-         :scale       (scale-spec)}))
+  (atom {:window       (window-spec)
+         :box          (box-spec)
+         :button       (button-spec)
+         :label        (label-spec)
+         :entry        (entry-spec)
+         :checkbutton  (checkbutton-spec)
+         :separator    (separator-spec)
+         :frame        (frame-spec)
+         :scrolled     (scrolled-spec)
+         :scale        (scale-spec)
+         :spinner      (spinner-spec)
+         :progress-bar (progress-bar-spec)
+         :image        (image-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is

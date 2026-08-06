@@ -4,7 +4,7 @@
 ;;   bb counter              interactive counter demo (state atom + action dispatch)
 ;;   bb todo                 interactive task-board demo (derived counts, entry, checkbuttons)
 ;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke | scale-smoke | class-smoke
-;;                           individual live-GTK smokes (each exits non-zero on failure)
+;;   | leaf-widgets-smoke    individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
 ;;   bb lsp:format | lsp:format-check       clojure-lsp format (mutate | dry-run)
@@ -44,6 +44,7 @@
           (row "main-thread-smoke" "an off-main-thread swap! renders ON the GTK main thread")
           (row "scale-smoke" "GtkScale's value-changed signal delivers the right double, no spurious dispatch")
           (row "class-smoke" ":class reaches real GTK CSS classes — add, coexist, and remove on diff")
+          (row "leaf-widgets-smoke" ":spinner/:progress-bar/:image construction + re-render, real GTK state")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -95,6 +96,9 @@
   class-smoke {:doc "Live-GTK smoke: :class reaches real GTK CSS classes — add, coexist, and remove on diff"
                :task (shell "jolt" "-M:class-smoke")}
 
+  leaf-widgets-smoke {:doc "Live-GTK smoke: :spinner/:progress-bar/:image construction + re-render, real GTK state"
+                      :task (shell "jolt" "-M:leaf-widgets-smoke")}
+
   smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
           :task (do (shell "jolt" "-M:smoke")
                     (shell "jolt" "-M:keyed")
@@ -102,7 +106,8 @@
                     (shell "jolt" "-M:aliased")
                     (shell "jolt" "-M:main-thread-smoke")
                     (shell "jolt" "-M:scale-smoke")
-                    (shell "jolt" "-M:class-smoke"))}
+                    (shell "jolt" "-M:class-smoke")
+                    (shell "jolt" "-M:leaf-widgets-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings

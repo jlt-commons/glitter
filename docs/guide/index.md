@@ -56,14 +56,16 @@ live GTK widget tree in sync.
   registry, the signal connect/disconnect lifecycle, the specific GTK4 API
   traps this project hit and fixed (`insert-before`'s reorder-vs-insert
   branch, `replace-child!`'s prev-sibling capture), `:scale`'s
-  value-bearing custom signal, and `:class`'s real GTK CSS-class wiring.
+  value-bearing custom signal, `:class`'s real GTK CSS-class wiring, the
+  display-only `:spinner`/`:progress-bar`/`:image` widgets, and why
+  `GtkSwitch` was surveyed and deliberately not added yet.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the seven automated live-GTK
+  headless fake-`IRender` test renderer, the eight automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Seven examples under `examples/glitter/` each open a real GTK window,
+Eight examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -68,6 +68,7 @@ on mismatch:
 | `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread | mutates from inside a `future`, records which thread `view` ran on, asserts it's the GTK main thread — see [`app-loop-and-threading.md`](app-loop-and-threading.md) |
 | `jolt scale-smoke` | `:scale`'s `value-changed` signal delivers the right double, and a programmatic state sync doesn't cause a spurious second dispatch | a real FFI `gtk_range_set_value` call simulates a live drag (bypassing `set-scale-value!`), asserting the dispatched double and the dispatch count both before and after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal) |
 | `jolt class-smoke` | `:class` reaches real GTK CSS classes — add, coexist, and remove on a re-render diff | reads class membership back via `gtk_widget_has_css_class`, asserting a built-in class and a custom class both apply on mount, then that dropping one class while adding another in the same re-render calls both `add-class` and `remove-class` correctly — see [`gtk-widget-layer.md`](gtk-widget-layer.md#known-gap-removing-a-key-is-a-no-op) |
+| `jolt leaf-widgets-smoke` | `:spinner`/`:progress-bar`/`:image` construction + re-render land on real GTK state | reads each widget's actual state back (`gtk_spinner_get_spinning`/`gtk_progress_bar_get_fraction`/`gtk_image_get_icon_name`) on mount and after a re-render with different values — see [`gtk-widget-layer.md`](gtk-widget-layer.md#spinnerprogress-barimage--display-only-widgets-need-no-signal) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo
