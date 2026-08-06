@@ -41,7 +41,7 @@ Ported files (path in glitter — original path in replicant):
 - `src/glitter/assert.clj` — `src/replicant/assert.cljc`
 - `src/glitter/vdom.clj` — `src/replicant/vdom.cljc`
 - `src/glitter/asserts.clj` — `src/replicant/asserts.cljc`
-- `src/glitter/core.clj` — `src/replicant/core.cljc` (one deliberate deviation: build-event-map's :clj branch reads :glitter/node from e instead of hardcoding nil — see file header)
+- `src/glitter/core.clj` — `src/replicant/core.cljc` (three deliberate deviations: build-event-map's :clj branch reads :glitter/node from e instead of hardcoding nil; `set-dispatch!` is new code, not a port — replicant.dom's fn, replicant.core has no equivalent (see its docstring); update-attr/set-attributes route on `some?` instead of truthiness so an explicit `false` prop reaches the renderer instead of being treated as absent (GTK booleans, unlike DOM attributes, have no absent state) — see file header)
 - `src/glitter/alias.clj` — `src/replicant/alias.cljc`
 
 <!-- appended to by each porting task -->
@@ -53,7 +53,7 @@ The following files under `src/glitter/` are forked from
 glitter — no license file, no attribution obligation, listed here for
 provenance only):
 
-- `src/glitter/ffi.clj` — `src/glimmer/ffi.clj` (+ g-signal-handler-disconnect, gtk-box-insert-child-after, gtk-label-get-text)
+- `src/glitter/ffi.clj` — `src/glimmer/ffi.clj` (+ g-signal-handler-disconnect, gtk-box-insert-child-after, gtk-label-get-text, gtk-widget-get-prev-sibling)
 - `src/glitter/widget.clj` — `src/glimmer/widget.clj` (+ insert-child-after!, signal-name)
 - `src/glitter/genum.clj` — `src/glimmer/genum.clj`
 - `src/glitter/app.clj` — adapted from `src/glimmer/core.clj`'s non-reactive app-loop functions (post-to-gui, on-gui, run*, run); mount/unmount!/reload!/live-root/make-rerender-watcher are NOT ported (glimmer-reconciler-specific)
