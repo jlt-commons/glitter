@@ -336,6 +336,53 @@ in hiccup but silently not round-trip, a worse trap than not shipping it
 at all. Left as an explicitly open decision (see `AGENTS.md`'s Scope
 section) rather than resolved either way.
 
+## `:toggle-button` — reusing `"toggled"` for a second GTK4 class
+
+`GtkToggleButton` is the widget `:switch` isn't: checked its actual
+signals in `gtk/gtktogglebutton.c` (the same way `:switch`'s were
+checked) before assuming anything, and found exactly one,
+`void (*toggled) (GtkToggleButton*)` — the identical
+`void(widget, user_data)` shape already registered as `:on-toggled` for
+`:checkbutton`. No new entry in `signals`/`signal-value` was needed at
+all; `glitter.gtk`'s existing `set-event-handler` handles `:toggle-button`
+exactly the way it already handles `:checkbutton`, because the lookup is
+by hiccup event key + registered GTK signal name, not by widget type.
+
+`GtkToggleButton` and `GtkCheckButton` are unrelated classes in GTK4 (they
+shared a type hierarchy pre-GTK4; that relationship was removed), so
+`toggle-button-spec` needs its own `gtk_toggle_button_set_active`/
+`get_active` FFI pair and its own `set-toggle-button-active!` — but the
+helper is otherwise a byte-for-byte structural copy of
+`set-checkbutton-active!`, same set-compare-suppress shape:
+
+```clojure
+(defn- set-toggle-button-active! [widget active?]
+  (let [target (->bool active?)]
+    (when (not= target (g/gtk-toggle-button-get-active widget))
+      (swap! suppressing conj widget)
+      (g/gtk-toggle-button-set-active widget target)
+      (swap! suppressing disj widget))))
+```
+
+Verified live end-to-end (`examples/glitter/toggle_level_smoke.clj`, same
+three-part rigor as `:scale`'s smoke): a real click (direct FFI
+`gtk_toggle_button_set_active`, bypassing `set-toggle-button-active!` so
+the actual `"toggled"` signal fires) reaches `*dispatch*` and updates
+state; a subsequent programmatic `reset!` pushes the widget back in sync;
+and that programmatic push does **not** trigger a second, spurious
+dispatch. This is what actually proves the *reuse* works — not just that
+`:checkbutton`'s original wiring works, which was already known.
+
+`:level-bar` (a gauge/indicator — `:value`/`:min-value`/`:max-value`/
+`:inverted`) shipped alongside it in the same pass, same display-only
+shape as `:spinner`/`:progress-bar`/`:image`: no signal, `:apply`
+re-applies whatever props are present on every render, min/max set before
+value so a caller-supplied range is live before the value meant to land
+inside it (same ordering concern `:scale`'s `:apply` already has for
+re-ranging before setting `:value`). `:mode` (continuous vs. discrete
+segments) is out of scope for v1, matching `:progress-bar`'s minimal
+display-widget scope.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

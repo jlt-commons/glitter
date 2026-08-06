@@ -117,6 +117,16 @@
 (ffi/defcfn gtk-checkbutton-set-active        "gtk_check_button_set_active"        [:pointer :int] :void)
 (ffi/defcfn gtk-checkbutton-get-active        "gtk_check_button_get_active"        [:pointer] :int)
 
+;; GtkToggleButton — a *separate* GTK4 class from GtkCheckButton (they were
+;; related pre-GTK4; not anymore), but its "toggled" signal has the exact
+;; void(widget, user_data) shape already registered as :on-toggled, so no new
+;; signal wiring is needed — only its own set/get-active pair (can't reuse
+;; checkbutton's; different FFI functions despite the identical shape).
+(ffi/defcfn gtk-toggle-button-new             "gtk_toggle_button_new"             [] :pointer)
+(ffi/defcfn gtk-toggle-button-new-with-label  "gtk_toggle_button_new_with_label"  [:string] :pointer)
+(ffi/defcfn gtk-toggle-button-set-active      "gtk_toggle_button_set_active"      [:pointer :int] :void)
+(ffi/defcfn gtk-toggle-button-get-active      "gtk_toggle_button_get_active"      [:pointer] :int)
+
 (ffi/defcfn gtk-separator-new           "gtk_separator_new"           [:int] :pointer)
 
 ;; --- spinner (indeterminate "loading" indicator) ------------------------------
@@ -149,6 +159,18 @@
 (ffi/defcfn gtk-image-set-from-file      "gtk_image_set_from_file"      [:pointer :string] :void)
 (ffi/defcfn gtk-image-set-pixel-size     "gtk_image_set_pixel_size"     [:pointer :int] :void)
 (ffi/defcfn gtk-image-get-icon-name      "gtk_image_get_icon_name"      [:pointer] :string)
+
+;; --- level bar (a gauge/indicator, e.g. battery or volume level) ---------------
+;; Display-only, same as spinner/progress-bar/image — no signals; driven by
+;; :value/:min-value/:max-value/:inverted. :mode (continuous vs. discrete
+;; segments) is out of scope for v1, same minimal-viable-display-widget
+;; scope as progress-bar. get-value exists only for smoke-test verification.
+(ffi/defcfn gtk-level-bar-new           "gtk_level_bar_new"           [] :pointer)
+(ffi/defcfn gtk-level-bar-set-value     "gtk_level_bar_set_value"     [:pointer :double] :void)
+(ffi/defcfn gtk-level-bar-set-min-value "gtk_level_bar_set_min_value" [:pointer :double] :void)
+(ffi/defcfn gtk-level-bar-set-max-value "gtk_level_bar_set_max_value" [:pointer :double] :void)
+(ffi/defcfn gtk-level-bar-set-inverted  "gtk_level_bar_set_inverted"  [:pointer :int] :void)
+(ffi/defcfn gtk-level-bar-get-value     "gtk_level_bar_get_value"     [:pointer] :double)
 
 ;; --- generic widget state & layout -------------------------------------------
 ;; The margin/halign/hexpand setters are GtkWidget props — they apply to every

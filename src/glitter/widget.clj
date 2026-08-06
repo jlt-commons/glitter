@@ -166,7 +166,7 @@
 ;; they read; the :apply closures below call them, so declare them here. A
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
-(declare set-entry-text! set-checkbutton-active! set-scale-value!)
+(declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -225,6 +225,21 @@
                     (g/gtk-checkbutton-new)))
    :apply (fn [w p]
             (when (contains? p :active) (set-checkbutton-active! w (:active p))))
+   :container :none})
+
+(defn- toggle-button-spec []
+  ;; A pressable, stays-down button — same :active concept as checkbutton,
+  ;; styled as a button. Its "toggled" signal already has an entry in
+  ;; `signals` (:on-toggled), so :on {:toggled ...} in hiccup Just Works with
+  ;; no new signal wiring — only the ctor/set/get-active calls are new.
+  {:ctor  (fn [p] (if (:label p)
+                    (g/gtk-toggle-button-new-with-label (:label p))
+                    (g/gtk-toggle-button-new)))
+   :apply (fn [w p]
+            (when (contains? p :active)    (set-toggle-button-active! w (:active p)))
+            (when (contains? p :label)     (g/gtk-button-set-label w (:label p)))
+            (when (:tooltip p)             (g/gtk-widget-set-tooltip-text w (:tooltip p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
 
 (defn- separator-spec []
@@ -308,22 +323,39 @@
             (when (contains? p :pixel-size) (g/gtk-image-set-pixel-size w (:pixel-size p))))
    :container :none})
 
+(defn- level-bar-spec []
+  ;; Display-only — driven by :value/:min-value/:max-value/:inverted, no
+  ;; signal to wire. Min/max applied BEFORE value (same ordering concern as
+  ;; scale-spec re-ranging before setting :value) so a caller-supplied range
+  ;; is live before the value that's meant to land inside it. :mode
+  ;; (continuous vs. discrete segments) is out of scope for v1, matching
+  ;; progress-bar's minimal-viable-display-widget scope.
+  {:ctor  (fn [_] (g/gtk-level-bar-new))
+   :apply (fn [w p]
+            (when (contains? p :min-value) (g/gtk-level-bar-set-min-value w (double (:min-value p))))
+            (when (contains? p :max-value) (g/gtk-level-bar-set-max-value w (double (:max-value p))))
+            (when (contains? p :value)     (g/gtk-level-bar-set-value w (double (:value p))))
+            (when (contains? p :inverted)  (g/gtk-level-bar-set-inverted w (->bool (:inverted p)))))
+   :container :none})
+
 ;; hiccup tag -> widget spec. An atom so extensions register new widget types
 ;; via register-widget! without editing this ns.
 (def specs
-  (atom {:window       (window-spec)
-         :box          (box-spec)
-         :button       (button-spec)
-         :label        (label-spec)
-         :entry        (entry-spec)
-         :checkbutton  (checkbutton-spec)
-         :separator    (separator-spec)
-         :frame        (frame-spec)
-         :scrolled     (scrolled-spec)
-         :scale        (scale-spec)
-         :spinner      (spinner-spec)
-         :progress-bar (progress-bar-spec)
-         :image        (image-spec)}))
+  (atom {:window        (window-spec)
+         :box           (box-spec)
+         :button        (button-spec)
+         :label         (label-spec)
+         :entry         (entry-spec)
+         :checkbutton   (checkbutton-spec)
+         :toggle-button (toggle-button-spec)
+         :separator     (separator-spec)
+         :frame         (frame-spec)
+         :scrolled      (scrolled-spec)
+         :scale         (scale-spec)
+         :spinner       (spinner-spec)
+         :progress-bar  (progress-bar-spec)
+         :image         (image-spec)
+         :level-bar     (level-bar-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -408,6 +440,21 @@
     (when (not= target (g/gtk-checkbutton-get-active widget))
       (swap! suppressing conj widget)
       (g/gtk-checkbutton-set-active widget target)
+      (swap! suppressing disj widget))))
+
+(defn- set-toggle-button-active!
+  "Set a toggle button's active state, but only when it differs from the
+  widget's current state, and while suppressing the :on-toggled handler for
+  the synchronous 'toggled' emission gtk_toggle_button_set_active causes.
+  Same set-compare-suppress shape as set-checkbutton-active! — GtkToggleButton
+  is a separate GTK4 class (not related to GtkCheckButton pre-GTK4 relation
+  removed), so it needs its own pair of FFI calls, but the loop-prevention
+  concern is identical."
+  [widget active?]
+  (let [target (->bool active?)]
+    (when (not= target (g/gtk-toggle-button-get-active widget))
+      (swap! suppressing conj widget)
+      (g/gtk-toggle-button-set-active widget target)
       (swap! suppressing disj widget))))
 
 (defn- set-scale-value!
