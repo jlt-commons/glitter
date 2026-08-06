@@ -40,7 +40,13 @@
        (gtk/mount! window view state)
        ;; after initial mount, reorder, then read back the live GTK tree
        (reset! state {:order ["c" "a" "b"]})
-       (reset! captured (gtk-child-labels window)))
+       ;; :window is a single-child container (gtk_window_set_child) — the
+       ;; mounted [:box ...] hiccup is window's ONE child, not window
+       ;; itself. Descend one level (window -> box) before walking for
+       ;; label children, or gtk-child-labels ends up treating the box
+       ;; widget as if it were a label and fails GTK's internal
+       ;; GTK_IS_LABEL() assertion.
+       (reset! captured (gtk-child-labels (g/gtk-widget-get-first-child window))))
      :title "glitter keyed" :width 240 :height 160 :app-id "glitter.keyed"
      :auto-quit-ms 500)
     (println :final-order @captured)
