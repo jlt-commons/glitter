@@ -99,6 +99,50 @@ DOM node. There is no Jolt/Chez equivalent of a weak-keyed map available
 to reach for yet, so this gap doesn't currently have a mechanical fix —
 it's a real platform-capability gap, not a missed line of code.
 
+## `:center-box` cannot safely swap a slot's hiccup tag while all 3 slots are full
+
+`GtkCenterBox` has exactly three fixed named slots (`start`/`center`/
+`end`) — no transient capacity for a 4th simultaneous occupant the way
+`:box`'s ordered list has.
+
+**Why this matters:** `glitter.core`'s reconciler handles a same-position,
+non-keyed hiccup TAG mismatch (e.g. a slot's child going from `:label` to
+`:button`) as two separate steps — insert the new node, then remove the
+old one — relying on the container having room to briefly hold both.
+`GtkCenterBox` doesn't; `gtk_center_box_set_*_widget` unparents (and,
+since nothing else references it, GTK finalizes) whatever was previously
+in that slot the instant the new one is set. `glitter.gtk`'s own
+`:children` bookkeeping, however, is generic across every container kind
+and briefly assumes `:box`-like extra capacity — that mismatch corrupts
+an UNRELATED third slot, not the one being swapped. Full trace:
+[`gtk-widget-layer.md`](gtk-widget-layer.md#center-box--a-genuinely-new-container-strategy-and-a-real-v1-gap).
+
+**What to do instead:** change a slot's PROPS, not its TAG (a props-only
+update never goes through insert/remove at all). If the slot genuinely
+needs to switch widget types dynamically, nest a stable wrapper tag one
+level down (e.g. always render `[:box [...]]` in that slot) so the type
+change happens where `:box`'s own genuine transient capacity already
+handles it correctly.
+
+**Why left as-is:** a real fix would need `glitter.gtk`'s generic
+`:children` bookkeeping to become container-kind-aware (know that
+`:center-box` has zero spare capacity and defer/reorder its own updates
+accordingly) — a change to shared reconciler-adjacent machinery, not a
+one-widget patch, and this round's tag-swap scenario is a narrow enough
+usage pattern (most center-box usage keeps a stable widget type per slot
+across re-renders) that it wasn't judged worth that scope increase yet.
+
+## `:list-box`'s `reorder-child!` is implemented but not live-verified
+
+`list-box-reorder-child!` (moving an already-parented row to a new
+position) is real, reasoned-through code — not a documented no-op like
+`:center-box`'s equivalent — but no smoke in this project currently
+exercises a genuine reorder (only a same-position tag-swap, which goes
+through `insert-child-after!`, and a pure append/remove, were live-tested).
+Treat it as implemented, not verified-under-fire, until a keyed-list
+reordering smoke covers it. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs).
+
 ## No longer a limitation: `:class` reaches real GTK CSS classes
 
 Hiccup `:class` is diffed by the reconciler (`IRender/add-class`/

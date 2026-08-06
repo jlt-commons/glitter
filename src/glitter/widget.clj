@@ -27,6 +27,13 @@
 ;; --- value marshalling -------------------------------------------------------
 (defn- ->bool [x] (if x 1 0))
 
+;; Pointers are plain machine addresses under jolt.ffi (0 for NULL, never a
+;; Clojure nil) — but a getter that legitimately found nothing (an empty
+;; GtkCenterBox slot, a GtkListBoxRow's own parent lookup with nothing
+;; selected) can surface either. Used by :center-box's slot-occupancy checks
+;; and :list-box's row/selection lookups.
+(defn- ptr-null? [p] (or (nil? p) (zero? p)))
+
 (defn escape-markup
   "Escape `&`, `<`, `>` so `s` can be embedded safely inside Pango markup passed
   to a label's `:markup` prop. `&` is escaped first so the angle-bracket escapes
@@ -161,7 +168,9 @@
          :on-activate       "activate"
          :on-toggled        "toggled"
          :on-value-changed  "value-changed"
-         :on-state-set      "state-set"}))
+         :on-state-set      "state-set"
+         :on-row-selected   "row-selected"
+         :on-row-activated  "row-activated"}))
 
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
@@ -169,7 +178,8 @@
 ;; they read; the :apply closures below call them, so declare them here. A
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
-(declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!)
+(declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!
+         set-spin-button-value!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -191,6 +201,21 @@
               (when (contains? p :homogeneous) (g/gtk-box-set-homogeneous w (->bool (:homogeneous p))))
               (when (contains? p :orientation) (g/gtk-orientable-set-orientation w (->orientation (:orientation p)))))
    :container :box})
+
+(defn- center-box-spec []
+  ;; Three fixed NAMED slots (start/center/end), not an ordered append list
+  ;; like :box. See center-box-append-child!/center-box-remove-child!/
+  ;; center-box-replace-child!/center-box-insert-after! (below, beside the
+  ;; other container-management fns) and their :center-box case-branch
+  ;; entries in append-child!/remove-child!/replace-child!/
+  ;; insert-child-after! — this spec itself needs no special handling
+  ;; beyond the ctor: no signal, no props beyond the universal GtkWidget
+  ;; ones. KNOWN V1 GAP: do not swap a slot's hiccup TAG (e.g. :label ->
+  ;; :button) while all 3 slots are occupied — see
+  ;; center-box-insert-after!'s docstring for the mechanism.
+  {:ctor  (fn [_] (g/gtk-center-box-new))
+   :apply (fn [_ _])
+   :container :center-box})
 
 (defn- button-spec []
   {:ctor    (fn [p] (if (:label p) (g/gtk-button-new-with-label (:label p)) (g/gtk-button-new)))
@@ -281,6 +306,28 @@
    :apply    (fn [_ _])
    :container :scrolled})
 
+(defn- revealer-spec []
+  ;; Single-child container (gtk_revealer_set_child) — same container
+  ;; strategy as :frame/:scrolled, so no new container-management logic
+  ;; beyond a one-line case entry in append-child!/remove-child!/
+  ;; replace-child! below. No signal: :reveal-child directly drives the
+  ;; animated show/hide. :transition-type/:transition-duration applied
+  ;; BEFORE :reveal-child (same ordering concern as :scale/:level-bar
+  ;; re-ranging before setting :value) so the first reveal already uses the
+  ;; caller's transition settings, not GTK's defaults. :transition-type
+  ;; resolves a GtkRevealerTransitionType nick (:crossfade, :slide-right,
+  ;; :slide-up, ...) the same way :halign/:valign resolve GtkAlign, via
+  ;; glitter.genum's runtime GEnum lookup — no hardcoded nick table here.
+  {:ctor  (fn [_] (g/gtk-revealer-new))
+   :apply (fn [w p]
+            (when (contains? p :transition-type)
+              (g/gtk-revealer-set-transition-type w (->enum "GtkRevealerTransitionType" (:transition-type p))))
+            (when (contains? p :transition-duration)
+              (g/gtk-revealer-set-transition-duration w (:transition-duration p)))
+            (when (contains? p :reveal-child)
+              (g/gtk-revealer-set-reveal-child w (->bool (:reveal-child p)))))
+   :container :revealer})
+
 (defn- scale-spec []
   ;; gtk_scale_new_with_range needs orientation + an initial min/max/step at
   ;; construction time — unlike box/separator, there's no cheap "construct
@@ -308,6 +355,33 @@
             (when (contains? p :value)       (set-scale-value! w (:value p)))
             (when (contains? p :digits)      (g/gtk-scale-set-digits w (:digits p)))
             (when (contains? p :draw-value)  (g/gtk-scale-set-draw-value w (->bool (:draw-value p)))))
+   :container :none})
+
+(defn- spin-button-spec []
+  ;; gtk_spin_button_new_with_range needs min/max/step at construction time,
+  ;; same "no cheap construct-then-correct-later split" shape as :scale.
+  ;; Falls back to a plain 0-100-by-1 range if the caller doesn't set them;
+  ;; :apply re-ranges via gtk_spin_button_set_range/set_increments on every
+  ;; render if they change, same ordering-before-:value concern as :scale's
+  ;; :apply. Its "value-changed" signal already has an entry in `signals`
+  ;; (:on-value-changed, shared with :scale — confirmed via
+  ;; gtk/gtkspinbutton.c's g_signal_new that GtkSpinButton's real signal
+  ;; name is the exact same string GtkScale/GtkRange already uses) — see
+  ;; signal-value's [tag signal]-keyed table below for why that shared name
+  ;; needing a DIFFERENT getter per widget type doesn't collide.
+  {:ctor  (fn [p]
+            (g/gtk-spin-button-new-with-range
+             (double (or (:min p) 0))
+             (double (or (:max p) 100))
+             (double (or (:step p) 1))))
+   :apply (fn [w p]
+            (when (or (contains? p :min) (contains? p :max))
+              (g/gtk-spin-button-set-range w (double (or (:min p) 0)) (double (or (:max p) 100))))
+            (when (contains? p :step)
+              (g/gtk-spin-button-set-increments w (double (:step p)) (double (:step p))))
+            (when (contains? p :value)     (set-spin-button-value! w (:value p)))
+            (when (contains? p :digits)    (g/gtk-spin-button-set-digits w (:digits p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
 
 (defn- spinner-spec []
@@ -356,6 +430,21 @@
             (when (contains? p :inverted)  (g/gtk-level-bar-set-inverted w (->bool (:inverted p)))))
    :container :none})
 
+(defn- list-box-spec []
+  ;; A selectable-row list container. See the :list-box case-branches in
+  ;; append-child!/remove-child!/replace-child! below for the GTK
+  ;; row-wrapping mechanics, and signal-value's [tag signal]-keyed entries
+  ;; for :on-row-selected/:on-row-activated's value-fn. No :apply props
+  ;; beyond the universal GtkWidget ones — GTK4's default :selection-mode
+  ;; :single + :activate-single-click true (both left unchanged) is the
+  ;; only mode v1 supports correctly; :selection-mode :none is a documented
+  ;; v1 gap (see gtk-widget-layer.md). v1 also does not support keyed
+  ;; reorder or mid-list positional insert (see the :list-box container
+  ;; functions' own docstrings).
+  {:ctor  (fn [_] (g/gtk-list-box-new))
+   :apply (fn [_ _])
+   :container :list-box})
+
 (defn- switch-spec []
   ;; The widget signal-callable-shape (below) exists FOR: "state-set" isn't
   ;; the uniform void(widget, user_data) shape, so it needs a registered
@@ -370,6 +459,7 @@
 (def specs
   (atom {:window        (window-spec)
          :box           (box-spec)
+         :center-box    (center-box-spec)
          :button        (button-spec)
          :link-button   (link-button-spec)
          :label         (label-spec)
@@ -380,11 +470,14 @@
          :separator     (separator-spec)
          :frame         (frame-spec)
          :scrolled      (scrolled-spec)
+         :revealer      (revealer-spec)
          :scale         (scale-spec)
+         :spin-button   (spin-button-spec)
          :spinner       (spinner-spec)
          :progress-bar  (progress-bar-spec)
          :image         (image-spec)
-         :level-bar     (level-bar-spec)}))
+         :level-bar     (level-bar-spec)
+         :list-box      (list-box-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -514,28 +607,77 @@
     (g/gtk-range-set-value widget (double value))
     (swap! suppressing disj widget)))
 
-;; Which signals carry a value the handler wants: GTK signal name -> (fn [widget] value).
-;; An atom so a third-party extension can register a value-bearing signal
-;; without editing this table. "value-changed" (scale's slider drag) is the
-;; second first-party entry here, reading the current double back via
-;; gtk_range_get_value — GtkScale extends GtkRange and inherits its API.
-;; "state-set" (switch) reads gtk_switch_get_active AFTER the signal fires,
-;; not from the signal's own second argument — verified live against
-;; gtk/gtkswitch.c's gtk_switch_set_active: self->is_active is set BEFORE
-;; g_signal_emit(STATE_SET) runs, so by the time any handler sees the
-;; signal, the getter already reflects the new value. A plain (fn [widget])
-;; value-fn works here exactly like every other signal's, with no need to
-;; read the raw signal argument the callable receives.
+(defn- set-spin-button-value!
+  "Set a spin button's value, but only when it differs from the widget's
+  current value, and while suppressing the :on-value-changed handler for
+  the synchronous 'value-changed' emission gtk_spin_button_set_value
+  causes. Same set-compare-suppress shape as set-scale-value! —
+  GtkSpinButton is a separate GTK4 class from GtkScale/GtkRange (its own
+  get/set-value pair, not inherited), but the loop-prevention concern is
+  identical."
+  [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-spin-button-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-spin-button-set-value widget (double value))
+    (swap! suppressing disj widget)))
+
+(defn- list-box-selected-index
+  "The currently selected row's index, or nil if none — read via
+  gtk_list_box_get_selected_row -> gtk_list_box_row_get_index AFTER the
+  signal fires, same 're-read the widget's own state, ignore the raw
+  signal argument' pattern as every other value-fn here. Backs both
+  'row-selected' and 'row-activated' — verified against
+  gtk/gtklistbox.c's gtk_list_box_select_and_activate_full, which selects
+  a row BEFORE activating it (activate-single-click defaults to TRUE), so
+  by the time either signal's handler runs, get_selected_row already
+  reflects the right row even for row-activated."
+  [widget]
+  (let [row (g/gtk-list-box-get-selected-row widget)]
+    (when-not (ptr-null? row) (g/gtk-list-box-row-get-index row))))
+
+;; Which [tag gtk-signal-name] pairs carry a value the handler wants:
+;; [tag signal] -> (fn [widget] value). An atom so a third-party extension
+;; can register a value-bearing signal without editing this table.
+;;
+;; Keyed by [tag signal], NOT bare signal name — GTK signal names are not
+;; unique per MEANING across widget types. "value-changed" is a case in
+;; point: both :scale (GtkScale/GtkRange) and :spin-button (GtkSpinButton)
+;; emit it, but each needs a DIFFERENT getter (gtk_range_get_value vs.
+;; gtk_spin_button_get_value) — confirmed against gtk/gtkspinbutton.c's
+;; g_signal_new that GtkSpinButton's "value-changed" is the exact same
+;; string GtkRange already uses. A value-fn keyed by bare signal name
+;; would have :spin-button's registration silently clobber :scale's (or
+;; vice versa, depending on load order) the moment both widgets existed
+;; in the same table — found via source-level verification WHILE adding
+;; :spin-button, before it ever shipped and broke :scale. See
+;; gtk-widget-layer.md's "generalizing signal-value by tag" section.
+;;
+;; "state-set" (:switch) reads gtk_switch_get_active AFTER the signal
+;; fires, not from the signal's own second argument — verified live
+;; against gtk/gtkswitch.c's gtk_switch_set_active: self->is_active is set
+;; BEFORE g_signal_emit(STATE_SET) runs, so by the time any handler sees
+;; the signal, the getter already reflects the new value. A plain
+;; (fn [widget]) value-fn works here exactly like every other signal's,
+;; with no need to read the raw signal argument the callable receives.
+;; "row-selected"/"row-activated" (:list-box) share list-box-selected-index
+;; above, for the same reason.
 (def ^:private signal-value
-  (atom {"changed"       (fn [widget] (g/gtk-editable-get-text widget))
-         "value-changed" (fn [widget] (g/gtk-range-get-value widget))
-         "state-set"     (fn [widget] (g/gtk-switch-get-active widget))}))
+  (atom {[:entry "changed"]             (fn [widget] (g/gtk-editable-get-text widget))
+         [:scale "value-changed"]       (fn [widget] (g/gtk-range-get-value widget))
+         [:spin-button "value-changed"] (fn [widget] (g/gtk-spin-button-get-value widget))
+         [:switch "state-set"]          (fn [widget] (g/gtk-switch-get-active widget))
+         [:list-box "row-selected"]     list-box-selected-index
+         [:list-box "row-activated"]    list-box-selected-index}))
 
 ;; Almost every GTK signal glitter connects has the uniform
 ;; void(widget, user_data) shape glitter.gtk's set-event-handler builds by
 ;; default. GtkSwitch's "state-set" doesn't: its real C signature is
 ;; gboolean (*)(GtkSwitch*, gboolean, gpointer) — 3 args, non-void return —
 ;; confirmed against gtk/gtkswitch.c's g_signal_new call, not assumed.
+;; GtkListBox's "row-selected"/"row-activated" don't either: their real C
+;; signature is void(GtkListBox*, GtkListBoxRow*, gpointer) — 3 args, VOID
+;; return this time (a third, distinct shape from "state-set"'s) —
+;; likewise confirmed against gtk/gtklistbox.c's g_signal_new calls.
 ;;
 ;; Unlike `signals`/`signal-value` above, this is NOT a data table a
 ;; third-party extension can register into: jolt's `foreign-callable` /
@@ -548,22 +690,27 @@
 ;; `set-event-handler` looks up at runtime and splices into one generic
 ;; `foreign-callable` call — the first design tried here — cannot work.
 ;; glitter.gtk/set-event-handler instead branches explicitly on `signal`
-;; and calls `foreign-callable` at two separate literal call sites (the
-;; default 2-arg-void one, and one for `"state-set"`). Adding a THIRD
-;; non-default shape means adding a third literal call site there, by
-;; hand — there is no generic extension point for this, and
-;; `register-signal!` intentionally has no `shape` parameter, because it
-;; could never actually be honored.
+;; and calls `foreign-callable` at separate literal call sites: the
+;; default 2-arg-void one, one for `"state-set"`, and one for
+;; `"row-selected"`/`"row-activated"`. Adding a FOURTH non-default shape
+;; means adding a fourth literal call site there, by hand — there is no
+;; generic extension point for this, and `register-signal!` intentionally
+;; has no `shape` parameter, because it could never actually be honored.
 
 (defn register-signal!
-  "Register an :on-* event key -> GTK signal name. With `value-fn` (a widget ->
-  value fn) the handler is called with that value instead of zero args — used by
-  value-bearing widgets (e.g. :scale's slider, see signal-value above). Lets
+  "Register an :on-* event key -> GTK signal name for widget type `tag`.
+  With `value-fn` (a widget -> value fn) the handler is called with that
+  value instead of zero args — used by value-bearing widgets (e.g.
+  :scale's slider, see signal-value above). `tag` is required even when
+  value-fn is nil, so glitter.gtk's set-event-handler can look the
+  value-fn up by [tag gtk-signal] rather than bare signal name — see
+  signal-value's own docstring for why that matters (more than one widget
+  type can emit the same GTK signal name with a different meaning). Lets
   extensions add widget events without editing glitter.widget."
-  ([event gtk-signal] (register-signal! event gtk-signal nil))
-  ([event gtk-signal value-fn]
+  ([tag event gtk-signal] (register-signal! tag event gtk-signal nil))
+  ([tag event gtk-signal value-fn]
    (swap! signals assoc event gtk-signal)
-   (when value-fn (swap! signal-value assoc gtk-signal value-fn))
+   (when value-fn (swap! signal-value assoc [tag gtk-signal] value-fn))
    nil))
 
 (defn signal-name
@@ -596,25 +743,26 @@
   (contains? @suppressing widget))
 
 (defn signal-value-fn
-  "The `(fn [widget]) -> value` registered for GTK signal name `signal`
-  (e.g. \"changed\" -> reads the entry's current text via
-  gtk_editable_get_text), or nil if this signal carries no extracted
-  value. See register-signal!'s optional value-fn arg and the
-  signal-value table above."
-  [signal]
-  (@signal-value signal))
+  "The `(fn [widget]) -> value` registered for widget type `tag` emitting
+  GTK signal name `signal` (e.g. :entry + \"changed\" -> reads the entry's
+  current text via gtk_editable_get_text), or nil if this [tag signal]
+  combination carries no extracted value. See register-signal!'s optional
+  value-fn arg and the signal-value table above."
+  [tag signal]
+  (@signal-value [tag signal]))
 
 (defn connect-signals!
   "For every :on-* key in `props`, wrap its handler in a :collect-safe
   foreign-callable (GTK fires it from the blocking g_application_run loop) and
-  connect it to the matching GTK signal on `widget`. Connected once at mount.
+  connect it to the matching GTK signal on `widget` of type `tag`. Connected
+  once at mount.
 
   Handlers are called with zero args — except :on-change, whose handler receives
   the entry's current text (read via gtk_editable_get_text)."
-  [widget props]
+  [tag widget props]
   (doseq [[event handler] props]
     (when-let [signal (@signals event)]
-      (let [value-fn (@signal-value signal)
+      (let [value-fn (@signal-value [tag signal])
             cb (ffi/foreign-callable
                 (fn [src-widget _data]
                    ;; skip emissions we triggered ourselves via a programmatic
@@ -659,7 +807,7 @@
         widget ((:ctor s) props)]
     ((:apply s) widget props)
     (apply-widget-props! widget props)
-    (connect-signals! widget props)
+    (connect-signals! tag widget props)
     ;; widgets whose signals don't fit the uniform void(widget,data) shape wire
     ;; them here (e.g. :gl-area's realize/render/resize). Runs once at mount.
     (when-let [connect (:connect s)] (connect widget props))
@@ -688,24 +836,203 @@
   (g/gtk-widget-set-visible widget (->bool (not (false? (:visible props))))))
 
 ;; --- container child management ----------------------------------------------
+;; :center-box helpers — GtkCenterBox has three independently addressable
+;; NAMED slots (start/center/end), not an ordered append list like :box.
+;; Slot occupancy is queried LIVE via the getters (ptr-null? = empty) rather
+;; than tracked separately here, so these stay correct even if something
+;; outside glitter ever mutates the center box directly.
+(defn- center-box-append-child!
+  "Place `child` into the first EMPTY slot, in start -> center -> end
+  order. A 4th+ child is silently dropped — same 'documented v1 scope
+  limit' shape as :level-bar's :mode or :progress-bar's minimal display
+  scope: GtkCenterBox only ever has three slots, full stop."
+  [parent child]
+  (cond
+    (ptr-null? (g/gtk-center-box-get-start-widget parent))  (g/gtk-center-box-set-start-widget parent child)
+    (ptr-null? (g/gtk-center-box-get-center-widget parent)) (g/gtk-center-box-set-center-widget parent child)
+    (ptr-null? (g/gtk-center-box-get-end-widget parent))    (g/gtk-center-box-set-end-widget parent child)
+    :else nil))
+
+(defn- center-box-slot-setter
+  "Which gtk_center_box_set_*_widget fn currently holds `child` in
+  `parent`, or nil if `child` occupies no slot."
+  [parent child]
+  (cond
+    (= child (g/gtk-center-box-get-start-widget parent))  g/gtk-center-box-set-start-widget
+    (= child (g/gtk-center-box-get-center-widget parent)) g/gtk-center-box-set-center-widget
+    (= child (g/gtk-center-box-get-end-widget parent))    g/gtk-center-box-set-end-widget
+    :else nil))
+
+(defn- center-box-remove-child! [parent child]
+  (when-let [setter (center-box-slot-setter parent child)] (setter parent ffi/null)))
+
+(defn- center-box-replace-child! [parent old-child new-child]
+  (when-let [setter (center-box-slot-setter parent old-child)] (setter parent new-child)))
+
+(defn- center-box-insert-after!
+  "Insert `child` immediately after `sibling` in slot order
+  (start < center < end) — the only ordering a 3-fixed-named-slot
+  container can meaningfully express. `sibling` is nil (insert as the
+  first child) or the tracked PREVIOUS sibling's own GTK widget pointer;
+  when it's nil, or occupies no recognized slot, this behaves like a
+  fresh append (first empty slot). REQUIRED, not merely a nice-to-have:
+  found live that glitter.core's reconciler calls this — not
+  replace-child! — even for a plain, non-keyed same-position TAG SWAP
+  (e.g. a :label becoming a :button at center-box's 2nd child): it
+  inserts the NEW node first, then removes the OLD one as a second,
+  separate step. glitter.gtk's own IRender/insert-before updates its
+  :children BOOKKEEPING unconditionally, regardless of whether the
+  underlying GTK call actually did anything — so leaving this a no-op
+  (this project's ORIGINAL v1 scope call, since reverted) desyncs that
+  bookkeeping from live GTK state, and the reconciler's NEXT step (which
+  removes 'whatever is tracked at position N') ends up removing the
+  WRONG child. Caught only by a live re-render smoke, not by a plain
+  append-only one — see gtk-widget-layer.md.
+
+  KNOWN V1 GAP, found live and NOT fully fixable at this layer: when the
+  target slot is ALREADY occupied (all 3 slots full, tag-swapping one of
+  them), this overwrites it directly — gtk_center_box_set_*_widget
+  unparents whatever was there before, and since nothing else in glitter
+  holds a reference, GTK finalizes it immediately (unlike :box, which has
+  genuine transient capacity for 'old and new both present at once').
+  glitter.gtk's :children bookkeeping, however, is generic across every
+  container kind and models this insert as ADDITIVE (temporarily 4
+  tracked entries, matching what :box's own arbitrary-capacity list can
+  really do) — for :center-box specifically that model is briefly WRONG,
+  and the reconciler's subsequent per-child reconcile of the trailing
+  sibling can index against the wrong (already-finalized) tracked entry,
+  corrupting an unrelated third slot. Verified live: swapping center-box's
+  MIDDLE child's tag while all 3 slots are full reliably corrupts the END
+  slot (a GTK_IS_LABEL assertion failure reading it back). No same-slot
+  tag swap when all 3 slots are already occupied — change props instead
+  of tags, or nest a stable wrapper tag so the type change happens one
+  level down where the general :box-shaped reconciliation already handles
+  it correctly. See gtk-widget-layer.md for the full trace."
+  [parent child sibling]
+  (cond
+    (ptr-null? sibling) (center-box-append-child! parent child)
+    (= sibling (g/gtk-center-box-get-start-widget parent))  (g/gtk-center-box-set-center-widget parent child)
+    (= sibling (g/gtk-center-box-get-center-widget parent)) (g/gtk-center-box-set-end-widget parent child)
+    :else nil))
+
+;; :list-box helpers. gtk_list_box_append/insert auto-wrap a plain child in
+;; a GtkListBoxRow (confirmed against gtk/gtklistbox.c's own bodies), so
+;; APPENDING/INSERTING takes the child widget directly. gtk_list_box_remove
+;; does NOT follow the same shape, despite its doc comment reading almost
+;; identically to gtk_box_remove's ("the child to remove") — its actual
+;; implementation requires the argument to already BE a GtkListBoxRow (or a
+;; registered header widget), and warns "Tried to remove non-child" and
+;; no-ops otherwise. Found live: the doc comment alone doesn't say this: the
+;; behavior only surfaced by reading gtk_list_box_remove's C body directly,
+;; and only became visible at all by actually running a re-render that
+;; exercises remove/replace against live GTK (a plain append-only smoke
+;; would never have hit this path). gtk_widget_get_parent recovers the
+;; wrapping row from the child widget glitter tracks.
+(defn- list-box-row-of
+  "The GtkListBoxRow wrapping `child` in a :list-box, or nil if `child`
+  isn't currently parented (already removed, or never inserted)."
+  [child]
+  (let [row (g/gtk-widget-get-parent child)]
+    (when-not (ptr-null? row) row)))
+
+;; gtk_list_box_remove has an incidental-signal gotcha found live: removing
+;; the CURRENTLY SELECTED row fires a real, synchronous "row-selected"
+;; emission with a NULL row argument (GTK's own deselection notice — see
+;; gtk/gtklistbox.c's gtk_list_box_unselect_row_internal/select_row_internal
+;; paths). Unlike glitter's OWN programmatic setters (set-switch-active! and
+;; friends), this signal comes from a GTK-internal side effect of a
+;; CONTAINER operation, not from something set-event-handler's suppressing
+;; guard was written to intercept — and left unsuppressed it dispatches a
+;; spurious deselection straight through to the app, which live-verified
+;; can synchronously re-enter core/reconcile mid-reconcile (mount!'s watcher
+;; runs inline when already on the GTK main thread — see AGENTS.md
+;; convention #6) and trip a GTK_IS_WIDGET assertion on a widget the outer,
+;; still-in-progress reconcile call hasn't finished processing yet.
+;; suppressing conj/disj on `parent` (the list-box itself — "row-selected"'s
+;; src-widget arg, per its real C signature) around the remove call silences
+;; it, exactly mirroring the set-*-active! family's own suppress-then-mutate
+;; shape, just applied to a container op instead of a value setter.
+(defn- list-box-remove-child! [parent child]
+  (when-let [row (list-box-row-of child)]
+    (swap! suppressing conj parent)
+    (g/gtk-list-box-remove parent row)
+    (swap! suppressing disj parent)))
+
+(defn- list-box-replace-child!
+  "Swap `old-child` for `new-child` at the SAME position. Captures
+  old-child's row + row index via gtk_widget_get_parent BEFORE removing it
+  — removal invalidates both afterward, same 'capture before you mutate'
+  concern replace-child!'s :box branch already has for its prev-sibling
+  capture — then re-inserts new-child (auto-wrapped into a FRESH row) at
+  that same, still-valid slot. Safe even though gtk_list_box_insert clamps
+  out-of-range positions to 'append' (confirmed via its own doc comment):
+  this always inserts into the exact slot just vacated, which by
+  construction is never out of range. Suppresses on `parent` around the
+  remove call for the same incidental-deselection-signal reason
+  list-box-remove-child! does."
+  [parent old-child new-child]
+  (let [row (list-box-row-of old-child)
+        idx (when row (g/gtk-list-box-row-get-index row))]
+    (when row
+      (swap! suppressing conj parent)
+      (g/gtk-list-box-remove parent row)
+      (swap! suppressing disj parent))
+    (g/gtk-list-box-insert parent new-child (or idx -1))))
+
+(defn- list-box-index-after
+  "Convert `sibling` (nil, or the tracked PREVIOUS sibling's own GTK WIDGET
+  pointer — not its wrapping row) into the list index gtk_list_box_insert
+  wants: one past sibling's live ROW index, or 0 (front) if sibling is
+  nil. Always re-reads sibling's row index at CALL time, never caches it
+  — reorder-child! below relies on that freshness to stay correct after
+  it removes `child`'s own old row first."
+  [sibling]
+  (if (ptr-null? sibling)
+    0
+    (inc (g/gtk-list-box-row-get-index (g/gtk-widget-get-parent sibling)))))
+
+(defn- list-box-insert-after! [parent child sibling]
+  (g/gtk-list-box-insert parent child (list-box-index-after sibling)))
+
+(defn- list-box-reorder-child!
+  "Move an ALREADY-parented `child` to sit immediately after `sibling`.
+  Removes child's OLD row FIRST, then computes the target index — doing
+  it in this order (not the reverse) means list-box-index-after re-reads
+  sibling's row index AFTER child's removal has potentially shifted it,
+  so the target is always correct post-removal, never stale. Suppresses on
+  `parent` around the remove call — same incidental
+  deselect-fires-row-selected reason list-box-remove-child! does."
+  [parent child sibling]
+  (when-let [row (list-box-row-of child)]
+    (swap! suppressing conj parent)
+    (g/gtk-list-box-remove parent row)
+    (swap! suppressing disj parent))
+  (list-box-insert-after! parent child sibling))
+
 (defn append-child!
   "Add `child` to the end of `parent`. Dispatches on the parent's container kind."
   [parent-tag parent child]
   (case (container-kind parent-tag)
-    :box    (g/gtk-box-append parent child)
-    :window (g/gtk-window-set-child parent child)
-    :frame  (g/gtk-frame-set-child parent child)
-    :scrolled (g/gtk-scrolled-window-set-child parent child)
+    :box        (g/gtk-box-append parent child)
+    :window     (g/gtk-window-set-child parent child)
+    :frame      (g/gtk-frame-set-child parent child)
+    :scrolled   (g/gtk-scrolled-window-set-child parent child)
+    :revealer   (g/gtk-revealer-set-child parent child)
+    :center-box (center-box-append-child! parent child)
+    :list-box   (g/gtk-list-box-append parent child)
     nil))
 
 (defn remove-child!
   "Remove `child` from `parent`."
   [parent-tag parent child]
   (case (container-kind parent-tag)
-    :box    (g/gtk-box-remove parent child)
-    :window (g/gtk-window-set-child parent ffi/null)
-    :frame  (g/gtk-frame-set-child parent ffi/null)
-    :scrolled (g/gtk-scrolled-window-set-child parent ffi/null)
+    :box        (g/gtk-box-remove parent child)
+    :window     (g/gtk-window-set-child parent ffi/null)
+    :frame      (g/gtk-frame-set-child parent ffi/null)
+    :scrolled   (g/gtk-scrolled-window-set-child parent ffi/null)
+    :revealer   (g/gtk-revealer-set-child parent ffi/null)
+    :center-box (center-box-remove-child! parent child)
+    :list-box   (list-box-remove-child! parent child)
     nil))
 
 (defn replace-child!
@@ -718,35 +1045,64 @@
   anchor via gtk_box_insert_child_after."
   [parent-tag parent old-child new-child]
   (case (container-kind parent-tag)
-    :box    (let [prev (g/gtk-widget-get-prev-sibling old-child)
-                  prev (when-not (or (nil? prev) (zero? prev)) prev)]
-              (g/gtk-box-remove parent old-child)
-              (g/gtk-box-insert-child-after parent new-child (or prev ffi/null)))
-    :window (g/gtk-window-set-child parent new-child)
-    :frame  (g/gtk-frame-set-child parent new-child)
-    :scrolled (g/gtk-scrolled-window-set-child parent new-child)
+    :box        (let [prev (g/gtk-widget-get-prev-sibling old-child)
+                      prev (when-not (or (nil? prev) (zero? prev)) prev)]
+                  (g/gtk-box-remove parent old-child)
+                  (g/gtk-box-insert-child-after parent new-child (or prev ffi/null)))
+    :window     (g/gtk-window-set-child parent new-child)
+    :frame      (g/gtk-frame-set-child parent new-child)
+    :scrolled   (g/gtk-scrolled-window-set-child parent new-child)
+    :revealer   (g/gtk-revealer-set-child parent new-child)
+    :center-box (center-box-replace-child! parent old-child new-child)
+    :list-box   (list-box-replace-child! parent old-child new-child)
     nil))
 
 (defn reorder-child!
   "Move `child` to sit immediately after `sibling` (nil = move to first position)
-  within `parent`. Only GtkBox supports positional reordering; the single-child
-  containers (window/frame/scrolled) no-op. Used by the keyed reconciler to fix
-  widget order after reuse/create when survivors were reordered or a new item
-  must precede an existing one."
+  within `parent`. GtkBox and GtkListBox both support real positional
+  reordering (list-box via list-box-reorder-child! above, computing a
+  fresh live index rather than the sibling-pointer approach GtkBox's own
+  API uses). The single-child containers (window/frame/scrolled/revealer)
+  no-op because they only ever have one child. :center-box no-ops too,
+  but as a genuinely STRUCTURAL limit, not an avoided one: GtkCenterBox's
+  three slots are fixed NAMED identities (start/center/end), not
+  positions — 'move this widget to sit after that one' has no
+  well-defined meaning when there are only three slots and each already
+  has a name. Used by the keyed reconciler to fix widget order after
+  reuse/create when survivors were reordered or a new item must precede
+  an existing one."
   [parent-tag parent child sibling]
-  (when (= :box (container-kind parent-tag))
-    (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))))
+  (case (container-kind parent-tag)
+    :box      (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))
+    :list-box (list-box-reorder-child! parent child sibling)
+    nil))
 
 (defn insert-child-after!
   "Insert `child` into `parent` immediately after `sibling` (nil = insert as the
-  first child). Only GtkBox supports positional insertion; the single-child
-  containers (window/frame/scrolled) no-op — same container-kind gate as
-  reorder-child!. New relative to the glimmer original: glimmer's own
-  reconciler only ever appends (reorder-child! moves an EXISTING child), but
-  glitter.gtk's IRender/insert-before needs a genuine positional
-  insertion of a NEW child, which gtk_box_insert_child_after provides
-  directly (glimmer never needed this because Reagent-style positional
+  first child). GtkBox, GtkCenterBox (via center-box-insert-after! above),
+  and GtkListBox (via list-box-insert-after! above) all support this; the
+  single-child containers (window/frame/scrolled/revealer) no-op because
+  they only ever have one child. This is NOT an optional nicety for
+  :center-box/:list-box — found live that glitter.core's reconciler calls
+  THIS fn (not replace-child!) even for a plain, non-keyed, same-position
+  TAG SWAP (e.g. a :label becoming a :button at some fixed child index):
+  it inserts the new node first, then removes the old one as a separate
+  step. Leaving this a no-op for a container (this project's ORIGINAL v1
+  scope call for :center-box/:list-box, since reverted) desyncs
+  glitter.gtk's own :children bookkeeping — updated unconditionally by
+  IRender/insert-before regardless of whether the underlying GTK call did
+  anything — from live GTK state, and the reconciler's subsequent removal
+  step (which removes 'whatever is tracked at position N') ends up
+  removing the WRONG child. Caught only by a live re-render smoke, not by
+  a plain append-only one — see gtk-widget-layer.md. New relative to the
+  glimmer original: glimmer's own reconciler only ever appends
+  (reorder-child! moves an EXISTING child), but glitter.gtk's
+  IRender/insert-before needs a genuine positional insertion of a NEW
+  child (glimmer never needed this because Reagent-style positional
   reconciliation never inserts into the middle of a live child list)."
   [parent-tag parent child sibling]
-  (when (= :box (container-kind parent-tag))
-    (g/gtk-box-insert-child-after parent child (or sibling ffi/null))))
+  (case (container-kind parent-tag)
+    :box        (g/gtk-box-insert-child-after parent child (or sibling ffi/null))
+    :center-box (center-box-insert-after! parent child sibling)
+    :list-box   (list-box-insert-after! parent child sibling)
+    nil))

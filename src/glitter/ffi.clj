@@ -85,11 +85,19 @@
 (ffi/defcfn gtk-widget-get-first-child  "gtk_widget_get_first_child"  [:pointer] :pointer)
 (ffi/defcfn gtk-widget-get-next-sibling "gtk_widget_get_next_sibling" [:pointer] :pointer)
 (ffi/defcfn gtk-widget-get-prev-sibling "gtk_widget_get_prev_sibling" [:pointer] :pointer)
+;; get-parent: used by :list-box's replace-child!/insert-child-after! to
+;; recover a child's live GtkListBoxRow (GTK auto-wraps list-box children in
+;; a row, so the row — not the child widget itself — is what carries a
+;; position via gtk_list_box_row_get_index).
+(ffi/defcfn gtk-widget-get-parent       "gtk_widget_get_parent"       [:pointer] :pointer)
 
 ;; --- widgets -----------------------------------------------------------------
 (ffi/defcfn gtk-button-new              "gtk_button_new"              [] :pointer)
 (ffi/defcfn gtk-button-new-with-label   "gtk_button_new_with_label"   [:string] :pointer)
 (ffi/defcfn gtk-button-set-label        "gtk_button_set_label"        [:pointer :string] :void)
+;; get-label exists only for smoke-test verification (same shape as
+;; gtk-label-get-text/gtk-link-button-get-uri).
+(ffi/defcfn gtk-button-get-label        "gtk_button_get_label"        [:pointer] :string)
 
 ;; GtkLinkButton extends GtkButton (gtk/gtklinkbutton.h includes
 ;; gtk/gtkbutton.h — the standard GTK header pattern for a parent-class
@@ -199,6 +207,90 @@
 (ffi/defcfn gtk-level-bar-set-max-value "gtk_level_bar_set_max_value" [:pointer :double] :void)
 (ffi/defcfn gtk-level-bar-set-inverted  "gtk_level_bar_set_inverted"  [:pointer :int] :void)
 (ffi/defcfn gtk-level-bar-get-value     "gtk_level_bar_get_value"     [:pointer] :double)
+
+;; --- revealer (single-child container, animated show/hide) -------------------
+;; Display-only, same shape as spinner/progress-bar/image/level-bar — no
+;; signal to wire (driven entirely by :reveal-child/:transition-type/
+;; :transition-duration). set-child makes it a single-child container, same
+;; strategy as :frame/:scrolled. get-reveal-child/get-child-revealed/
+;; get-transition-duration/get-transition-type exist only for smoke
+;; verification — get-child-revealed in particular distinguishes "revealed
+;; requested" (:reveal-child) from "revealed and the show animation has
+;; actually finished" (:child-revealed), a real GtkRevealer distinction.
+(ffi/defcfn gtk-revealer-new                     "gtk_revealer_new"                     [] :pointer)
+(ffi/defcfn gtk-revealer-set-child               "gtk_revealer_set_child"               [:pointer :pointer] :void)
+(ffi/defcfn gtk-revealer-set-reveal-child        "gtk_revealer_set_reveal_child"        [:pointer :int] :void)
+(ffi/defcfn gtk-revealer-get-reveal-child        "gtk_revealer_get_reveal_child"        [:pointer] :int)
+(ffi/defcfn gtk-revealer-get-child-revealed      "gtk_revealer_get_child_revealed"      [:pointer] :int)
+(ffi/defcfn gtk-revealer-set-transition-type     "gtk_revealer_set_transition_type"     [:pointer :int] :void)
+(ffi/defcfn gtk-revealer-get-transition-type     "gtk_revealer_get_transition_type"     [:pointer] :int)
+(ffi/defcfn gtk-revealer-set-transition-duration "gtk_revealer_set_transition_duration" [:pointer :uint] :void)
+(ffi/defcfn gtk-revealer-get-transition-duration "gtk_revealer_get_transition_duration" [:pointer] :uint)
+
+;; --- center box (fixed 3-slot layout: start/center/end) -----------------------
+;; Unlike :box (append-many, ordered) or :frame/:scrolled/:revealer
+;; (exactly one child), GtkCenterBox has three independently addressable
+;; NAMED slots. glitter.widget's :center-box container strategy picks the
+;; first empty slot (via the getters below returning null/0) on append, and
+;; finds which slot a child occupies (again via the getters) on remove/
+;; replace — see gtk-widget-layer.md for why this needed no new plumbing in
+;; glitter.gtk at all, unlike :switch's set-event-handler generalization.
+(ffi/defcfn gtk-center-box-new                "gtk_center_box_new"                [] :pointer)
+(ffi/defcfn gtk-center-box-set-start-widget   "gtk_center_box_set_start_widget"   [:pointer :pointer] :void)
+(ffi/defcfn gtk-center-box-get-start-widget   "gtk_center_box_get_start_widget"   [:pointer] :pointer)
+(ffi/defcfn gtk-center-box-set-center-widget  "gtk_center_box_set_center_widget"  [:pointer :pointer] :void)
+(ffi/defcfn gtk-center-box-get-center-widget  "gtk_center_box_get_center_widget"  [:pointer] :pointer)
+(ffi/defcfn gtk-center-box-set-end-widget     "gtk_center_box_set_end_widget"     [:pointer :pointer] :void)
+(ffi/defcfn gtk-center-box-get-end-widget     "gtk_center_box_get_end_widget"     [:pointer] :pointer)
+
+;; --- spin button (numeric entry with up/down steppers) ------------------------
+;; gtk_spin_button_new_with_range builds its own internal GtkAdjustment, same
+;; "no separate GtkAdjustment binding needed" shape as :scale. Its
+;; "value-changed" signal is confirmed via gtk/gtkspinbutton.c's g_signal_new
+;; call to be g_signal_new(..., G_TYPE_NONE, 0) — the plain 2-arg-void shape,
+;; unlike :switch's "state-set" — but it's the SAME SIGNAL NAME GtkScale
+;; already uses, read back through a DIFFERENT getter
+;; (gtk_spin_button_get_value, not gtk_range_get_value). See
+;; gtk-widget-layer.md's "generalizing signal-value by tag" section for why
+;; that collision needed glitter.widget's signal-value table re-keyed by
+;; [tag signal] instead of bare signal name.
+(ffi/defcfn gtk-spin-button-new-with-range "gtk_spin_button_new_with_range" [:double :double :double] :pointer)
+(ffi/defcfn gtk-spin-button-set-range      "gtk_spin_button_set_range"      [:pointer :double :double] :void)
+(ffi/defcfn gtk-spin-button-set-value      "gtk_spin_button_set_value"      [:pointer :double] :void)
+(ffi/defcfn gtk-spin-button-get-value      "gtk_spin_button_get_value"      [:pointer] :double)
+(ffi/defcfn gtk-spin-button-set-digits     "gtk_spin_button_set_digits"     [:pointer :int] :void)
+(ffi/defcfn gtk-spin-button-set-increments "gtk_spin_button_set_increments" [:pointer :double :double] :void)
+
+;; --- list box (a selectable-row list container) --------------------------------
+;; append/remove/insert take the CHILD widget directly (gtk_list_box_append
+;; auto-wraps it in a GtkListBoxRow internally, same "child widget, not the
+;; row" shape as gtk_box_append/gtk_box_remove) — confirmed against
+;; gtk/gtklistbox.h. insert's `position` clamps out-of-range/-1 to append at
+;; the end (confirmed via its doc comment in gtk/gtklistbox.c), which is what
+;; makes replace-child!'s remove-then-reinsert-at-captured-index safe. v1
+;; scope: :list-box supports append/remove/replace correctly but does NOT
+;; support keyed reorder or mid-list positional insert (documented gap, same
+;; "single/fixed-slot container" carve-out precedent as :frame/:scrolled/
+;; :window use for reorder-child!/insert-child-after! — see
+;; gtk-widget-layer.md). row-get-index/get-selected-row back
+;; :on-row-selected/:on-row-activated's value-fn, which reads the box's OWN
+;; selection state back AFTER the signal fires — verified against
+;; gtk/gtklistbox.c's gtk_list_box_select_and_activate_full, which selects a
+;; row BEFORE emitting row-activated (activate-single-click defaults to
+;; TRUE), so by the time either signal's handler runs,
+;; gtk_list_box_get_selected_row already reflects the activated row.
+(ffi/defcfn gtk-list-box-new              "gtk_list_box_new"              [] :pointer)
+(ffi/defcfn gtk-list-box-append           "gtk_list_box_append"           [:pointer :pointer] :void)
+(ffi/defcfn gtk-list-box-remove           "gtk_list_box_remove"           [:pointer :pointer] :void)
+(ffi/defcfn gtk-list-box-insert           "gtk_list_box_insert"           [:pointer :pointer :int] :void)
+(ffi/defcfn gtk-list-box-get-selected-row "gtk_list_box_get_selected_row" [:pointer] :pointer)
+;; select-row exists only for smoke-test verification, to trigger a real
+;; "row-selected" emission the same way :switch's smoke bypasses
+;; set-switch-active! to call gtk_switch_set_active directly — confirmed
+;; against gtk/gtklistbox.c's gtk_list_box_select_row_internal that it
+;; DOES emit signals[ROW_SELECTED] with the real row arg.
+(ffi/defcfn gtk-list-box-select-row       "gtk_list_box_select_row"       [:pointer :pointer] :void)
+(ffi/defcfn gtk-list-box-row-get-index    "gtk_list_box_row_get_index"    [:pointer] :int)
 
 ;; --- generic widget state & layout -------------------------------------------
 ;; The margin/halign/hexpand setters are GtkWidget props — they apply to every

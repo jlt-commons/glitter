@@ -105,7 +105,7 @@
         (w/release-callable! cb)
         (swap! el update :handlers dissoc event))
       (when-let [signal (w/signal-name (keyword (str "on-" (name event))))]
-        (let [value-fn (w/signal-value-fn signal)
+        (let [value-fn (w/signal-value-fn (:tag @el) signal)
               ;; Dispatches through `handler`, shared by every callable
               ;; shape below regardless of how many raw args GTK actually
               ;; passes — every value-bearing signal's value-fn re-reads
@@ -113,7 +113,12 @@
               ;; (verified live, per-signal, that the property already
               ;; reflects the new value by then — see e.g. "state-set"'s
               ;; value-fn in glitter.widget), so no signal needs its own
-              ;; raw argument threaded through here.
+              ;; raw argument threaded through here. value-fn is looked up
+              ;; by [(:tag @el) signal], not bare signal name — GTK signal
+              ;; names aren't unique per meaning across widget types (e.g.
+              ;; :scale and :spin-button both emit "value-changed" but read
+              ;; back through different getters); see glitter.widget's
+              ;; signal-value docstring.
               ;;
               ;; Skip emissions triggered by our OWN programmatic setters
               ;; (set-entry-text!/set-checkbutton-active!/etc.) — found
@@ -136,6 +141,15 @@
               ;; g_signal_new call, not assumed) — so it needs its own
               ;; foreign-callable call with a literal 3-arg fn and literal
               ;; [:pointer :int :pointer]/:int argtypes/rettype.
+              ;; GtkListBox's "row-selected"/"row-activated" don't fit
+              ;; either: their real C signature is
+              ;; void(GtkListBox*, GtkListBoxRow*, gpointer) — 3 args, VOID
+              ;; return this time (a THIRD, distinct shape from
+              ;; "state-set"'s) — confirmed against gtk/gtklistbox.c's
+              ;; g_signal_new calls. The row argument itself is ignored
+              ;; (`_row` below): the value-fn re-reads the box's own
+              ;; get_selected_row after the signal fires, same pattern as
+              ;; every other value-bearing signal here.
               ;;
               ;; This can't be collapsed into one data-driven call: jolt's
               ;; foreign-callable/__ccallable is a compile-time special
@@ -146,10 +160,18 @@
               ;; time. Every distinct callable shape needs its own literal
               ;; call site; add a new `signal` branch here for the next
               ;; one, don't try to generalize further.
-              cb (if (= signal "state-set")
+              cb (cond
+                   (= signal "state-set")
                    (jolt.ffi/foreign-callable
                     (fn [src-widget _state _data] (dispatch! src-widget) 0)
                     [:pointer :int :pointer] :int :collect-safe)
+
+                   (#{"row-selected" "row-activated"} signal)
+                   (jolt.ffi/foreign-callable
+                    (fn [src-widget _row _data] (dispatch! src-widget))
+                    [:pointer :pointer :pointer] :void :collect-safe)
+
+                   :else
                    (jolt.ffi/foreign-callable
                     (fn [src-widget _data] (dispatch! src-widget))
                     [:pointer :pointer] :void :collect-safe))

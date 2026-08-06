@@ -54,6 +54,8 @@ failure:
 | `jolt toggle-level-smoke` | `:toggle-button`'s `toggled` signal delivers correctly (reused from `:checkbutton`), `:level-bar` construction + re-render |
 | `jolt link-button-smoke` | `:link-button` reuses `:on-click`; a real click (via `gtk_widget_activate`) reaches dispatch |
 | `jolt switch-smoke` | `:switch`'s `state-set` signal (3-arg, non-void return — a generalized callable shape) delivers correctly, no spurious dispatch |
+| `jolt revealer-center-box-smoke` | `:revealer`'s props-driven reveal/transition; `:center-box`'s 3 named slots survive an append, a props-only update, and a removal |
+| `jolt spin-button-list-box-smoke` | `:spin-button`'s `value-changed` reads back through the right getter despite sharing `:scale`'s signal name; `:list-box`'s `row-selected` (a third callable shape) delivers the selected row's index, and a tag-swapped/removed row doesn't corrupt its siblings or spuriously dispatch |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -139,13 +141,19 @@ rationale on both.
 Early. Widget set: window/box/button/label/entry/checkbutton/separator/
 frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
 `:progress-bar`/`:image`/`:toggle-button`/`:level-bar`/`:link-button`/
-`:switch` (first-party, added directly to glitter; see
+`:switch`/`:revealer`/`:center-box`/`:spin-button`/`:list-box`
+(first-party, added directly to glitter; see
 `docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
-`:level-bar` are display-only props with no signal to wire;
-`:toggle-button`/`:link-button` reuse `:checkbutton`'s `:on-toggled` and
-`:button`'s `:on-click` signal entries verbatim; `:switch` needed
+`:level-bar`/`:revealer` are display-only props with no signal to wire
+(`:revealer` is also a single-child container, same strategy as
+`:frame`/`:scrolled`); `:toggle-button`/`:link-button` reuse
+`:checkbutton`'s `:on-toggled` and `:button`'s `:on-click` signal entries
+verbatim; `:switch`/`:list-box` each needed
 `glitter.gtk/set-event-handler` itself generalized beyond the uniform
-2-arg-void callable shape (see below). Hiccup
+2-arg-void callable shape (see below); `:center-box` is a genuinely
+different container strategy (3 fixed named slots, not an ordered list);
+`:spin-button` needed `glitter.widget/signal-value` re-keyed by
+`[tag signal]` since it shares `:scale`'s exact GTK signal name. Hiccup
 `:class` reaches real GTK CSS classes (`gtk_widget_add/remove_css_class`
 — GTK4's built-in classes like `"flat"`/`"suggested-action"`/
 `"destructive-action"`/`"pill"` work with zero app-provided CSS); `:style`
@@ -157,16 +165,42 @@ counterpart to wire to. No animated mount/unmount transitions yet — see
 **Non-standard GTK signals.** Almost every GTK signal glitter connects is
 `void(widget, user_data)` — `glitter.gtk/set-event-handler` builds that
 shape by default. `GtkSwitch`'s real interaction signal, `"state-set"`, is
-`gboolean(GtkSwitch*, gboolean, gpointer)` — 3 args, non-void return —
-confirmed by reading `gtk/gtkswitch.c`'s `g_signal_new` call directly, not
-assumed. `jolt.ffi/foreign-callable`'s `argtypes`/`rettype` must be
-compile-time literals (verified live that a let-bound local, even holding
-the exact same value, throws a compile error), so `set-event-handler`
-branches explicitly on the GTK signal name and uses a second, separately
-written `foreign-callable` call for `"state-set"` — there's no
-data-driven way to add a third non-standard shape; it needs its own
-literal branch. See `docs/guide/gtk-widget-layer.md` for the full story,
-including the design that was tried first and didn't work.
+`gboolean(GtkSwitch*, gboolean, gpointer)` — 3 args, non-void return.
+`GtkListBox`'s `"row-selected"`/`"row-activated"` are
+`void(GtkListBox*, GtkListBoxRow*, gpointer)` — 3 args, VOID return, a
+THIRD distinct shape. Both confirmed by reading the relevant `g_signal_new`
+call directly, not assumed. `jolt.ffi/foreign-callable`'s
+`argtypes`/`rettype` must be compile-time literals (verified live that a
+let-bound local, even holding the exact same value, throws a compile
+error), so `set-event-handler` branches explicitly on the GTK signal name
+and uses a separate, literal `foreign-callable` call per non-standard
+shape — there's no data-driven way to add one; it needs its own literal
+branch. See `docs/guide/gtk-widget-layer.md` for the full story, including
+the design that was tried first and didn't work.
+
+**`signal-value` keyed by `[tag signal]`, not bare signal name.**
+`:spin-button` (`GtkSpinButton`) emits `"value-changed"` — the exact same
+GTK signal name `:scale` (`GtkScale`/`GtkRange`) already uses — but needs
+a different getter to read the value back. A table keyed by bare signal
+name would have one widget's registration silently clobber the other's;
+found live, before it ever shipped and broke `:scale`. See
+`docs/guide/gtk-widget-layer.md`.
+
+**`:center-box`'s 3 fixed named slots vs. `glitter.gtk`'s generic child
+bookkeeping.** Known v1 gap, found live: do not swap a slot's hiccup tag
+(e.g. `:label` -> `:button`) while all 3 slots are occupied — the
+reconciler handles a same-position tag mismatch as "insert new, then
+remove old," and unlike `:box`'s arbitrary-capacity list, GtkCenterBox has
+no room for a transient 4th occupant, so the mismatch between glitter's
+generic bookkeeping and GtkCenterBox's real capacity can corrupt an
+unrelated third slot. `:list-box` does not share this problem. This same
+investigation also caught and fixed a real bug: `insert-child-after!`/
+`reorder-child!` were originally left as no-ops for any container besides
+`:box` — wrong, not just incomplete, since even a plain non-keyed tag
+swap goes through them. Both are now properly implemented for
+`:list-box`; `:center-box` gets `insert-child-after!` but not
+`reorder-child!` (a genuinely structural no-op — three named slots have
+no meaningful "reorder"). See `docs/guide/gtk-widget-layer.md`.
 
 Known v1 limitations:
 
@@ -183,3 +217,7 @@ Known v1 limitations:
   the intended use (a value stashed on mount, read on update); don't lean on
   it for anything long-lived or high-cardinality. Replicant's DOM backend
   uses a `WeakMap` here; there is no equivalent yet.
+- **`:center-box` cannot safely swap a slot's hiccup tag while all 3 slots
+  are occupied.** Change props instead of tags, or nest a stable wrapper
+  tag one level down so the type change happens where `:box`-shaped
+  reconciliation already handles it correctly.

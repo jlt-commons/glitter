@@ -73,7 +73,22 @@ listed here for provenance, not legal requirement:
   (`gtk-link-button-new`, `gtk-link-button-new-with-label`,
   `gtk-link-button-set-uri`, `gtk-link-button-get-uri`,
   `gtk-widget-activate`, `gtk-switch-new`, `gtk-switch-set-active`,
-  `gtk-switch-get-active`).
+  `gtk-switch-get-active`), and twenty-seven more for `:revealer`/
+  `:center-box`/`:spin-button`/`:list-box` (`gtk-widget-get-parent`,
+  `gtk-button-get-label`, `gtk-revealer-new`, `gtk-revealer-set-child`,
+  `gtk-revealer-set-reveal-child`, `gtk-revealer-get-reveal-child`,
+  `gtk-revealer-get-child-revealed`, `gtk-revealer-set-transition-type`,
+  `gtk-revealer-get-transition-type`, `gtk-revealer-set-transition-duration`,
+  `gtk-revealer-get-transition-duration`, `gtk-center-box-new`,
+  `gtk-center-box-set-start-widget`, `gtk-center-box-get-start-widget`,
+  `gtk-center-box-set-center-widget`, `gtk-center-box-get-center-widget`,
+  `gtk-center-box-set-end-widget`, `gtk-center-box-get-end-widget`,
+  `gtk-spin-button-new-with-range`, `gtk-spin-button-set-range`,
+  `gtk-spin-button-set-value`, `gtk-spin-button-get-value`,
+  `gtk-spin-button-set-digits`, `gtk-spin-button-set-increments`,
+  `gtk-list-box-new`, `gtk-list-box-append`, `gtk-list-box-remove`,
+  `gtk-list-box-insert`, `gtk-list-box-get-selected-row`,
+  `gtk-list-box-row-get-index`, `gtk-list-box-select-row`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -85,17 +100,44 @@ listed here for provenance, not legal requirement:
   `link-button-spec`/`:link-button` (both reuse an existing `signals`
   entry verbatim — see
   [`gtk-widget-layer.md`](gtk-widget-layer.md#toggle-button--reusing-toggled-for-a-second-gtk4-class)),
-  and `set-switch-active!` + the `:switch` widget spec + the new
+  `set-switch-active!` + the `:switch` widget spec + the new
   `:on-state-set` signal entry (the widget that needed
   `glitter.gtk/set-event-handler` itself generalized — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#switch--generalizing-set-event-handler))
-  as new public accessors, and one behavioral deviation: `replace-child!`'s `:box`
-  branch captures the old child's previous sibling via
-  `gtk_widget_get_prev_sibling` and re-inserts via
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#switch--generalizing-set-event-handler)),
+  `revealer-spec`/`:revealer` (display-only, single-child container — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#revealer--a-free-single-child-container-reuse-plus-a-props-driven-widget)),
+  `center-box-spec`/`:center-box` + `center-box-append-child!`/
+  `center-box-remove-child!`/`center-box-replace-child!`/
+  `center-box-insert-after!` (a genuinely new container strategy — 3 fixed
+  named slots, not an ordered list — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#center-box--a-genuinely-new-container-strategy-and-a-real-v1-gap)),
+  `set-spin-button-value!`/`spin-button-spec`/`:spin-button` (see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#spin-button--generalizing-signal-value-by-tag)),
+  and `list-box-spec`/`:list-box` + `list-box-row-of`/
+  `list-box-remove-child!`/`list-box-replace-child!`/
+  `list-box-index-after`/`list-box-insert-after!`/
+  `list-box-reorder-child!`/`list-box-selected-index` + the new
+  `:on-row-selected`/`:on-row-activated` signal entries (a third
+  generalized `set-event-handler` callable shape, plus two more real bugs
+  found and fixed along the way — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs))
+  as new public accessors, and four behavioral deviations: (1)
+  `replace-child!`'s `:box` branch captures the old child's previous
+  sibling via `gtk_widget_get_prev_sibling` and re-inserts via
   `gtk_box_insert_child_after`, where glimmer used `gtk_box_remove` +
   `gtk_box_append` — `append` always lands at the *end* of the box, which
-  silently relocates any non-final child. See
-  [`gtk-widget-layer.md`](gtk-widget-layer.md) for why this matters.
+  silently relocates any non-final child; (2) `signal-value` is keyed by
+  `[tag gtk-signal-name]`, not bare signal name — `:spin-button` and
+  `:scale` emit the identical `"value-changed"` signal but need different
+  getters; (3) `insert-child-after!`/`reorder-child!` are no longer
+  `:box`-only no-ops — `:list-box` needed both genuinely implemented,
+  `:center-box` gets `insert-child-after!` but `reorder-child!` stays a
+  structural no-op; (4) `list-box-remove-child!`/`list-box-replace-child!`/
+  `list-box-reorder-child!` suppress on the list-box widget around
+  `gtk_list_box_remove` — removing the currently-selected row fires a
+  real, synchronous `"row-selected(NULL)"` GTK signal that would
+  otherwise reach app dispatch. See
+  [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`
   (`post-to-gui`, `on-gui`, `run*`, `run`). glimmer's own `mount`/`unmount!`/

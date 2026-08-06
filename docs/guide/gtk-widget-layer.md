@@ -588,6 +588,332 @@ shape too, not just the standard ones. `jolt -M:test` and `bb smokes`
 regression in the shared `set-event-handler` path every other interactive
 widget depends on, before this shipped.
 
+## `:revealer` — a free single-child container reuse, plus a props-driven widget
+
+`GtkRevealer` (`gtk_revealer_set_child`) is a single-child container —
+the exact same container strategy `:frame`/`:scrolled` already
+established, so `append-child!`/`remove-child!`/`replace-child!` each
+needed only one more `case` line, no new logic. No signal either:
+`:reveal-child` (bool), `:transition-type` (a `GtkRevealerTransitionType`
+nick — `:crossfade`, `:slide-right`, ... — resolved at runtime via
+`glitter.genum`, the same mechanism `:halign`/`:valign` already use for
+`GtkAlign`), and `:transition-duration` (a plain millisecond `uint`) are
+applied in that order — transition settings BEFORE the reveal itself, so
+the first reveal already uses the caller's transition, not GTK's
+defaults, mirroring `:scale`/`:level-bar`'s own "re-range before setting
+value" ordering concern.
+
+## `:center-box` — a genuinely new container strategy, and a real v1 gap
+
+Every container kind so far — `:box` (ordered append list), `:window`/
+`:frame`/`:scrolled`/`:revealer` (exactly one child) — fits one of two
+shapes `glitter.gtk`'s generic child-tracking already assumes.
+`GtkCenterBox` doesn't: it has **three independently addressable NAMED
+slots** (`start`/`center`/`end`, via `gtk_center_box_set_start_widget`/
+`set_center_widget`/`set_end_widget`), not a position in an ordered list.
+
+The container-management functions
+(`center-box-append-child!`/`center-box-remove-child!`/
+`center-box-replace-child!`/`center-box-insert-after!`) don't track slot
+occupancy separately — they query it LIVE via the three getters on every
+call (`ptr-null?` = empty). `center-box-append-child!` places a new child
+in the first empty slot, in `start -> center -> end` order.
+`center-box-remove-child!`/`replace-child!` find which slot a given
+child currently occupies (`center-box-slot-setter`, comparing the child's
+pointer against each getter's live return) and null it out or overwrite
+it. None of this needed a single line changed in `glitter.gtk` — the
+whole thing lives inside `glitter.widget`'s existing
+`(case (container-kind parent-tag) ...)` dispatch points.
+
+### The gap that live testing found
+
+A throwaway re-render probe — mount `[:center-box [L] [C] [R]]`, then
+swap `C`'s hiccup TAG from `:label` to `:button` in a re-render, all 3
+slots still full — reliably corrupted the **`R` (end) slot**, not `C`:
+reading it back afterward threw `gtk_label_get_text: assertion
+'GTK_IS_LABEL (self)' failed`. Root-caused by adding debug prints to
+every container-management function and re-running:
+
+```
+:DEBUG-insert-child-after! :center-box
+:DEBUG-remove-child! :center-box
+:DEBUG-slot-setter :child <R's pointer> :start <L> :center <C> :end <R's pointer>
+```
+
+`insert-child-after!` fires FIRST (inserting the new button), THEN
+`remove-child!` fires (removing the old label) — glitter.core's
+reconciler handles a same-position, non-keyed TAG mismatch as **"insert
+the new node, then remove the old one"**, two separate `IRender` calls,
+not a single `replace-child!`. This is the reconciler's general shape for
+ANY multi-child container, and it works fine for `:box`, which has
+genuine transient capacity: a `:box` can briefly hold 4 widgets (old +
+new) between the insert and the remove, exactly like glitter.gtk's own
+`:children` bookkeeping (updated unconditionally by `IRender/insert-before`
+regardless of whether the underlying GTK call did anything) assumes.
+
+`GtkCenterBox` has no such transient capacity — there is no 4th slot.
+The FIRST version of `center-box-insert-after!` (before this fix) reused
+whichever slot the SIBLING implied was next (`sibling` = `L` -> target
+`center`), overwriting it directly. `gtk_center_box_set_center_widget`
+internally calls `gtk_widget_unparent` on whatever was there before — and
+since nothing else in glitter holds a reference to that widget, GTK
+finalizes it immediately. So the OLD `C` label was destroyed the moment
+the NEW button was inserted, while glitter.gtk's `:children` bookkeeping
+still (briefly, correctly for `:box`, WRONGLY for `:center-box`) believed
+there were 4 tracked children `[L, button, C, R]`. The reconciler's NEXT
+step — reconciling `R`, the trailing unchanged sibling, by index — reads
+against that stale, now-4-long bookkeeping and ends up touching the
+WRONG tracked entry, corrupting `R`.
+
+**This is a genuine structural limitation, not a bug that can be patched
+purely in `center-box-insert-after!`.** A 3-fixed-slot container
+literally cannot hold 4 simultaneous occupants the way an ordered list
+can — there's no slot to stash the new child in while the old one is
+still "pending removal" from the reconciler's point of view. Documented
+as a known v1 gap (see `glitter.widget/center-box-insert-after!`'s
+docstring and `docs/guide/limitations.md`): **do not swap a slot's hiccup
+tag while all 3 slots are occupied.** Change props instead of tags, or
+nest a stable wrapper tag (e.g. always render `[:box [:label ...]]` or
+`[:box [:button ...]]` inside the slot) so the type change happens one
+level down, where `:box`'s own genuine transient capacity handles it
+correctly — already proven by every existing `:box` smoke, including
+`keyed.clj`.
+
+`revealer_center_box_smoke.clj` deliberately exercises only the SAFE
+paths this fix does support: a props-only text update on an
+already-populated slot (proving unrelated slots stay untouched), and
+dropping a slot's child entirely (pure removal, no concurrent insert).
+`:list-box`, covered next, does NOT share this problem — confirmed
+separately, live.
+
+## `:spin-button` — generalizing `signal-value` by tag
+
+`GtkSpinButton` (`gtk_spin_button_new_with_range` — no separate
+`GtkAdjustment` binding needed, same shape as `:scale`) is a natural
+value-bearing widget: its `"value-changed"` signal, confirmed via
+`gtk/gtkspinbutton.c`'s `g_signal_new` call, is `g_signal_new(...,
+G_TYPE_NONE, 0)` — the plain 2-arg-void shape every widget except
+`:switch`/`:list-box` already uses. No new `set-event-handler` branch
+needed.
+
+But `"value-changed"` is the **exact same GTK signal name** `:scale`
+already registered. `glitter.widget/signal-value` — the table mapping a
+value-bearing signal to the `(fn [widget] value)` that reads it back —
+was, before this widget, keyed by bare signal name:
+
+```clojure
+;; the OLD shape — works fine until a SECOND widget type shares a signal name
+(def ^:private signal-value
+  (atom {"changed"       (fn [widget] (g/gtk-editable-get-text widget))
+         "value-changed" (fn [widget] (g/gtk-range-get-value widget))   ; :scale's getter
+         "state-set"     (fn [widget] (g/gtk-switch-get-active widget))}))
+```
+
+`:scale`'s entry reads back via `gtk_range_get_value` (GtkScale extends
+GtkRange). `:spin-button` needs `gtk_spin_button_get_value` instead —
+GtkSpinButton is its own, unrelated GTK4 class. Registering
+`:spin-button`'s value-fn under the bare string `"value-changed"` would
+have **silently overwritten `:scale`'s entry** (or vice versa, depending
+on which widget's spec happened to load last) — both widgets share the
+one map key, and only one value-fn can occupy it. Found via source-level
+verification WHILE adding `:spin-button`, cross-referencing
+`gtk/gtkspinbutton.c`'s signal name against `gtk/gtkrange.c`'s, before
+this ever shipped and broke `:scale` — not caught by any test, since no
+prior widget had ever shared a signal name with another.
+
+The fix: `signal-value` is now keyed by **`[tag gtk-signal-name]`**, a
+2-element vector, not a bare string:
+
+```clojure
+(def ^:private signal-value
+  (atom {[:entry "changed"]             (fn [widget] (g/gtk-editable-get-text widget))
+         [:scale "value-changed"]       (fn [widget] (g/gtk-range-get-value widget))
+         [:spin-button "value-changed"] (fn [widget] (g/gtk-spin-button-get-value widget))
+         [:switch "state-set"]          (fn [widget] (g/gtk-switch-get-active widget))
+         [:list-box "row-selected"]     list-box-selected-index
+         [:list-box "row-activated"]    list-box-selected-index}))
+```
+
+`glitter.widget/signal-value-fn` and `register-signal!` both gained a
+`tag` parameter to match (`register-signal!`'s docstring now says why —
+"more than one widget type can emit the same GTK signal name with a
+different meaning"), and `glitter.gtk/set-event-handler` looks the
+value-fn up via `(w/signal-value-fn (:tag @el) signal)` instead of just
+`signal`. `glitter.widget/connect-signals!` (the legacy `create!`
+direct-props path — see the ns docstring) gained the same `tag`
+parameter for consistency, though it isn't exercised by the reconciler-
+driven render path.
+
+`spin_button_list_box_smoke.clj`'s spin-button assertions are what pin
+this actually works: the dispatched value comes back correctly through
+`:spin-button`'s OWN getter, and `scale_smoke.clj` (already green,
+re-run as part of every `bb smokes` pass) confirms `:scale`'s entry is
+undisturbed.
+
+## `:list-box` — a third callable shape, and two more real bugs
+
+`GtkListBox`'s row-interaction signals, `"row-selected"`/
+`"row-activated"`, are confirmed via `gtk/gtklistbox.c`'s `g_signal_new`
+calls to be `void(GtkListBox*, GtkListBoxRow*, gpointer)` — 3 args, VOID
+return. This is a THIRD distinct callable shape, alongside the default
+2-arg-void and `"state-set"`'s 3-arg/non-void-return — `set-event-handler`
+gained a third literal `foreign-callable` branch:
+
+```clojure
+cb (cond
+     (= signal "state-set")
+     (jolt.ffi/foreign-callable
+      (fn [src-widget _state _data] (dispatch! src-widget) 0)
+      [:pointer :int :pointer] :int :collect-safe)
+
+     (#{"row-selected" "row-activated"} signal)
+     (jolt.ffi/foreign-callable
+      (fn [src-widget _row _data] (dispatch! src-widget))
+      [:pointer :pointer :pointer] :void :collect-safe)
+
+     :else
+     (jolt.ffi/foreign-callable
+      (fn [src-widget _data] (dispatch! src-widget))
+      [:pointer :pointer] :void :collect-safe))
+```
+
+The row argument itself (`_row`) is ignored: `list-box-selected-index`
+(shared by both signals, in `signal-value`) re-reads
+`gtk_list_box_get_selected_row` -> `gtk_list_box_row_get_index` AFTER the
+signal fires, same "re-read the widget's own state" pattern every other
+value-fn here uses. Verified against `gtk/gtklistbox.c`'s
+`gtk_list_box_select_and_activate_full` that a row is selected BEFORE it
+is activated (`activate-single-click` defaults to `TRUE`), so the getter
+already reflects the right row by the time either handler runs — even
+for `"row-activated"`, which doesn't carry an explicit selection the way
+`"row-selected"` does.
+
+### Bug 1: `gtk_list_box_remove` needs the ROW, not the child
+
+`gtk_list_box_append`/`insert` auto-wrap a plain child widget in a
+`GtkListBoxRow` (confirmed against `gtk/gtklistbox.c`'s bodies), so
+APPENDING takes the child directly — matching `gtk_box_append`'s shape,
+and matching `gtk_list_box_remove`'s own doc comment, which reads almost
+identically to `gtk_box_remove`'s ("the child to remove"). **The doc
+comment is misleading.** Reading `gtk_list_box_remove`'s actual C body:
+
+```c
+if (!GTK_IS_LIST_BOX_ROW (child))
+  {
+    row = g_hash_table_lookup (box->header_hash, child);
+    if (row != NULL) { ... }
+    else { g_warning ("Tried to remove non-child %p", child); }
+    return;
+  }
+row = GTK_LIST_BOX_ROW (child);
+```
+
+Passing the plain child widget (not its row) prints `Tried to remove
+non-child` and silently no-ops — found live, via the exact warning text
+appearing in a re-render smoke's stderr, traced to this function by
+grepping the GTK source tree for the literal warning string. Fix:
+`list-box-row-of` recovers the wrapping row via `gtk_widget_get_parent`
+(GTK auto-wraps, so the child's immediate parent IS its row), and
+`list-box-remove-child!`/`list-box-replace-child!`/
+`list-box-reorder-child!` all pass the ROW to `gtk_list_box_remove`, not
+the child.
+
+This bug is what made the round's ORIGINAL `:list-box` v1 scope call —
+"append/remove/replace correctly, but `insert-child-after!`/
+`reorder-child!` stay documented no-ops, same as the single-child
+containers" — look reasonable at first. It wasn't: exactly the same
+"insert new, then remove old" reconciler sequence documented above for
+`:center-box` applies to `:list-box` too, and leaving `insert-child-after!`
+a no-op there desyncs glitter.gtk's `:children` bookkeeping from live GTK
+state the identical way. Unlike `:center-box`, though, `:list-box` has NO
+structural capacity limit — `GtkListBoxRow`s are just ordinary tree
+children, so `gtk_list_box_insert(box, child, position)`'s index-based
+API (confirmed via its own doc comment that an out-of-range or `-1`
+position clamps to "append") gives `list-box-insert-after!`/
+`list-box-reorder-child!` everything needed for a REAL fix, not a
+documented gap:
+
+```clojure
+(defn- list-box-index-after [sibling]
+  (if (ptr-null? sibling)
+    0
+    (inc (g/gtk-list-box-row-get-index (g/gtk-widget-get-parent sibling)))))
+
+(defn- list-box-reorder-child! [parent child sibling]
+  (when-let [row (list-box-row-of child)]
+    (swap! suppressing conj parent)
+    (g/gtk-list-box-remove parent row)
+    (swap! suppressing disj parent))
+  (list-box-insert-after! parent child sibling))
+```
+
+`list-box-index-after` always re-reads `sibling`'s row index at call
+time — `reorder-child!` deliberately removes `child`'s OLD row FIRST,
+THEN computes the target index, so a removal that happens to shift
+`sibling`'s live index (if `child` was previously positioned before it)
+is already reflected before the index is used. `list-box-reorder-child!`
+was written but not live-exercised by any smoke in this round (only
+`insert-child-after!`'s "insert new, tag-swap" path and pure removal
+were); treat it as implemented-and-reasoned-through, not
+verified-under-fire the way the rest of this round's changes are — see
+`docs/guide/limitations.md`.
+
+### Bug 2: removing the selected row fires a real, synchronous signal
+
+Even after fixing bug 1, a smoke that removed the CURRENTLY SELECTED row
+still threw `gtk_widget_get_parent: assertion 'GTK_IS_WIDGET (widget)'
+failed`, and the app's own dispatch log showed an extra, unexpected
+`:action/select` entry. Traced by adding a debug print inside the
+`"row-selected"`/`"row-activated"` callable and re-running: removing the
+selected row fires `"row-selected"` a SECOND time, with a NULL row
+argument — GTK's own deselection notice. Confirmed against
+`gtk/gtklistbox.c`'s `gtk_list_box_select_row_internal`, which calls
+`g_signal_emit (box, signals[ROW_SELECTED], 0, row)` directly (not
+conditionally), so removing a row that was selected leaves GTK's
+internal state needing to announce "nothing is selected now."
+
+This is a real GTK signal, not something `glitter.widget`'s existing
+`suppressing` guard (built for GLITTER'S OWN programmatic setters like
+`set-switch-active!`) was written to intercept — it's a side effect of a
+CONTAINER operation (`gtk_list_box_remove`), not a value-setter. Left
+unsuppressed, the spurious dispatch reaches the app's `*dispatch*` fn
+exactly like a real user deselection would — and because `mount!`'s
+watcher runs `render!` INLINE when already on the GTK main thread
+(convention #6, `app-loop-and-threading.md`), and this all happens
+synchronously inside a GTK signal callback fired from INSIDE an
+in-progress `core/reconcile` call, the resulting `swap!` on the app's
+state atom triggers a SECOND, NESTED `core/reconcile` call before the
+outer one has finished — a reentrant reconcile, which is what actually
+threw the `GTK_IS_WIDGET` assertion (touching a widget the outer,
+still-in-flight reconcile hadn't finished processing yet).
+
+Fix: `"row-selected"`'s `src-widget` argument is the list-box ITSELF
+(per its real C signature), so `list-box-remove-child!`/
+`list-box-replace-child!`/`list-box-reorder-child!` all `swap!
+suppressing conj/disj` on `parent` (the list-box widget) around their
+`gtk_list_box_remove` call — the exact same suppress-then-mutate shape
+`set-switch-active!` and friends already use, just applied to a
+container operation instead of a value setter:
+
+```clojure
+(defn- list-box-remove-child! [parent child]
+  (when-let [row (list-box-row-of child)]
+    (swap! suppressing conj parent)
+    (g/gtk-list-box-remove parent row)
+    (swap! suppressing disj parent)))
+```
+
+`spin_button_list_box_smoke.clj` pins both fixes end-to-end: it selects
+row1, swaps row1's TAG (`:label` -> `:button`, exercising the
+`insert-child-after!` fix), then removes row1 entirely (the row selected
+earlier in the SAME run, exercising the suppressing-guard fix) — and
+asserts the select-dispatch count does NOT increment from that removal.
+`jolt -M:test` and `bb smokes` (all prior smokes, including `keyed.clj`,
+which directly exercises the `:box` branch of the same
+`insert-child-after!`/`reorder-child!` functions this round refactored
+from `when` to `case`) were re-run to confirm zero regression before this
+shipped.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

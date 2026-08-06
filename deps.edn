@@ -45,7 +45,11 @@
                                 :main-opts ["-m" "glitter.toggle-level-smoke"]}
            :link-button-smoke {:extra-paths ["examples"]
                                :main-opts ["-m" "glitter.link-button-smoke"]}
-           :switch-smoke {:extra-paths ["examples"] :main-opts ["-m" "glitter.switch-smoke"]}}
+           :switch-smoke {:extra-paths ["examples"] :main-opts ["-m" "glitter.switch-smoke"]}
+           :revealer-center-box-smoke {:extra-paths ["examples"]
+                                       :main-opts ["-m" "glitter.revealer-center-box-smoke"]}
+           :spin-button-list-box-smoke {:extra-paths ["examples"]
+                                        :main-opts ["-m" "glitter.spin-button-list-box-smoke"]}}
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"
@@ -60,4 +64,6 @@
          leaf-widgets-smoke "jolt -M:leaf-widgets-smoke"
          toggle-level-smoke "jolt -M:toggle-level-smoke"
          link-button-smoke "jolt -M:link-button-smoke"
-         switch-smoke "jolt -M:switch-smoke"}}
+         switch-smoke "jolt -M:switch-smoke"
+         revealer-center-box-smoke "jolt -M:revealer-center-box-smoke"
+         spin-button-list-box-smoke "jolt -M:spin-button-list-box-smoke"}}
