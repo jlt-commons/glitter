@@ -267,7 +267,27 @@
   GtkGLArea's realize/render/resize)."
   [tag spec] (swap! specs assoc tag spec) nil)
 
-(defn- spec-for [tag] (@specs (normalize-tag tag)))
+(defn- spec-for
+  "The widget spec registered for hiccup `tag`, or nil. Prefer spec-for! at any
+  call site that is about to dereference the result."
+  [tag]
+  (@specs (normalize-tag tag)))
+
+(defn- spec-for!
+  "Like spec-for, but throws a named error instead of letting a nil spec
+  surface as `class nil cannot be cast to class clojure.lang.IFn` several
+  frames later, with no mention of the offending tag. Tag typos are the most
+  common authoring error in a hiccup library, and glitter.core's own
+  undefined-alias fallback (render-default-alias) emits a `:div` — a DOM tag
+  no GTK backend can have — so this path is reachable from the library's own
+  error recovery, not just from user typos."
+  [tag]
+  (or (spec-for tag)
+      (throw (ex-info (str "glitter/widget: no widget registered for hiccup tag "
+                           tag ". Registered tags: "
+                           (str/join ", " (sort (map str (keys @specs))))
+                           ". Register one with glitter.widget/register-widget!.")
+                      {:tag tag :registered (set (keys @specs))}))))
 
 (defn container-kind
   "How a tag holds children: :box (ordered append/remove), :window (single child),
@@ -427,7 +447,7 @@
   reconciler appends them so it can reuse existing children across renders."
   [tag props]
   (let [props (with-orientation tag props)
-        s (spec-for tag)
+        s (spec-for! tag)
         widget ((:ctor s) props)]
     ((:apply s) widget props)
     (apply-widget-props! widget props)
@@ -450,7 +470,7 @@
   [tag widget props]
   (let [applied (into {} (filter (fn [[k v]] (and (not (@signals k)) (some? v)))
                                  (with-orientation tag props)))]
-    ((:apply (spec-for tag)) widget applied)
+    ((:apply (spec-for! tag)) widget applied)
     (apply-widget-props! widget applied)))
 
 (defn show!
