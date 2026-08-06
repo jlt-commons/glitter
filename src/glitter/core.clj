@@ -363,7 +363,7 @@
                   :glitter/life-cycle life-cycle
                   :glitter/node node
                   :glitter/remember (fn remember [memory]
-                                        (r/remember renderer node memory))}
+                                      (r/remember renderer node memory))}
            details
            (assoc :glitter/details details)
 
@@ -597,7 +597,7 @@
                        (get-hiccup-headers nil)))
                 (->> [:div {:data-glitter-error "Alias threw exception"
                             :data-glitter-exception #?(:clj (.getMessage e)
-                                                         :cljs (.-message e))
+                                                       :cljs (.-message e))
                             :data-glitter-sexp (pr-str (hiccup/sexp headers))}]
                      (get-hiccup-headers nil)))))))))
 
@@ -1061,3 +1061,14 @@
      :unmount-hooks (:unmount-hooks impl)}))
 
 (assert/configure)
+
+(defn set-dispatch!
+  "Register a global dispatch function for event handlers and life-cycle
+  hooks that are data rather than functions — glitter's equivalent of
+  replicant.dom/set-dispatch!. replicant.core itself has no such function
+  (only *dispatch*, the dynamic var it reads); this is new code, not a
+  port, mirroring replicant.dom's one-liner. Uses alter-var-root (not
+  set!, which only affects an active `binding` scope) since this is
+  called once at app startup with no enclosing binding."
+  [f]
+  (alter-var-root #'*dispatch* (constantly f)))
