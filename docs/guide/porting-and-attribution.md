@@ -48,16 +48,23 @@ mechanical port:
 Same author/org as glitter, no license file, no attribution obligation —
 listed here for provenance, not legal requirement:
 
-- `glitter.ffi` — forked from `glimmer.ffi`, plus four new bindings:
-  `g-signal-handler-disconnect`, `gtk-box-insert-child-after`,
-  `gtk-label-get-text`, `gtk-widget-get-prev-sibling`.
+- `glitter.ffi` — forked from `glimmer.ffi`, plus the original four new
+  bindings (`g-signal-handler-disconnect`, `gtk-box-insert-child-after`,
+  `gtk-label-get-text`, `gtk-widget-get-prev-sibling`) and seven more for
+  `:scale` (`gtk-scale-new-with-range`, `gtk-scale-set-digits`,
+  `gtk-scale-set-draw-value`, `gtk-range-set-value`, `gtk-range-get-value`,
+  `gtk-range-set-range`, `gtk-range-set-increments`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
-  `signal-name`, `signal-value-fn`, `suppressing?` as new public accessors,
-  and one behavioral deviation: `replace-child!`'s `:box` branch captures
-  the old child's previous sibling via `gtk_widget_get_prev_sibling` and
-  re-inserts via `gtk_box_insert_child_after`, where glimmer used
-  `gtk_box_remove` + `gtk_box_append` — `append` always lands at the *end*
-  of the box, which silently relocates any non-final child. See
+  `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
+  the `:scale` widget spec (a first-party demonstration of the
+  value-bearing custom-signal path — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal))
+  as new public accessors, and one behavioral deviation: `replace-child!`'s
+  `:box` branch captures the old child's previous sibling via
+  `gtk_widget_get_prev_sibling` and re-inserts via
+  `gtk_box_insert_child_after`, where glimmer used `gtk_box_remove` +
+  `gtk_box_append` — `append` always lands at the *end* of the box, which
+  silently relocates any non-final child. See
   [`gtk-widget-layer.md`](gtk-widget-layer.md) for why this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`

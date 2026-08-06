@@ -48,6 +48,7 @@ failure:
 | `jolt replace-child` | a replaced child stays at its position, not the end |
 | `jolt aliased` | aliases expand through the real renderer, on mount and update |
 | `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread |
+| `jolt scale-smoke` | `:scale`'s `value-changed` signal delivers the right double, no spurious dispatch on programmatic sync |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -130,9 +131,10 @@ rationale on both.
 
 ## Status
 
-Early. Widget set matches whatever `glitter.widget` forked from glimmer at
-the time (window/box/button/label/entry/checkbutton/separator/frame/scrolled).
-No animated mount/unmount transitions, no GTK CSS class/style wiring yet —
+Early. Widget set: window/box/button/label/entry/checkbutton/separator/
+frame/scrolled (forked from glimmer) plus `:scale` (a slider — first-party,
+added directly to glitter; see `docs/guide/gtk-widget-layer.md`). No
+animated mount/unmount transitions, no GTK CSS class/style wiring yet —
 see `NOTICE.md`'s file-by-file notes for exactly what's ported vs. new.
 
 Known v1 limitations:

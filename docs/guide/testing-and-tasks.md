@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Five examples under `examples/glitter/` each open a real GTK window,
+Six examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -66,6 +66,7 @@ on mismatch:
 | `jolt replace-child` | a replaced child stays at its position, not the end | same live-walk approach, asserting position survived the swap |
 | `jolt aliased` | aliases expand through the real renderer, on mount and update | mounts hiccup using a registered alias, confirms the expanded (not aliased) tag actually reached GTK |
 | `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread | mutates from inside a `future`, records which thread `view` ran on, asserts it's the GTK main thread — see [`app-loop-and-threading.md`](app-loop-and-threading.md) |
+| `jolt scale-smoke` | `:scale`'s `value-changed` signal delivers the right double, and a programmatic state sync doesn't cause a spurious second dispatch | a real FFI `gtk_range_set_value` call simulates a live drag (bypassing `set-scale-value!`), asserting the dispatched double and the dispatch count both before and after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo

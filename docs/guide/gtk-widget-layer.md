@@ -200,6 +200,66 @@ first child" — `insert-child-after` with a null sibling arg inserts at the
 front, which is exactly the desired position. `examples/glitter/replace_child.clj`
 pins this.
 
+## `:scale` — the first-party value-bearing custom signal
+
+Every widget so far routes `:on {:click ...}`-style handlers through
+`glitter.widget`'s pre-registered `signals`/`signal-value` tables
+(`:on-click`, `:on-change`, `:on-activate`, `:on-toggled`). `:scale` (a
+slider, `GtkScale`/`GtkRange`) adds a fifth, `:on-value-changed ->
+"value-changed"`, and is the first widget beyond entry's built-in
+`:change` to carry a value through `signal-value`'s value-fn mechanism —
+concretely exercising the extension path `register-signal!`'s own
+docstring describes for third parties, using the exact same registration
+shape (baked into the initial atom literals rather than a runtime
+`register-signal!` call, matching the other four):
+
+```clojure
+(def signals
+  (atom {:on-click          "clicked"
+         :on-change         "changed"
+         :on-activate       "activate"
+         :on-toggled        "toggled"
+         :on-value-changed  "value-changed"}))
+
+(def ^:private signal-value
+  (atom {"changed"       (fn [widget] (g/gtk-editable-get-text widget))
+         "value-changed" (fn [widget] (g/gtk-range-get-value widget))}))
+```
+
+`gtk_scale_new_with_range(orientation, min, max, step)` constructs its own
+internal `GtkAdjustment` — no separate adjustment binding was needed. The
+same construct-before-`GtkOrientation`-is-registered concern `box-spec`/
+`separator-spec` already handle applies here too (see
+[`architecture.md`](architecture.md)'s discussion of enum resolution
+timing): `:ctor` builds horizontal (the raw `0` — verified against `gtk/
+gtkenums.h`'s `GtkOrientation` ordinal, `GTK_ORIENTATION_HORIZONTAL` is the
+first member) and `:apply` corrects it via `->orientation` once the widget
+exists.
+
+`set-scale-value!` follows `set-entry-text!`/`set-checkbutton-active!`'s
+established set-compare-suppress shape exactly — set only when the value
+actually differs, bracketed by the `suppressing` guard so the reconciler
+feeding `:value` back on every render can't loop
+`set_value -> value-changed -> dispatch -> re-render -> set_value`:
+
+```clojure
+(defn- set-scale-value! [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-range-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-range-set-value widget (double value))
+    (swap! suppressing disj widget)))
+```
+
+Verified live end-to-end (`examples/glitter/scale_smoke.clj`, which pins
+all three): a real drag (simulated via a direct `gtk_range_set_value` FFI
+call, bypassing `set-scale-value!` so the actual `"value-changed"` signal
+fires) reaches `*dispatch*` with the correct double at
+`(get-in event [:glitter/dom-event :glitter/value])`; a subsequent
+state-driven re-render pushes the new value back onto the live widget; and
+that programmatic push does **not** trigger a second, spurious dispatch —
+confirming the suppressing guard works for this widget exactly as it does
+for entry and checkbutton.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

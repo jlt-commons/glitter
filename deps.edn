@@ -36,7 +36,8 @@
            :replace-child {:extra-paths ["examples"] :main-opts ["-m" "glitter.replace-child"]}
            :aliased {:extra-paths ["examples"] :main-opts ["-m" "glitter.aliased"]}
            :main-thread-smoke {:extra-paths ["examples"]
-                               :main-opts ["-m" "glitter.main-thread-smoke"]}}
+                               :main-opts ["-m" "glitter.main-thread-smoke"]}
+           :scale-smoke {:extra-paths ["examples"] :main-opts ["-m" "glitter.scale-smoke"]}}
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"
@@ -45,4 +46,5 @@
          keyed   "jolt -M:keyed"
          replace-child "jolt -M:replace-child"
          aliased "jolt -M:aliased"
-         main-thread-smoke "jolt -M:main-thread-smoke"}}
+         main-thread-smoke "jolt -M:main-thread-smoke"
+         scale-smoke "jolt -M:scale-smoke"}}

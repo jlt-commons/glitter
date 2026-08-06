@@ -149,12 +149,16 @@
 ;; event keyword -> GTK signal name. A handler has the GTK signature
 ;; void(widget, user_data); our callable ignores both args and invokes the
 ;; captured jolt handler, so one table covers every widget type. An atom so
-;; extensions (glitter-gl's :scale) can add events via register-signal!.
+;; third-party extensions can add events via register-signal! without editing
+;; this ns; :on-value-changed (scale's slider-drag signal) is a first-party
+;; entry here, same as the other four — see signal-value below for its
+;; value-fn.
 (def signals
-  (atom {:on-click     "clicked"
-         :on-change    "changed"
-         :on-activate  "activate"
-         :on-toggled   "toggled"}))
+  (atom {:on-click          "clicked"
+         :on-change         "changed"
+         :on-activate       "activate"
+         :on-toggled        "toggled"
+         :on-value-changed  "value-changed"}))
 
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
@@ -162,7 +166,7 @@
 ;; they read; the :apply closures below call them, so declare them here. A
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
-(declare set-entry-text! set-checkbutton-active!)
+(declare set-entry-text! set-checkbutton-active! set-scale-value!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -244,8 +248,37 @@
    :apply    (fn [_ _])
    :container :scrolled})
 
+(defn- scale-spec []
+  ;; gtk_scale_new_with_range needs orientation + an initial min/max/step at
+  ;; construction time — unlike box/separator, there's no cheap "construct
+  ;; then correct orientation later" split, because min/max/step aren't
+  ;; GtkOrientable-style properties re-settable after the fact independent of
+  ;; the initial range. Construct horizontal by default (same
+  ;; construct-before-GtkOrientation-is-registered concern as box/separator —
+  ;; the raw int 0 is GTK_ORIENTATION_HORIZONTAL, verified against gtk/
+  ;; gtkenums.h) with :min/:max/:step falling back to a plain 0-100-by-1
+  ;; range if the caller doesn't set them; :apply then re-ranges via
+  ;; gtk_range_set_range/set_increments on every render if they change, same
+  ;; as box's :apply corrects orientation once GtkOrientation is live.
+  {:ctor  (fn [p]
+            (g/gtk-scale-new-with-range 0
+                                        (double (or (:min p) 0))
+                                        (double (or (:max p) 100))
+                                        (double (or (:step p) 1))))
+   :apply (fn [w p]
+            (when (contains? p :orientation)
+              (g/gtk-orientable-set-orientation w (->orientation (:orientation p))))
+            (when (or (contains? p :min) (contains? p :max))
+              (g/gtk-range-set-range w (double (or (:min p) 0)) (double (or (:max p) 100))))
+            (when (contains? p :step)
+              (g/gtk-range-set-increments w (double (:step p)) (double (:step p))))
+            (when (contains? p :value)       (set-scale-value! w (:value p)))
+            (when (contains? p :digits)      (g/gtk-scale-set-digits w (:digits p)))
+            (when (contains? p :draw-value)  (g/gtk-scale-set-draw-value w (->bool (:draw-value p)))))
+   :container :none})
+
 ;; hiccup tag -> widget spec. An atom so extensions register new widget types
-;; (glitter-gl's :gl-area, :scale) via register-widget! without editing this ns.
+;; via register-widget! without editing this ns.
 (def specs
   (atom {:window      (window-spec)
          :box         (box-spec)
@@ -255,7 +288,8 @@
          :checkbutton (checkbutton-spec)
          :separator   (separator-spec)
          :frame       (frame-spec)
-         :scrolled    (scrolled-spec)}))
+         :scrolled    (scrolled-spec)
+         :scale       (scale-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -342,17 +376,33 @@
       (g/gtk-checkbutton-set-active widget target)
       (swap! suppressing disj widget))))
 
+(defn- set-scale-value!
+  "Set a scale's value, but only when it differs from the widget's current
+  value, and while suppressing the :on-value-changed handler for the
+  synchronous 'value-changed' emission gtk_range_set_value causes. Same
+  set-compare-suppress shape as set-entry-text!/set-checkbutton-active! —
+  without it, feeding the reconciled :value back on every render would loop
+  set_value -> value-changed -> dispatch -> re-render -> set_value."
+  [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-range-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-range-set-value widget (double value))
+    (swap! suppressing disj widget)))
+
 ;; Which signals carry a value the handler wants: GTK signal name -> (fn [widget] value).
-;; An atom so an extension can register a value-bearing signal (e.g. a slider's
-;; "value-changed" delivering the current double) without editing this table.
+;; An atom so a third-party extension can register a value-bearing signal
+;; without editing this table. "value-changed" (scale's slider drag) is the
+;; second first-party entry here, reading the current double back via
+;; gtk_range_get_value — GtkScale extends GtkRange and inherits its API.
 (def ^:private signal-value
-  (atom {"changed" (fn [widget] (g/gtk-editable-get-text widget))}))
+  (atom {"changed"       (fn [widget] (g/gtk-editable-get-text widget))
+         "value-changed" (fn [widget] (g/gtk-range-get-value widget))}))
 
 (defn register-signal!
   "Register an :on-* event key -> GTK signal name. With `value-fn` (a widget ->
   value fn) the handler is called with that value instead of zero args — used by
-  value-bearing widgets (e.g. glitter-gl's :scale slider). Lets extensions add
-  widget events without editing glitter.widget."
+  value-bearing widgets (e.g. :scale's slider, see signal-value above). Lets
+  extensions add widget events without editing glitter.widget."
   ([event gtk-signal] (register-signal! event gtk-signal nil))
   ([event gtk-signal value-fn]
    (swap! signals assoc event gtk-signal)

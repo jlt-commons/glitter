@@ -3,7 +3,7 @@
 ;;   bb test                run the unit suite (jolt -M:test)
 ;;   bb counter              interactive counter demo (state atom + action dispatch)
 ;;   bb todo                 interactive task-board demo (derived counts, entry, checkbuttons)
-;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke
+;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke | scale-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
@@ -42,6 +42,7 @@
           (row "replace-child" "a replaced child stays at its position, not the end")
           (row "aliased" "aliases expand through the real renderer, on mount and update")
           (row "main-thread-smoke" "an off-main-thread swap! renders ON the GTK main thread")
+          (row "scale-smoke" "GtkScale's value-changed signal delivers the right double, no spurious dispatch")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -87,12 +88,16 @@
   main-thread-smoke {:doc "Live-GTK smoke: an off-main-thread swap! renders ON the GTK main thread"
                      :task (shell "jolt" "-M:main-thread-smoke")}
 
+  scale-smoke {:doc "Live-GTK smoke: GtkScale's value-changed signal delivers the right double, no spurious dispatch"
+               :task (shell "jolt" "-M:scale-smoke")}
+
   smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
           :task (do (shell "jolt" "-M:smoke")
                     (shell "jolt" "-M:keyed")
                     (shell "jolt" "-M:replace-child")
                     (shell "jolt" "-M:aliased")
-                    (shell "jolt" "-M:main-thread-smoke"))}
+                    (shell "jolt" "-M:main-thread-smoke")
+                    (shell "jolt" "-M:scale-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings

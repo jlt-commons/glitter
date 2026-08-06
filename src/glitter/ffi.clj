@@ -153,6 +153,19 @@
 (ffi/defcfn gtk-scrolled-window-set-propagate-natural-width
   "gtk_scrolled_window_set_propagate_natural_width" [:pointer :int] :void)
 
+;; --- scale (slider) -----------------------------------------------------------
+;; gtk_scale_new_with_range builds its own internal GtkAdjustment, so no
+;; separate GtkAdjustment binding is needed here — the get/set-value and
+;; set-range/set-increments calls below are GtkRange's API (GtkScale extends
+;; GtkRange and inherits it), operating on that internal adjustment directly.
+(ffi/defcfn gtk-scale-new-with-range "gtk_scale_new_with_range" [:int :double :double :double] :pointer)
+(ffi/defcfn gtk-scale-set-digits     "gtk_scale_set_digits"     [:pointer :int] :void)
+(ffi/defcfn gtk-scale-set-draw-value "gtk_scale_set_draw_value" [:pointer :int] :void)
+(ffi/defcfn gtk-range-set-value      "gtk_range_set_value"      [:pointer :double] :void)
+(ffi/defcfn gtk-range-get-value      "gtk_range_get_value"      [:pointer] :double)
+(ffi/defcfn gtk-range-set-range      "gtk_range_set_range"      [:pointer :double :double] :void)
+(ffi/defcfn gtk-range-set-increments "gtk_range_set_increments" [:pointer :double :double] :void)
+
 ;; --- signals & reference counting (libgobject) -------------------------------
 ;; g_signal_connect_data(instance, detailed_signal, c_handler, data, destroy_data, flags)
 ;; Returns the handler id (a gulong). destroy_data is a GClosureNotify fn ptr —
