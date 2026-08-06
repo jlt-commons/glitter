@@ -67,3 +67,25 @@ The following files are original to glitter:
 - `src/glitter/env.clj` — Jolt/GTK-specific environment detection (not a port of replicant.env, which concerns ClojureScript compiler presence/optimization — irrelevant to Jolt)
 - `src/glitter/gtk.clj` — IRender/IMemory GTK4 backend and state-atom mount/render wiring
 - `src/glitter/test_renderer.clj` — in-memory fake IRender/IMemory for headless reconciler tests (inspired by replicant's mutation_log.cljc, separately implemented)
+
+## b12n-adk-clj / b12n-rljlt
+
+Same author/org as glitter (private repos, no license file, no attribution
+obligation, listed here for provenance only):
+
+- `scripts/check_positional_args.clj` — `scripts/check_positional_args.clj`
+  from b12n-adk-clj, `source-dirs` retargeted to `src/glitter`; one
+  behavioural fix: `file-pattern` changed from the original's `"**/*.clj"`
+  to `"{*,**/*}.clj"` — verified live that babashka.fs/glob's `**` requires
+  at least one directory level, so the original pattern silently matches
+  only files in subdirectories and misses every file sitting directly in
+  `source-dirs` (glitter's `src/glitter` is flat, so the original pattern
+  would have found zero of its 17 files; the same bug affects b12n-adk-clj's
+  own copy, which has both flat and nested source files).
+- `.clj-kondo/hooks/jolt_ffi.clj` — `.clj-kondo/hooks/jolt_ffi.clj` from
+  b12n-rljlt (same `jolt.ffi/defcfn` macro, same false-positive problem);
+  one behavioural deviation: `:pointer` return values map to a number, not
+  `nil` — glitter.ffi's own ns docstring states pointers are "plain machine
+  addresses (jolt numbers)", and glitter.genum/glitter.widget call `zero?`
+  directly on `:pointer`-typed return values, which trips a spurious
+  `type-mismatch` against a nil-typed stub (see the hook's docstring).

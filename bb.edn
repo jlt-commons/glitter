@@ -6,8 +6,14 @@
 ;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
+;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
+;;   bb lsp:format | lsp:format-check       clojure-lsp format (mutate | dry-run)
+;;   bb lsp:clean-ns | lsp:clean-ns-check   clojure-lsp clean-ns (mutate | dry-run)
+;;   bb check:positional-args | :strict     find fns with 3+ positional args
+;;   bb verify                lint (report) + test (must pass) — pre-commit gate
+;;   bb nrepl [port]           start a jolt nREPL server (default 7888)
 ;; NOTE: task bodies are EDN-parsed — no #"regex", @deref, or #(...) reader macros.
-;; NOTE: every task below shells out to `jolt -M:<alias>`, never the deps.edn
+;; NOTE: every jolt task below shells out to `jolt -M:<alias>`, never the deps.edn
 ;; `jolt <task>` shorthand — verified against jolt v0.6.3, the task form does not
 ;; propagate its child process's exit status, so a failing smoke would print FAIL
 ;; on stdout and still exit 0 (see README's CI note). `-M:<alias>` exits correctly.
@@ -18,10 +24,11 @@
         (let [esc (str (char 27) "[")
               col (fn [c s] (str esc c "m" s esc "0m"))
               hdr (fn [s] (println (str "\n" (col "35" (str "── " s " ──")))))
-              row (fn [t d] (println (str "  " (col "36" (format "%-22s" (str "bb " t))) d)))]
+              row (fn [t d] (println (str "  " (col "36" (format "%-33s" (str "bb " t))) d)))]
           (println (col "1;35" "\nglitter — Replicant-style GTK4 renderer for Jolt"))
           (hdr "Verify")
           (row "test" "run the unit suite (jolt -M:test)")
+          (row "verify" "lint (report) + test (must pass) — pre-commit gate")
           (hdr "Run")
           (row "counter" "interactive demo: state atom + action dispatch")
           (row "todo" "interactive demo: derived counts, entry, checkbuttons")
@@ -32,6 +39,17 @@
           (row "aliased" "aliases expand through the real renderer, on mount and update")
           (row "main-thread-smoke" "an off-main-thread swap! renders ON the GTK main thread")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
+          (hdr "Quality — lint/format/checks")
+          (row "lint" "clj-kondo over glitter-authored code (report only)")
+          (row "lint:strict" "bb lint, but exit non-zero if any findings")
+          (row "lsp:format" "reformat all Clojure files (clojure-lsp)")
+          (row "lsp:format-check" "check formatting — dry run")
+          (row "lsp:clean-ns" "clean + organize ns forms (clojure-lsp)")
+          (row "lsp:clean-ns-check" "check ns forms — dry run")
+          (row "check:positional-args" "find fns with 3+ positional args (report only)")
+          (row "check:positional-args:strict" "bb check:positional-args, but exit non-zero if any found")
+          (hdr "Dev")
+          (row "nrepl [port]" "start a jolt nREPL server (default 7888)")
           (println (str "\n" (col "2" "first run: bb test, then bb counter  ·  CI gate: bb test && bb smokes"))))}
 
   test {:doc "Run the unit suite"
@@ -63,4 +81,83 @@
                     (shell "jolt" "-M:keyed")
                     (shell "jolt" "-M:replace-child")
                     (shell "jolt" "-M:aliased")
-                    (shell "jolt" "-M:main-thread-smoke"))}}}
+                    (shell "jolt" "-M:main-thread-smoke"))}
+
+  ;; --- Quality: lint / format / positional-args ---------------------------
+  ;; clj-kondo is scoped to glitter-authored code (glitter.ffi/widget/genum/
+  ;; app/env/gtk/test-renderer + test/ + examples/), NOT the Bucket-1 files
+  ;; ported verbatim from Replicant (glitter.core, glitter.alias, etc.).
+  ;; Those files deliberately keep #?(:clj :cljs) reader conditionals in a
+  ;; .clj extension (a mechanical sed rename from Replicant's .cljc, not a
+  ;; bug — see docs/guide/porting-and-attribution.md), which clj-kondo
+  ;; permanently flags as "Reader conditionals are only allowed in .cljc
+  ;; files" — an unfixable false positive for this specific porting
+  ;; strategy, not a real defect, and not worth a lint config exclusion
+  ;; that could also hide a real one. .clj-kondo/config.edn's hook still
+  ;; covers the whole project (fixes jolt.ffi/defcfn + glitter.alias/
+  ;; defalias false positives everywhere, including in the ported files).
+  lint {:doc "clj-kondo over glitter-authored code (report only, always exits 0)"
+        :task (let [{:keys [exit]}
+                    (shell {:continue true} "clj-kondo" "--lint"
+                           "src/glitter/ffi.clj" "src/glitter/widget.clj"
+                           "src/glitter/genum.clj" "src/glitter/app.clj"
+                           "src/glitter/env.clj" "src/glitter/gtk.clj"
+                           "src/glitter/test_renderer.clj" "test" "examples")]
+                (println (if (zero? exit) "OK lint: clean" "!! lint: see findings above")))}
+
+  lint:strict {:doc "bb lint, but exit non-zero if clj-kondo reports any findings"
+               :task (let [{:keys [exit]}
+                           (shell {:continue true} "clj-kondo" "--lint"
+                                  "src/glitter/ffi.clj" "src/glitter/widget.clj"
+                                  "src/glitter/genum.clj" "src/glitter/app.clj"
+                                  "src/glitter/env.clj" "src/glitter/gtk.clj"
+                                  "src/glitter/test_renderer.clj" "test" "examples")]
+                       (System/exit exit))}
+
+  lsp:format {:doc "Reformat all Clojure files (clojure-lsp)"
+              :task (let [{:keys [exit]} (shell {:continue true} "clojure-lsp" "format")]
+                      (if (zero? exit)
+                        (println "OK formatted")
+                        (do (println "!! format failed") (System/exit exit))))}
+
+  lsp:format-check {:doc "Check formatting (dry run)"
+                    :task (let [{:keys [exit]} (shell {:continue true} "clojure-lsp" "format" "--dry")]
+                            (if (zero? exit)
+                              (println "OK all files formatted")
+                              (do (println "!! files need formatting — run bb lsp:format")
+                                  (System/exit exit))))}
+
+  lsp:clean-ns {:doc "Clean + organize ns forms (clojure-lsp)"
+                :task (let [{:keys [exit]} (shell {:continue true} "clojure-lsp" "clean-ns")]
+                        (if (zero? exit)
+                          (println "OK namespaces cleaned")
+                          (do (println "!! clean-ns failed") (System/exit exit))))}
+
+  lsp:clean-ns-check {:doc "Check ns forms (dry run)"
+                      :task (let [{:keys [exit]} (shell {:continue true} "clojure-lsp" "clean-ns" "--dry")]
+                              (if (zero? exit)
+                                (println "OK all ns forms clean")
+                                (do (println "!! ns forms need cleaning — run bb lsp:clean-ns")
+                                    (System/exit exit))))}
+
+  check:positional-args {:doc "Find fns with 3+ positional args (prefer a kwargs map)"
+                         :task (let [{:keys [exit]} (shell {:continue true} "bb" "scripts/check_positional_args.clj")]
+                                 (System/exit exit))}
+
+  check:positional-args:strict {:doc "check:positional-args, but fail (exit 1) if any found"
+                                :task (let [{:keys [exit]} (shell {:continue true} "bb" "scripts/check_positional_args.clj" "--strict")]
+                                        (System/exit exit))}
+
+  verify {:doc "Pre-commit gate: lint (report only) + test (must pass)"
+          :task (do (println "-> verify: lint + test")
+                    (shell {:continue true} "clj-kondo" "--lint"
+                           "src/glitter/ffi.clj" "src/glitter/widget.clj"
+                           "src/glitter/genum.clj" "src/glitter/app.clj"
+                           "src/glitter/env.clj" "src/glitter/gtk.clj"
+                           "src/glitter/test_renderer.clj" "test" "examples")
+                    (shell "jolt" "-M:test")
+                    (println "OK verify passed"))}
+
+  ;; --- Dev & REPL -----------------------------------------------------------
+  nrepl {:doc "Start a jolt nREPL server for interactive dev: bb nrepl [port] (default 7888)"
+         :task (shell "jolt" "nrepl-server" (or (first *command-line-args*) "7888"))}}}

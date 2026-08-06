@@ -1,0 +1,16 @@
+;; clj-kondo configuration for glitter.
+;;
+;; jolt.ffi/defcfn defines a var per bound C symbol. clj-kondo cannot see
+;; through the macro, so hooks/jolt_ffi.clj rewrites each call into an
+;; equivalent `defn` — see that file for why. Without it the suite reports
+;; ~190 false positives (every gtk-*/g-* binding in glitter.ffi, plus every
+;; call site through the g/ alias) and the linter is unusable as a gate.
+{:hooks {:analyze-call {jolt.ffi/defcfn hooks.jolt-ffi/defcfn}}
+
+ ;; glitter.alias/defalias registers `name` to a keyword AND defs it, with
+ ;; an argument vector + body shape matching defn closely enough that
+ ;; :lint-as (no custom hook needed) resolves the defined var and its
+ ;; destructured params correctly — without this, every defalias site
+ ;; reports 3 false "Unresolved symbol" errors (the alias name at its own
+ ;; call sites, plus every destructured arg inside the body).
+ :lint-as {glitter.alias/defalias clojure.core/defn}}

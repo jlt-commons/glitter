@@ -1,2 +1,6 @@
 .cpcache/
 *.dylib
+.clj-kondo/.cache/
+.clj-kondo/imports/
+.lsp/.cache/
+.nrepl-port

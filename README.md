@@ -73,6 +73,28 @@ bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure
 deps.edn `jolt <task>` shorthand), so `bb test` and `bb smokes` exit non-zero
 on failure and are safe to use as a CI gate.
 
+### Quality tooling
+
+```
+bb lint                          # clj-kondo over glitter-authored code (report only)
+bb lint:strict                    # same, but exits non-zero if anything is found
+bb lsp:format / lsp:format-check  # reformat, or check formatting (dry run)
+bb lsp:clean-ns / lsp:clean-ns-check  # organize ns forms, or check (dry run)
+bb check:positional-args / :strict    # find fns with 3+ positional args (prefer a kwargs map)
+bb verify                         # pre-commit gate: lint (report) + test (must pass)
+```
+
+`clj-kondo`/`clojure-lsp` both need `.clj-kondo/hooks/jolt_ffi.clj` (an
+`analyze-call` hook rewriting `jolt.ffi/defcfn` into an equivalent `defn`,
+adapted from [b12n-rljlt](https://github.com/burinc/b12n-rljlt)) to see
+through the FFI-binding macro — without it every `gtk-*`/`g-*` name in
+`glitter.ffi` and every call site through the `g/` alias reports as
+unresolved. `bb lint` deliberately scopes to glitter-authored code (not the
+files ported verbatim from Replicant, which keep intentional `#?(:clj
+:cljs)` reader conditionals in a `.clj` extension — a permanent, harmless
+false positive for that specific porting strategy, not a real defect); see
+`docs/guide/testing-and-tasks.md` for the full rationale.
+
 ## Architecture
 
 - `glitter.core`, `glitter.protocols`, `glitter.hiccup*`, `glitter.vdom`,

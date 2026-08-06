@@ -111,3 +111,106 @@ CI gate on their own. `bb smokes` chains all five smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.
+
+## Quality tooling: lint, format, positional-args
+
+```
+bb lint                          # clj-kondo, glitter-authored code (report only)
+bb lint:strict                    # same, exits non-zero if anything is found
+bb lsp:format / lsp:format-check  # clojure-lsp reformat, or dry-run check
+bb lsp:clean-ns / lsp:clean-ns-check  # clojure-lsp ns cleanup, or dry-run check
+bb check:positional-args / :strict    # fns with 3+ positional args (report | gate)
+bb verify                         # pre-commit gate: lint (report) + test (must pass)
+```
+
+Adapted from sibling Jolt/FFI projects in the same author's umbrella
+(`b12n-adk-clj` for the positional-args script, `b12n-rljlt` for the
+clj-kondo hook — see `NOTICE.md`), not written from scratch, because both
+needed the same fix for the same underlying problem: **`jolt.ffi/defcfn`
+is a macro clj-kondo cannot see through.**
+
+```clojure
+(ffi/defcfn gtk-box-new "gtk_box_new" [:int :int] :pointer)
+```
+
+Without a hook, clj-kondo has no idea `gtk-box-new` is a defined var — every
+one of `glitter.ffi`'s ~90 bindings reports as `Unresolved symbol`, and
+every call site through the `g/` alias (`glitter.widget`, `glitter.gtk`,
+`glitter.app`, `glitter.genum`) reports as `Unresolved var`. Scoped to just
+the forked+new source files plus `test`/`examples`, that's 75 errors + 83
+warnings — enough noise to make the linter worthless as a signal.
+`.clj-kondo/hooks/jolt_ffi.clj` fixes this by rewriting each `defcfn` call
+into an equivalent `defn` of the same name, same arity (derived from the
+declared C argument-type vector), and an inferred return type (derived from
+the declared C return type) — clj-kondo then sees a real var with the right
+shape and stops flagging it.
+
+**One adaptation beyond the b12n-rljlt original**: `:pointer` return values
+map to a *number* here, not `nil`. rljlt's raylib pointers are opaque
+handles only ever passed to other untyped `ffi/*` calls, so mapping them to
+`nil` cost nothing there. glitter.ffi's own ns docstring states pointers
+are "plain machine addresses (jolt numbers)", and the codebase relies on
+this directly — `glitter.genum`/`glitter.widget` call `zero?` on
+`:pointer`-typed return values (e.g. checking whether a GEnum lookup or a
+`gtk_widget_get_prev_sibling` call returned a null pointer). Mapping
+`:pointer` to `nil` there produced two spurious `type-mismatch` findings
+("Expected: number, received: nil") against code that was already correct.
+
+`glitter.alias/defalias` needed a second, smaller fix — `:lint-as
+{glitter.alias/defalias clojure.core/defn}` in `.clj-kondo/config.edn`.
+`defalias`'s shape (`name [argvec] body...`) is close enough to `defn`'s
+that telling clj-kondo to analyze it *as* a `defn` call resolves both the
+defined name and the destructured params, with no custom hook needed.
+
+**Why `bb lint` is scoped to specific files, not all of `src/`.** The files
+ported verbatim from Replicant (`glitter.core`, `glitter.alias`, etc. — see
+[`porting-and-attribution.md`](porting-and-attribution.md)) deliberately
+keep `#?(:clj :cljs)` reader conditionals in a `.clj` extension, a
+mechanical sed rename from Replicant's original `.cljc`. Standard Clojure
+tooling — clj-kondo included — restricts reader conditionals to `.cljc`
+files, so every one of those forms is a permanent `error: [syntax] Reader
+conditionals are only allowed in .cljc files` finding. This is real syntax
+Jolt itself parses and runs correctly (`jolt -M:test` proves that far more
+rigorously than static analysis could); it is simply not the syntax
+clj-kondo expects from a `.clj` extension. There is no config-level fix —
+`"syntax"`-class findings aren't gated by `:linters` levels the way
+ordinary lint warnings are — so `bb lint`/`bb lint:strict`/`bb verify`
+scope their targets to the files that don't carry this permanent, known,
+harmless noise: `glitter.ffi`, `glitter.widget`, `glitter.genum`,
+`glitter.app`, `glitter.env`, `glitter.gtk`, `glitter.test-renderer`, plus
+`test/` and `examples/`.
+
+**Why `bb lint` never fails by default.** Even within that scoped file set,
+clj-kondo currently reports 2 warnings that are legitimate style opinions,
+not false positives: a `missing-else-branch` on a deliberate throw-only
+guard in `glitter.widget/markup-validate-element!`, and one genuinely
+unused private helper in `test/glitter/core_test.clj`. Neither is worth a
+config exclusion (that risks hiding a *real* future instance of either),
+but neither should permanently block a gate either — so `bb lint` reports
+and always exits 0, while `bb lint:strict` propagates clj-kondo's real exit
+code for anyone who wants a hard local check. `bb verify` mirrors this
+split: lint is informational, only the test suite gates.
+
+**Why `check:positional-args`'s `exceptions` set is empty despite 32
+current findings.** Running it against glitter's own `src/glitter/` finds
+32 functions with 3+ positional args, almost entirely in two legitimate
+categories: `glitter.core` internals mirroring Replicant's exact upstream
+signatures (changing them would break porting parity), and
+`glitter.widget`'s container-management fns (`append-child!`,
+`reorder-child!`, `replace-child!`, ...) mirroring GTK's own C API
+argument order. Pre-populating `exceptions` with all 32 names would defeat
+the check's purpose; instead it stays non-strict by default (matches
+b12n-adk-clj's own convention) and a human judges each new finding as it
+appears, rather than a static list silently absorbing whatever's already
+there.
+
+**A real bug the b12n-adk-clj original script has, caught while
+adapting it**: its `file-pattern` was `"**/*.clj"`, verified live that
+`babashka.fs/glob`'s `**` requires at least one directory level — so it
+silently matches files in subdirectories only. glitter's `src/glitter/` is
+flat (17 files, no subdirectories), so the original pattern would have
+found *zero* of them. b12n-adk-clj's own `src/net/b12n/adk/` is a mix of 18
+flat files and 2 nested ones — meaning its own `check:positional-args` task
+has likely only ever checked those 2 nested files. glitter's copy uses
+`"{*,**/*}.clj"` instead, which matches both flat and nested files
+(verified: 17 files found in glitter, vs. 0 with the original pattern).
