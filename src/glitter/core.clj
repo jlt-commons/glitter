@@ -501,10 +501,18 @@
       :style (update-styles renderer el (:style new) (:style old))
       :classes (update-classes renderer el (:classes new) (:classes old))
       :on (update-event-listeners renderer el (:on new) (:on old))
-      (if-let [v (get new attr)]
-        (when (not= v (get old attr))
-          (set-attr-val renderer el attr v))
-        (r/remove-attribute renderer el (name attr))))))
+      ;; DEVIATION #3 from the pure Replicant port, human-approved during
+      ;; the final whole-branch review: if-let treats false as absent
+      ;; (correct for DOM, which has no disabled=false; wrong for GTK,
+      ;; where :sensitive/:active/etc. are real booleans with no absent
+      ;; state). some? correctly distinguishes explicit false (set it)
+      ;; from explicit/genuine nil (Replicant's own attribute-absent
+      ;; convention — remove it).
+      (let [v (get new attr)]
+        (if (some? v)
+          (when (not= v (get old attr))
+            (set-attr-val renderer el attr v))
+          (r/remove-attribute renderer el (name attr)))))))
 
 (defn update-attributes [renderer el new-attrs old-attrs]
   (->> (into (set (keys new-attrs)) (keys old-attrs))
@@ -542,12 +550,15 @@
       (set-attr-val renderer el attr (get new attr)))))
 
 (defn set-attributes [renderer el new-attrs]
+  ;; DEVIATION #3, continued (see update-attr) — some? instead of
+  ;; truthiness, so a prop that's false from the very first render is
+  ;; set correctly instead of silently skipped, consistent with update-attr.
   (run! (fn [[attr v]]
-          (when v
+          (when (some? v)
             (set-attr renderer el attr new-attrs))) (dissoc new-attrs :value :default-value))
-  (when (:value new-attrs)
+  (when (some? (:value new-attrs))
     (set-attr renderer el :value new-attrs))
-  (when (:default-value new-attrs)
+  (when (some? (:default-value new-attrs))
     (set-attr renderer el :default-value new-attrs)))
 
 (defn render-default-alias [tag-name _attrs children]
