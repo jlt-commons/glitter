@@ -73,3 +73,19 @@ Early. Widget set matches whatever `glitter.widget` forked from glimmer at
 the time (window/box/button/label/entry/checkbutton/separator/frame/scrolled).
 No animated mount/unmount transitions, no GTK CSS class/style wiring yet —
 see `NOTICE.md`'s file-by-file notes for exactly what's ported vs. new.
+
+Known v1 limitations:
+
+- **Removing an attribute entirely is a no-op.** Setting one to a new value
+  always works, including an explicit `false`, but GTK has no generic "unset
+  this property" the way `removeAttribute` does in the DOM, so dropping a key
+  from your hiccup leaves the widget's last value in place. A real fix needs
+  per-widget-type defaults in `glitter.widget`'s `:apply` closures.
+- **`mount!` is one-way.** It registers its watcher under a fixed key and
+  returns `nil`, so there is no unmount, and mounting twice against the same
+  state atom silently replaces the first watcher rather than running both.
+- **`IMemory` never releases.** `:glitter/remember` data is held in a
+  process-global map keyed by element, with no eviction on unmount. Fine for
+  the intended use (a value stashed on mount, read on update); don't lean on
+  it for anything long-lived or high-cardinality. Replicant's DOM backend
+  uses a `WeakMap` here; there is no equivalent yet.
