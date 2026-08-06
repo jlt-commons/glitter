@@ -6,9 +6,18 @@
 
   Lifecycle: create! builds a widget (constructs it, applies props, connects any
   :on-* handlers). apply-props! re-applies the prop map to an existing widget on
-  re-render. Signals are connected once at mount — handlers are expected to close
-  over reactive cells (not values), so the first render's closure stays correct
-  for the widget's life, exactly like reagent."
+  re-render.
+
+  Note on signals: this namespace was forked from glimmer, whose Reagent-style
+  model connects each signal ONCE at mount and lets the handler close over a
+  reactive cell, so the first render's closure stays correct for the widget's
+  life. glitter does NOT work that way. Its handlers are data, not closures,
+  and glitter.core's diff calls IRender/set-event-handler again whenever the
+  handler DATA changes between renders — so glitter.gtk connects and
+  disconnects signals itself (via signal-name + signal-value-fn +
+  g_signal_handler_disconnect) and never routes reconciler-driven events
+  through connect-signals! at all. connect-signals! remains for create!'s
+  direct-props path and for extensions."
   (:require [clojure.string :as str]
             [glitter.ffi :as g]
             [glitter.genum :as genum]
@@ -335,10 +344,11 @@
   \"clicked\"), or nil if unregistered. New relative to the glimmer original:
   glimmer's connect-signals! looks the signal name up internally and never
   exposes it, because it connects+wires in one call and never needs to
-  disconnect later. glitter's IRender/set-attribute + remove-event-handler
-  (Task 11) connect and disconnect as two separate calls (Replicant's diff
-  algorithm calls remove-event-handler when handler *data* changes between
-  renders, not just on unmount), so it needs the raw signal name to call
+  disconnect later. glitter.gtk's IRender/set-event-handler +
+  remove-event-handler connect and disconnect as two separate calls
+  (Replicant's diff calls set-event-handler again whenever the handler *data*
+  changes between renders, not just on unmount), so it needs the raw signal
+  name to call
   g_signal_connect_data / g_signal_handler_disconnect itself rather than going
   through connect-signals!, which discards the connection id."
   [event]
@@ -428,8 +438,15 @@
     widget))
 
 (defn apply-props!
-  "Re-apply the prop map to an existing widget (re-render path). Skips :on-* keys
-  (signals stay wired from mount) and keys whose value is nil."
+  "Re-apply the prop map to an existing widget (re-render path). Skips :on-*
+  keys (glitter.gtk owns signal lifecycle — see the ns docstring) and keys
+  whose value is nil. An explicit `false` IS applied: `some?`, not truthiness,
+  is the filter, because GTK booleans have no absent state.
+
+  Only keys PRESENT in `props` are touched — absent keys are never reset to
+  defaults, so this is safe to call with a single-key partial map like
+  {:label \"new text\"}, which is exactly how glitter.gtk's set-attribute
+  uses it."
   [tag widget props]
   (let [applied (into {} (filter (fn [[k v]] (and (not (@signals k)) (some? v)))
                                  (with-orientation tag props)))]
@@ -492,15 +509,13 @@
   (when (= :box (container-kind parent-tag))
     (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))))
 
-;; apply-props! only applies keys present in the passed map, never resets absent keys
-;; to defaults — safe to call with a single-key partial map like {:label "new text"}
 (defn insert-child-after!
   "Insert `child` into `parent` immediately after `sibling` (nil = insert as the
   first child). Only GtkBox supports positional insertion; the single-child
   containers (window/frame/scrolled) no-op — same container-kind gate as
   reorder-child!. New relative to the glimmer original: glimmer's own
   reconciler only ever appends (reorder-child! moves an EXISTING child), but
-  glitter's IRender/insert-before (Task 11) needs a genuine positional
+  glitter.gtk's IRender/insert-before needs a genuine positional
   insertion of a NEW child, which gtk_box_insert_child_after provides
   directly (glimmer never needed this because Reagent-style positional
   reconciliation never inserts into the middle of a live child list)."

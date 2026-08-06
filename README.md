@@ -51,8 +51,9 @@ build.
   — ported from [Replicant](https://github.com/cjohansen/replicant) (MIT,
   Christian Johansen). See `NOTICE.md`.
 - `glitter.ffi`, `glitter.widget`, `glitter.genum` — forked from
-  [glimmer](https://github.com/jolt-lang/glimmer).
-- `glitter.app`, `glitter.gtk`, `glitter.test-renderer` — new code specific
+  [glimmer](https://github.com/jolt-lang/glimmer). `glitter.app` is adapted
+  from the non-reactive app-loop slice of `glimmer.core`.
+- `glitter.gtk`, `glitter.test-renderer`, `glitter.env` — new code specific
   to glitter.
 
 Full design rationale: see the design spec this project shipped from (not

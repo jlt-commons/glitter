@@ -54,7 +54,7 @@ glitter — no license file, no attribution obligation, listed here for
 provenance only):
 
 - `src/glitter/ffi.clj` — `src/glimmer/ffi.clj` (+ g-signal-handler-disconnect, gtk-box-insert-child-after, gtk-label-get-text, gtk-widget-get-prev-sibling)
-- `src/glitter/widget.clj` — `src/glimmer/widget.clj` (+ insert-child-after!, signal-name)
+- `src/glitter/widget.clj` — `src/glimmer/widget.clj` (+ insert-child-after!, signal-name, signal-value-fn; one behavioural deviation: replace-child!'s :box branch captures old-child's previous sibling via gtk_widget_get_prev_sibling and re-inserts with gtk_box_insert_child_after, where glimmer used gtk_box_remove + gtk_box_append — append always lands at the END of the box, silently relocating any non-final child — see the fn's docstring)
 - `src/glitter/genum.clj` — `src/glimmer/genum.clj`
 - `src/glitter/app.clj` — adapted from `src/glimmer/core.clj`'s non-reactive app-loop functions (post-to-gui, on-gui, run*, run); mount/unmount!/reload!/live-root/make-rerender-watcher are NOT ported (glimmer-reconciler-specific)
 
@@ -65,5 +65,5 @@ provenance only):
 The following files are original to glitter:
 
 - `src/glitter/env.clj` — Jolt/GTK-specific environment detection (not a port of replicant.env, which concerns ClojureScript compiler presence/optimization — irrelevant to Jolt)
-- `src/glitter/gtk.clj` — IRender/IMemory GTK4 backend and state-atom mount/render wiring (Task 10)
+- `src/glitter/gtk.clj` — IRender/IMemory GTK4 backend and state-atom mount/render wiring
 - `src/glitter/test_renderer.clj` — in-memory fake IRender/IMemory for headless reconciler tests (inspired by replicant's mutation_log.cljc, separately implemented)

@@ -1,6 +1,7 @@
 (ns glitter.ffi
   "Raw C bindings for GTK4 + GLib/GObject/GIO. A thin defcfn layer — no logic.
-  The reactive toolkit is built on top of these in glitter.widget / glitter.core.
+  The widget layer is built on top of these in glitter.widget, and the
+  IRender/IMemory backend that drives it in glitter.gtk.
 
   Pointers are plain machine addresses (jolt numbers). GTK uses floating
   references for newly created widgets; containers sink the ref when a child is
@@ -9,8 +10,10 @@
 
   Signal handlers are connected with g-signal-connect-data — the canonical C
   symbol behind the g_signal_connect macro. Handlers are jolt fns wrapped by
-  glitter.core via jolt.ffi/foreign-callable (:collect-safe), because GTK
-  invokes them from inside the blocking g_application_run main loop."
+  glitter.gtk (reconciler-driven events) or glitter.widget/connect-signals!
+  (create!'s direct-props path) via jolt.ffi/foreign-callable (:collect-safe),
+  because GTK invokes them from inside the blocking g_application_run main
+  loop."
   (:require [jolt.ffi :as ffi]))
 
 ;; --- constants ---------------------------------------------------------------
