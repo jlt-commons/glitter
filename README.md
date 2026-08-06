@@ -76,12 +76,13 @@ on failure and are safe to use as a CI gate.
 ### Quality tooling
 
 ```
-bb lint                          # clj-kondo over glitter-authored code (report only)
-bb lint:strict                    # same, but exits non-zero if anything is found
-bb lsp:format / lsp:format-check  # reformat, or check formatting (dry run)
-bb lsp:clean-ns / lsp:clean-ns-check  # organize ns forms, or check (dry run)
-bb check:positional-args / :strict    # find fns with 3+ positional args (prefer a kwargs map)
-bb verify                         # pre-commit gate: lint (report) + test (must pass)
+bb lint / lint:strict / lint:errors      # clj-kondo: report | propagate exit | errors-only
+bb lsp:format / lsp:format-check          # reformat, or check formatting (dry run)
+bb lsp:clean-ns / lsp:clean-ns-check      # organize ns forms, or check (dry run)
+bb lsp:diagnostics / lsp:check / lsp:fix  # diagnostics | all dry-run checks | auto-fix
+bb check:positional-args / :strict        # find fns with 3+ positional args
+bb verify                                 # pre-commit gate: lint (report) + test (must pass)
+bb hooks:install / :install:full / :uninstall  # git pre-commit hook: fast | +tests | remove
 ```
 
 `clj-kondo`/`clojure-lsp` both need `.clj-kondo/hooks/jolt_ffi.clj` (an
@@ -89,11 +90,16 @@ bb verify                         # pre-commit gate: lint (report) + test (must 
 adapted from [b12n-rljlt](https://github.com/burinc/b12n-rljlt)) to see
 through the FFI-binding macro — without it every `gtk-*`/`g-*` name in
 `glitter.ffi` and every call site through the `g/` alias reports as
-unresolved. `bb lint` deliberately scopes to glitter-authored code (not the
-files ported verbatim from Replicant, which keep intentional `#?(:clj
-:cljs)` reader conditionals in a `.clj` extension — a permanent, harmless
-false positive for that specific porting strategy, not a real defect); see
-`docs/guide/testing-and-tasks.md` for the full rationale.
+unresolved. `.clj-kondo/config.edn`'s `:output {:exclude-files [...]}`
+excludes the files ported verbatim from Replicant (they keep intentional
+`#?(:clj :cljs)` reader conditionals in a `.clj` extension — a permanent,
+harmless false positive for that specific porting strategy, not a real
+defect), so `bb lint` and friends run unscoped over `src test examples`.
+`bb hooks:install` sets up a fast pre-commit hook (lint errors + ns
+cleanliness); it deliberately excludes `format --dry` since clojure-lsp's
+default formatter currently disagrees with upstream Replicant's own style
+for the ported files — see `docs/guide/testing-and-tasks.md` for the full
+rationale on both.
 
 ## Architecture
 

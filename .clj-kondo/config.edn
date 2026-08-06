@@ -13,4 +13,32 @@
  ;; destructured params correctly — without this, every defalias site
  ;; reports 3 false "Unresolved symbol" errors (the alias name at its own
  ;; call sites, plus every destructured arg inside the body).
- :lint-as {glitter.alias/defalias clojure.core/defn}}
+ :lint-as {glitter.alias/defalias clojure.core/defn}
+
+ ;; These 10 files are ported verbatim from Replicant (see NOTICE.md /
+ ;; docs/guide/porting-and-attribution.md) and deliberately keep
+ ;; #?(:clj :cljs) reader conditionals in a .clj extension — a mechanical
+ ;; sed rename from Replicant's original .cljc, not a bug. Standard Clojure
+ ;; tooling restricts reader conditionals to .cljc, so every one of those
+ ;; forms is a PERMANENT "Reader conditionals are only allowed in .cljc
+ ;; files" finding — real syntax Jolt itself parses and runs correctly
+ ;; (jolt -M:test proves that), just not what clj-kondo expects from this
+ ;; extension. It's a "syntax"-class finding, which isn't gated by
+ ;; :linters levels the way ordinary lint warnings are, so exclusion here
+ ;; is the only fix — this is exactly the pattern b12n-sumo-app's
+ ;; .clj-kondo/config.edn uses to exclude ClojureDart source clj-kondo
+ ;; can't parse (see ~/dev/b12n-wikis/b12n-sumo-app/
+ ;; developer-workflow-and-bb-tasks.md). Scoping this here (not just in
+ ;; bb.edn's task command lines) means `clj-kondo --lint src test examples`
+ ;; is safe to run directly — an editor's clojure-lsp pass or an
+ ;; accidental un-scoped invocation can't reintroduce the flood.
+ :output {:exclude-files ["glitter/protocols\\.clj$"
+                          "glitter/hiccup\\.clj$"
+                          "glitter/hiccup_headers\\.clj$"
+                          "glitter/console_logger\\.clj$"
+                          "glitter/errors\\.clj$"
+                          "glitter/assert\\.clj$"
+                          "glitter/vdom\\.clj$"
+                          "glitter/asserts\\.clj$"
+                          "glitter/core\\.clj$"
+                          "glitter/alias\\.clj$"]}}

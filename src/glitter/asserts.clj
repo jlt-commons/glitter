@@ -1,8 +1,8 @@
 (ns ^:no-doc glitter.asserts
   (:require [clojure.string :as str]
             [glitter.assert :as assert]
-            [glitter.hiccup-headers :as hiccup]
             [glitter.hiccup :as h]
+            [glitter.hiccup-headers :as hiccup]
             [glitter.vdom :as vdom])
   #?(:cljs (:require-macros glitter.asserts)))
 

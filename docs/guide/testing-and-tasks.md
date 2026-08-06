@@ -112,15 +112,16 @@ sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.
 
-## Quality tooling: lint, format, positional-args
+## Quality tooling: lint, format, positional-args, git hooks
 
 ```
-bb lint                          # clj-kondo, glitter-authored code (report only)
-bb lint:strict                    # same, exits non-zero if anything is found
-bb lsp:format / lsp:format-check  # clojure-lsp reformat, or dry-run check
-bb lsp:clean-ns / lsp:clean-ns-check  # clojure-lsp ns cleanup, or dry-run check
-bb check:positional-args / :strict    # fns with 3+ positional args (report | gate)
-bb verify                         # pre-commit gate: lint (report) + test (must pass)
+bb lint / lint:strict / lint:errors      clj-kondo (report | propagate real exit | errors-only)
+bb lsp:format / lsp:format-check          clojure-lsp reformat, or dry-run check
+bb lsp:clean-ns / lsp:clean-ns-check      clojure-lsp ns cleanup, or dry-run check
+bb lsp:diagnostics / lsp:check / lsp:fix  diagnostics | all dry-run checks | auto-fix
+bb check:positional-args / :strict        fns with 3+ positional args (report | gate)
+bb verify                                 pre-commit gate: lint (report) + test (must pass)
+bb hooks:install / :install:full / :uninstall   git pre-commit hook (fast | +tests | remove)
 ```
 
 Adapted from sibling Jolt/FFI projects in the same author's umbrella
@@ -162,8 +163,9 @@ this directly — `glitter.genum`/`glitter.widget` call `zero?` on
 that telling clj-kondo to analyze it *as* a `defn` call resolves both the
 defined name and the destructured params, with no custom hook needed.
 
-**Why `bb lint` is scoped to specific files, not all of `src/`.** The files
-ported verbatim from Replicant (`glitter.core`, `glitter.alias`, etc. — see
+**Why `bb lint` can safely target `src test examples` directly, no manual
+file list.** The files ported verbatim from Replicant (`glitter.core`,
+`glitter.alias`, etc. — see
 [`porting-and-attribution.md`](porting-and-attribution.md)) deliberately
 keep `#?(:clj :cljs)` reader conditionals in a `.clj` extension, a
 mechanical sed rename from Replicant's original `.cljc`. Standard Clojure
@@ -172,24 +174,77 @@ files, so every one of those forms is a permanent `error: [syntax] Reader
 conditionals are only allowed in .cljc files` finding. This is real syntax
 Jolt itself parses and runs correctly (`jolt -M:test` proves that far more
 rigorously than static analysis could); it is simply not the syntax
-clj-kondo expects from a `.clj` extension. There is no config-level fix —
-`"syntax"`-class findings aren't gated by `:linters` levels the way
-ordinary lint warnings are — so `bb lint`/`bb lint:strict`/`bb verify`
-scope their targets to the files that don't carry this permanent, known,
-harmless noise: `glitter.ffi`, `glitter.widget`, `glitter.genum`,
-`glitter.app`, `glitter.env`, `glitter.gtk`, `glitter.test-renderer`, plus
-`test/` and `examples/`.
+clj-kondo expects from a `.clj` extension. `"syntax"`-class findings aren't
+gated by `:linters` levels the way ordinary lint warnings are, so the fix
+is `.clj-kondo/config.edn`'s `:output {:exclude-files [...]}` — 10 regex
+patterns, one per ported file — the same pattern
+[`b12n-sumo-app`](https://github.com/burinc/b12n-sumo-app) uses to exclude
+ClojureDart source clj-kondo can't parse at all. Scoping at the *config*
+level rather than in every task's command line means `clj-kondo --lint src
+test examples` (or even an editor's clojure-lsp pass, since `clojure-lsp
+diagnostics` runs clj-kondo under the hood and respects the same config)
+is safe to run unscoped anywhere — a new non-ported file is linted
+automatically, with nothing to remember to add to a task's argument list.
 
-**Why `bb lint` never fails by default.** Even within that scoped file set,
-clj-kondo currently reports 2 warnings that are legitimate style opinions,
-not false positives: a `missing-else-branch` on a deliberate throw-only
-guard in `glitter.widget/markup-validate-element!`, and one genuinely
-unused private helper in `test/glitter/core_test.clj`. Neither is worth a
-config exclusion (that risks hiding a *real* future instance of either),
-but neither should permanently block a gate either — so `bb lint` reports
-and always exits 0, while `bb lint:strict` propagates clj-kondo's real exit
-code for anyone who wants a hard local check. `bb verify` mirrors this
-split: lint is informational, only the test suite gates.
+**Why `bb lint`/`bb verify` never fail by default, but `bb lint:errors`
+does.** Even with the ported files excluded, clj-kondo currently reports 2
+warnings that are legitimate style opinions, not false positives: a
+`missing-else-branch` on a deliberate throw-only guard in
+`glitter.widget/markup-validate-element!`, and one genuinely unused
+private helper in `test/glitter/core_test.clj`. Neither is worth a config
+exclusion (that risks hiding a *real* future instance of either), but
+neither should permanently block a gate either. clj-kondo's exit code is a
+severity ladder — `0` clean, `2` warnings only, `3` errors present
+(verified live: an intentionally-broken probe file reproduced `errors: 2,
+warnings: 0` → exit `3`) — so `bb lint`/`bb verify` report and always exit
+`0`, `bb lint:strict` propagates the raw code, and `bb lint:errors` (used
+by the git hooks below) fails only when the exit code is exactly `3`,
+treating the 2 known warnings the same as a clean run.
+
+## Git hooks: `bb hooks:install` / `:install:full` / `:uninstall`
+
+`bb hooks:install` writes an executable `.git/hooks/pre-commit` (via
+`spit`, not tracked in the repo — each clone opts in with its own `bb
+hooks:install` run, adapted from `b12n-adk-clj`'s identical pattern). The
+FAST hook runs in ~2s: `clj-kondo --lint src test examples` gated on
+`bb lint:errors`' exit-3-only rule, then `clojure-lsp clean-ns --dry`.
+`bb hooks:install:full` adds a third step, the full `jolt -M:test` suite
+(safe to run in a hook — the suite is headless, driven by
+`glitter.test-renderer`, no live GTK window needed). `bb hooks:uninstall`
+deletes the hook file (idempotent — reports "no pre-commit hook found" on
+a second run rather than erroring). `git commit --no-verify` skips the
+hook for one commit.
+
+**Deliberately not included: `clojure-lsp format --dry`.** The codebase
+currently has real drift against clojure-lsp's default formatting style in
+a handful of files, found while first wiring these tasks up: clojure-lsp's
+formatter wraps `{:keys [x] :as y}`-shaped destructuring across two lines
+even when the whole form comfortably fits on one —
+
+```clojure
+;; clojure-lsp's default output
+(defn reconcile* [{:keys [renderer]
+                   :as impl} el headers vdom index]
+  ...)
+```
+
+— which is not merely a style preference glitter happens to disagree
+with. Checked directly against `replicant.core.cljc` in the actual
+upstream Replicant source: **upstream itself writes this exact function
+signature on one line.** Since `glitter.core` and the other Bucket-1 files
+are supposed to stay a mechanical, diffable port of Replicant (see
+[`porting-and-attribution.md`](porting-and-attribution.md)), reformatting
+them to clojure-lsp's default would simultaneously read worse than the
+hand-tuned original *and* reduce future diffability against upstream, for
+no offsetting benefit. No config override was found that suppresses just
+this rule (`:cljfmt {:function-arguments-indentation ...}` was tried with
+both documented values, `:standard`/`:community` — neither preserves the
+inline form). Rather than force a mass-reformat or silently accept the
+readability regression, this was left as a known, open decision: `bb
+lsp:format`/`bb lsp:format-check` remain available as on-demand tools, but
+nothing runs them automatically, and they're not part of either git hook.
+If a `.lsp/config.edn` override is found later that reconciles this, wire
+`format --dry` into the hooks at that point — not before.
 
 **Why `check:positional-args`'s `exceptions` set is empty despite 32
 current findings.** Running it against glitter's own `src/glitter/` finds

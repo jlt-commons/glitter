@@ -9,8 +9,10 @@
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
 ;;   bb lsp:format | lsp:format-check       clojure-lsp format (mutate | dry-run)
 ;;   bb lsp:clean-ns | lsp:clean-ns-check   clojure-lsp clean-ns (mutate | dry-run)
+;;   bb lsp:diagnostics | lsp:check | lsp:fix   diagnostics | all dry-run checks | auto-fix
 ;;   bb check:positional-args | :strict     find fns with 3+ positional args
 ;;   bb verify                lint (report) + test (must pass) — pre-commit gate
+;;   bb hooks:install | hooks:install:full | hooks:uninstall   git pre-commit hook
 ;;   bb nrepl [port]           start a jolt nREPL server (default 7888)
 ;; NOTE: task bodies are EDN-parsed — no #"regex", @deref, or #(...) reader macros.
 ;; NOTE: every jolt task below shells out to `jolt -M:<alias>`, never the deps.edn
@@ -19,7 +21,9 @@
 ;; on stdout and still exit 0 (see README's CI note). `-M:<alias>` exits correctly.
 {:min-bb-version "1.3.0"
  :tasks
- {info {:doc "Grouped task cheat-sheet (start here; easier to scan than `bb tasks`)"
+ {:requires ([babashka.fs :as fs])
+
+  info {:doc "Grouped task cheat-sheet (start here; easier to scan than `bb tasks`)"
         :task
         (let [esc (str (char 27) "[")
               col (fn [c s] (str esc c "m" s esc "0m"))
@@ -46,8 +50,15 @@
           (row "lsp:format-check" "check formatting — dry run")
           (row "lsp:clean-ns" "clean + organize ns forms (clojure-lsp)")
           (row "lsp:clean-ns-check" "check ns forms — dry run")
+          (row "lsp:diagnostics" "clojure-lsp diagnostics")
+          (row "lsp:check" "all LSP checks (format + clean-ns + diagnostics) — dry run")
+          (row "lsp:fix" "auto-fix: format + clean-ns (mutating)")
           (row "check:positional-args" "find fns with 3+ positional args (report only)")
           (row "check:positional-args:strict" "bb check:positional-args, but exit non-zero if any found")
+          (hdr "Git hooks")
+          (row "hooks:install" "install FAST pre-commit hook (lint errors + clean-ns, ~2s)")
+          (row "hooks:install:full" "install FULL pre-commit hook (+ unit tests, slower)")
+          (row "hooks:uninstall" "remove the git pre-commit hook")
           (hdr "Dev")
           (row "nrepl [port]" "start a jolt nREPL server (default 7888)")
           (println (str "\n" (col "2" "first run: bb test, then bb counter  ·  CI gate: bb test && bb smokes"))))}
@@ -84,35 +95,30 @@
                     (shell "jolt" "-M:main-thread-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
-  ;; clj-kondo is scoped to glitter-authored code (glitter.ffi/widget/genum/
-  ;; app/env/gtk/test-renderer + test/ + examples/), NOT the Bucket-1 files
-  ;; ported verbatim from Replicant (glitter.core, glitter.alias, etc.).
-  ;; Those files deliberately keep #?(:clj :cljs) reader conditionals in a
-  ;; .clj extension (a mechanical sed rename from Replicant's .cljc, not a
-  ;; bug — see docs/guide/porting-and-attribution.md), which clj-kondo
-  ;; permanently flags as "Reader conditionals are only allowed in .cljc
-  ;; files" — an unfixable false positive for this specific porting
-  ;; strategy, not a real defect, and not worth a lint config exclusion
-  ;; that could also hide a real one. .clj-kondo/config.edn's hook still
-  ;; covers the whole project (fixes jolt.ffi/defcfn + glitter.alias/
-  ;; defalias false positives everywhere, including in the ported files).
+  ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings
+  ;; only, 3 = errors present. `lint`/`verify` report and always exit 0;
+  ;; `lint:strict` propagates the raw code; `lint:errors` (used by the git
+  ;; hooks below) fails ONLY on real errors (exit 3), never on the 2
+  ;; known-legitimate warnings (see .clj-kondo/config.edn's :exclude-files
+  ;; comment and docs/guide/testing-and-tasks.md for why those aren't
+  ;; worth silencing). Every task below lints `src test examples` directly
+  ;; — no manual file list — because .clj-kondo/config.edn's
+  ;; :output {:exclude-files [...]} already scopes out the 10 files ported
+  ;; verbatim from Replicant (permanent, harmless "reader conditionals only
+  ;; in .cljc" syntax findings; not a real defect — see that config's own
+  ;; comment) at the config level, so an un-scoped invocation is safe here
+  ;; too, not just in these tasks.
   lint {:doc "clj-kondo over glitter-authored code (report only, always exits 0)"
-        :task (let [{:keys [exit]}
-                    (shell {:continue true} "clj-kondo" "--lint"
-                           "src/glitter/ffi.clj" "src/glitter/widget.clj"
-                           "src/glitter/genum.clj" "src/glitter/app.clj"
-                           "src/glitter/env.clj" "src/glitter/gtk.clj"
-                           "src/glitter/test_renderer.clj" "test" "examples")]
+        :task (let [{:keys [exit]} (shell {:continue true} "clj-kondo" "--lint" "src" "test" "examples")]
                 (println (if (zero? exit) "OK lint: clean" "!! lint: see findings above")))}
 
-  lint:strict {:doc "bb lint, but exit non-zero if clj-kondo reports any findings"
-               :task (let [{:keys [exit]}
-                           (shell {:continue true} "clj-kondo" "--lint"
-                                  "src/glitter/ffi.clj" "src/glitter/widget.clj"
-                                  "src/glitter/genum.clj" "src/glitter/app.clj"
-                                  "src/glitter/env.clj" "src/glitter/gtk.clj"
-                                  "src/glitter/test_renderer.clj" "test" "examples")]
+  lint:strict {:doc "bb lint, but exit non-zero if clj-kondo reports any findings (2=warnings, 3=errors)"
+               :task (let [{:keys [exit]} (shell {:continue true} "clj-kondo" "--lint" "src" "test" "examples")]
                        (System/exit exit))}
+
+  lint:errors {:doc "bb lint, but exit non-zero ONLY on real errors (exit 3) — ignores known warnings; used by git hooks"
+               :task (let [{:keys [exit]} (shell {:continue true} "clj-kondo" "--lint" "src" "test" "examples")]
+                       (System/exit (if (= 3 exit) 1 0)))}
 
   lsp:format {:doc "Reformat all Clojure files (clojure-lsp)"
               :task (let [{:keys [exit]} (shell {:continue true} "clojure-lsp" "format")]
@@ -140,6 +146,34 @@
                                 (do (println "!! ns forms need cleaning — run bb lsp:clean-ns")
                                     (System/exit exit))))}
 
+  ;; clojure-lsp's own :diagnostics command runs clj-kondo under the hood,
+  ;; so it also respects .clj-kondo/config.edn's :exclude-files and
+  ;; :output/:hooks — same 2 known-legitimate warnings, no ported-file
+  ;; noise.
+  lsp:diagnostics {:doc "clojure-lsp diagnostics"
+                   :task (let [{:keys [exit]} (shell {:continue true} "clojure-lsp" "diagnostics")]
+                           (if (zero? exit)
+                             (println "OK no diagnostics")
+                             (println "!! diagnostics found (see above)")))}
+
+  lsp:check {:doc "All LSP checks (format + clean-ns + diagnostics) — dry run"
+             :task (do (println "-> LSP checks (dry run)")
+                       (println "-> format --dry")
+                       (shell {:continue true} "clojure-lsp" "format" "--dry")
+                       (println "-> clean-ns --dry")
+                       (shell {:continue true} "clojure-lsp" "clean-ns" "--dry")
+                       (println "-> diagnostics")
+                       (shell {:continue true} "clojure-lsp" "diagnostics")
+                       (println "OK LSP checks done (see above for any issues)"))}
+
+  lsp:fix {:doc "Auto-fix: format + clean-ns (mutating)"
+           :task (do (println "-> LSP auto-fix")
+                     (println "-> format")
+                     (shell {:continue true} "clojure-lsp" "format")
+                     (println "-> clean-ns")
+                     (shell {:continue true} "clojure-lsp" "clean-ns")
+                     (println "OK auto-fixes applied — run bb lsp:diagnostics + bb test to confirm"))}
+
   check:positional-args {:doc "Find fns with 3+ positional args (prefer a kwargs map)"
                          :task (let [{:keys [exit]} (shell {:continue true} "bb" "scripts/check_positional_args.clj")]
                                  (System/exit exit))}
@@ -150,13 +184,62 @@
 
   verify {:doc "Pre-commit gate: lint (report only) + test (must pass)"
           :task (do (println "-> verify: lint + test")
-                    (shell {:continue true} "clj-kondo" "--lint"
-                           "src/glitter/ffi.clj" "src/glitter/widget.clj"
-                           "src/glitter/genum.clj" "src/glitter/app.clj"
-                           "src/glitter/env.clj" "src/glitter/gtk.clj"
-                           "src/glitter/test_renderer.clj" "test" "examples")
+                    (shell {:continue true} "clj-kondo" "--lint" "src" "test" "examples")
                     (shell "jolt" "-M:test")
                     (println "OK verify passed"))}
+
+  ;; --- Git hooks ------------------------------------------------------------
+  ;; FAST hook: lint errors-only (ignores the 2 known-legitimate warnings —
+  ;; see lint:errors above) + clean-ns dry-run. No `format --dry` here: the
+  ;; codebase currently has drift against clojure-lsp's default cljfmt
+  ;; style in a few files (map/binding-form line-wrapping choices), left
+  ;; unresolved deliberately rather than auto-fixed — clojure-lsp's default
+  ;; wraps `{:keys [x] :as y}` destructuring across two lines even when it
+  ;; fits on one, which upstream Replicant's own source does NOT do (verified
+  ;; against replicant.core directly), so blindly running `bb lsp:format`
+  ;; on the files ported from it would both read worse than the hand-tuned
+  ;; original AND reduce future diffability against upstream for no
+  ;; benefit. Not wired into any gate until that's resolved one way or the
+  ;; other. `bb lsp:format-check`/`bb lsp:format` remain available as
+  ;; on-demand tools.
+  hooks:install {:doc "Install FAST git pre-commit hook (lint errors + clean-ns, ~2s)"
+                 :task (let [hook ".git/hooks/pre-commit"]
+                         (spit hook (str "#!/bin/bash\n"
+                                         "# glitter pre-commit (FAST — lint errors-only + clean-ns dry-run).\n"
+                                         "# Full (+ test suite): bb hooks:install:full\n"
+                                         "echo 'pre-commit 1/2: clj-kondo (errors only; known warnings accepted)'\n"
+                                         "clj-kondo --lint src test examples\n"
+                                         "LINT_EXIT=$?\n"
+                                         "if [ \"$LINT_EXIT\" = \"3\" ]; then echo 'pre-commit: lint errors found'; exit 1; fi\n"
+                                         "echo 'pre-commit 2/2: clojure-lsp clean-ns --dry'\n"
+                                         "clojure-lsp clean-ns --dry || { echo 'run bb lsp:clean-ns'; exit 1; }\n"
+                                         "exit 0\n"))
+                         (shell "chmod" "+x" hook)
+                         (println "OK fast pre-commit hook installed")
+                         (println ">> skip once with: git commit --no-verify"))}
+
+  hooks:install:full {:doc "Install FULL git pre-commit hook (lint errors + clean-ns + unit tests, slower)"
+                      :task (let [hook ".git/hooks/pre-commit"]
+                              (spit hook (str "#!/bin/bash\n"
+                                              "# glitter pre-commit (FULL). Fast: bb hooks:install\n"
+                                              "echo 'pre-commit 1/3: clj-kondo (errors only; known warnings accepted)'\n"
+                                              "clj-kondo --lint src test examples\n"
+                                              "LINT_EXIT=$?\n"
+                                              "if [ \"$LINT_EXIT\" = \"3\" ]; then echo 'pre-commit: lint errors found'; exit 1; fi\n"
+                                              "echo 'pre-commit 2/3: clojure-lsp clean-ns --dry'\n"
+                                              "clojure-lsp clean-ns --dry || { echo 'run bb lsp:clean-ns'; exit 1; }\n"
+                                              "echo 'pre-commit 3/3: unit tests'\n"
+                                              "jolt -M:test\n"
+                                              "exit $?\n"))
+                              (shell "chmod" "+x" hook)
+                              (println "OK full pre-commit hook installed")
+                              (println ">> skip once with: git commit --no-verify"))}
+
+  hooks:uninstall {:doc "Remove the git pre-commit hook"
+                   :task (let [hook ".git/hooks/pre-commit"]
+                           (if (fs/exists? hook)
+                             (do (fs/delete hook) (println "OK pre-commit hook removed"))
+                             (println ">> no pre-commit hook found")))}
 
   ;; --- Dev & REPL -----------------------------------------------------------
   nrepl {:doc "Start a jolt nREPL server for interactive dev: bb nrepl [port] (default 7888)"
