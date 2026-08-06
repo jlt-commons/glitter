@@ -66,4 +66,4 @@ The following files are original to glitter:
 
 - `src/glitter/env.clj` — Jolt/GTK-specific environment detection (not a port of replicant.env, which concerns ClojureScript compiler presence/optimization — irrelevant to Jolt)
 - `src/glitter/gtk.clj` — IRender/IMemory GTK4 backend and state-atom mount/render wiring (Task 10)
-- `src/glitter/test-renderer.clj` — in-memory fake IRender/IMemory for headless reconciler tests (inspired by replicant's mutation_log.cljc, separately implemented)
+- `src/glitter/test_renderer.clj` — in-memory fake IRender/IMemory for headless reconciler tests (inspired by replicant's mutation_log.cljc, separately implemented)
