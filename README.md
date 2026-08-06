@@ -32,13 +32,20 @@ handlers instead of closures. No component-local state anywhere.
 (app/run (fn [window] (gtk/mount! window view state)))
 ```
 
-Run `jolt counter` for the full interactive demo, `jolt smoke` for the
-automated smoke test, `jolt keyed` for the live keyed-reconciliation smoke,
-`jolt replace-child` for the live replace-in-place smoke, `jolt test` for the
-unit suite.
+`jolt counter` is the full interactive demo. `jolt test` runs the unit suite.
+The rest are automated live-GTK smokes, each of which exits non-zero on
+failure:
+
+| task | pins |
+|---|---|
+| `jolt smoke` | mount a tree and run the loop without an exception escaping |
+| `jolt keyed` | keyed reorder lands in the right GTK order |
+| `jolt replace-child` | a replaced child stays at its position, not the end |
+| `jolt aliased` | aliases expand through the real renderer, on mount and update |
+| `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
-`jolt -M:keyed`, `jolt -M:replace-child`. Verified against jolt v0.6.3: a
+`jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
 deps.edn `:tasks` entry does not propagate its child process's exit status, so
 `jolt test` reports failures on stdout and still exits 0, while `jolt -M:test`
 correctly exits 1. The task shorthand is fine interactively; it cannot gate a

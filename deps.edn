@@ -32,10 +32,15 @@
            :counter {:extra-paths ["examples"] :main-opts ["-m" "glitter.counter"]}
            :smoke   {:extra-paths ["examples"] :main-opts ["-m" "glitter.smoke"]}
            :keyed   {:extra-paths ["examples"] :main-opts ["-m" "glitter.keyed"]}
-           :replace-child {:extra-paths ["examples"] :main-opts ["-m" "glitter.replace-child"]}}
+           :replace-child {:extra-paths ["examples"] :main-opts ["-m" "glitter.replace-child"]}
+           :aliased {:extra-paths ["examples"] :main-opts ["-m" "glitter.aliased"]}
+           :main-thread-smoke {:extra-paths ["examples"]
+                               :main-opts ["-m" "glitter.main-thread-smoke"]}}
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"
          smoke   "jolt -M:smoke"
          keyed   "jolt -M:keyed"
-         replace-child "jolt -M:replace-child"}}
+         replace-child "jolt -M:replace-child"
+         aliased "jolt -M:aliased"
+         main-thread-smoke "jolt -M:main-thread-smoke"}}
