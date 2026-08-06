@@ -75,6 +75,37 @@ foreign-callable pinned in `glitter.widget`'s retain set forever — an
 unbounded leak for any handler whose data changes across renders. Both
 `id` and `cb` are tracked so both can be released together.
 
+**Reading a value-bearing signal's value back out.** The `:glitter/value`
+built above travels through `glitter.core`'s `build-event-map`, which wraps
+the whole object under `:glitter/dom-event` before handing it to
+`*dispatch*`. So a handler that needs the live value (an entry's
+`:change`, say) reads it from the *first* dispatch argument, not from its
+own static action data — hiccup `:on` data is fixed at the moment `view`
+runs, so an action tuple can't carry a value that only exists once the
+user types:
+
+```clojure
+(defn execute-actions [event actions]
+  (doseq [[kind] actions]
+    (case kind
+      :action/set-draft (swap! state assoc :draft
+                                (get-in event [:glitter/dom-event :glitter/value]))
+      ...)))
+```
+
+Verified live (typing `"hello"` into an entry produces exactly this shape
+at `*dispatch*`):
+
+```clojure
+#:glitter{:trigger :glitter.trigger/dom-event
+          :dom-event #:glitter{:node #object[...] :gtk-widget 41299379472 :value "hello"}
+          :node #object[...]
+          :dispatch #object[...]
+          :js-event #:glitter{:node #object[...] :gtk-widget 41299379472 :value "hello"}}
+```
+
+`examples/glitter/todo.clj`'s `:action/set-draft` is the live example.
+
 `suppressing?` guards against a second failure mode: `glitter.widget`'s
 programmatic setters (`set-entry-text!`, `set-checkbutton-active!`) only
 touch the widget when the new value differs from its *current* value, and

@@ -30,6 +30,7 @@
 
  :aliases {:test    {:extra-paths ["test"]     :main-opts ["-m" "glitter.test-runner"]}
            :counter {:extra-paths ["examples"] :main-opts ["-m" "glitter.counter"]}
+           :todo    {:extra-paths ["examples"] :main-opts ["-m" "glitter.todo"]}
            :smoke   {:extra-paths ["examples"] :main-opts ["-m" "glitter.smoke"]}
            :keyed   {:extra-paths ["examples"] :main-opts ["-m" "glitter.keyed"]}
            :replace-child {:extra-paths ["examples"] :main-opts ["-m" "glitter.replace-child"]}
@@ -39,6 +40,7 @@
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"
+         todo    "jolt -M:todo"
          smoke   "jolt -M:smoke"
          keyed   "jolt -M:keyed"
          replace-child "jolt -M:replace-child"

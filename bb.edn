@@ -2,6 +2,7 @@
 ;;   bb info               grouped task cheat-sheet (start here)
 ;;   bb test                run the unit suite (jolt -M:test)
 ;;   bb counter              interactive counter demo (state atom + action dispatch)
+;;   bb todo                 interactive task-board demo (derived counts, entry, checkbuttons)
 ;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
@@ -23,6 +24,7 @@
           (row "test" "run the unit suite (jolt -M:test)")
           (hdr "Run")
           (row "counter" "interactive demo: state atom + action dispatch")
+          (row "todo" "interactive demo: derived counts, entry, checkbuttons")
           (hdr "Smoke (live GTK, each exits non-zero on failure)")
           (row "smoke" "mount a tree and run the loop without an exception escaping")
           (row "keyed" "keyed reorder lands in the right GTK order")
@@ -37,6 +39,9 @@
 
   counter {:doc "Interactive counter demo (state atom + action dispatch)"
            :task (shell "jolt" "-M:counter")}
+
+  todo {:doc "Interactive task-board demo (derived counts, entry, checkbuttons)"
+        :task (shell "jolt" "-M:todo")}
 
   smoke {:doc "Live-GTK smoke: mount a tree, run the loop without an exception escaping"
          :task (shell "jolt" "-M:smoke")}

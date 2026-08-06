@@ -32,7 +32,12 @@ handlers instead of closures. No component-local state anywhere.
 (app/run (fn [window] (gtk/mount! window view state)))
 ```
 
-`jolt counter` is the full interactive demo. `jolt test` runs the unit suite.
+`jolt counter` is the full interactive demo. `jolt todo` is a larger
+interactive task-board demo — derived counts, an entry with placeholder
+text, checkbutton toggles, list rendering (ported from
+[glimmer's `examples/glimmer/todo.clj`](https://github.com/jolt-lang/glimmer/blob/main/examples/glimmer/todo.clj),
+contrasting glimmer's component-local ratom closures with glitter's one
+state atom + data-driven action dispatch). `jolt test` runs the unit suite.
 The rest are automated live-GTK smokes, each of which exits non-zero on
 failure:
 
@@ -60,6 +65,7 @@ same tasks with a grouped cheat-sheet:
 bb info      # start here — grouped task list
 bb test      # jolt -M:test
 bb counter   # interactive demo
+bb todo      # interactive task-board demo
 bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure)
 ```
 

@@ -67,8 +67,11 @@ on mismatch:
 | `jolt aliased` | aliases expand through the real renderer, on mount and update | mounts hiccup using a registered alias, confirms the expanded (not aliased) tag actually reached GTK |
 | `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread | mutates from inside a `future`, records which thread `view` ran on, asserts it's the GTK main thread — see [`app-loop-and-threading.md`](app-loop-and-threading.md) |
 
-`jolt counter` is the sixth example — the full interactive quick-start demo
-from `docs/guide/index.md`, meant to be run and clicked, not asserted on.
+`jolt counter` and `jolt todo` are the interactive examples — the full
+quick-start demo from `docs/guide/index.md`, and a larger task-board demo
+(ported from glimmer's own `todo.clj`) exercising derived counts, a
+value-bearing `:change` handler, and checkbutton toggles — meant to be run
+and clicked, not asserted on.
 
 Each smoke's `:auto-quit-ms` option (see `glitter.app/run`) quits the GTK
 loop after a fixed delay so the process exits deterministically instead of
@@ -96,6 +99,7 @@ a grouped `bb info` cheat-sheet as the discoverability entry point:
 bb info               # grouped task list — start here
 bb test                # jolt -M:test
 bb counter              # interactive demo
+bb todo                 # interactive task-board demo
 bb smoke | keyed | replace-child | aliased | main-thread-smoke
                         # individual live-GTK smokes
 bb smokes               # all five smokes in sequence; stops at first failure
