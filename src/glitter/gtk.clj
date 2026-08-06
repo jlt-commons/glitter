@@ -200,5 +200,5 @@
                   (reset! vdom (:vdom (core/reconcile r root-el (view state) @vdom
                                                       {:aliases (alias/get-registered-aliases)}))))]
     (render! @state-atom)
-    (add-watch state-atom ::render (fn [_ _ _ state] (render! state)))
+    (add-watch state-atom ::render (fn [_ _ _ state] (app/on-gui (fn [] (render! state)))))
     nil))

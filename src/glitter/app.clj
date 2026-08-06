@@ -24,6 +24,16 @@
 ;; macOS. Headless, with no loop running, work runs synchronously.
 (defonce ^:private gui-loop-running? (atom false))
 
+;; The thread g_application_run actually runs on — captured once run*
+;; starts, so on-gui can tell "am I already on the GTK main thread" apart
+;; from "I'm some other thread and need to marshal." Found live-verified
+;; during the final whole-branch review that on-gui always posted via
+;; g_idle_add whenever the loop was running, even when the calling thread
+;; was already the main thread — making every render async unnecessarily
+;; and (for callers expecting a synchronous read-back, like keyed.clj)
+;; incorrectly.
+(defonce ^:private main-thread (atom nil))
+
 (defn- post-to-gui
   "Schedule zero-arg `work` on the GTK main loop via a one-shot g_idle_add
   source. The source returns FALSE (0) so it fires once and is removed; the
@@ -42,11 +52,22 @@
     nil))
 
 (defn on-gui
-  "Run zero-arg `work` on the GTK main thread — asynchronously, on the next
-  main loop iteration — while a GUI app is running. Runs `work` inline when no
-  GUI loop is running (so it is usable headless and in tests)."
+  "Run zero-arg `work` on the GTK main thread. Runs `work` INLINE (not
+  async) when there is no GUI loop running (headless/tests), or when the
+  calling thread already IS the GTK main thread — otherwise marshals via
+  post-to-gui (async, next main loop iteration). The inline-when-already-
+  main-thread case matters: without it, every render posted asynchronously
+  even from code that's already safely on the main thread (e.g. a click
+  handler, or mount!'s state-atom watcher when state changes from inside
+  the app itself), breaking any caller expecting a synchronous
+  read-back-after-render — found live-verified during the final
+  whole-branch review, would have broken keyed.clj's smoke test if fixed
+  naively."
   [work]
-  (if (not @gui-loop-running?) (work) (post-to-gui work)))
+  (cond
+    (not @gui-loop-running?) (work)
+    (= (Thread/currentThread) @main-thread) (work)
+    :else (post-to-gui work)))
 
 (defn ^:private run*
   [on-activate opts]
@@ -70,6 +91,7 @@
     (g/g-signal-connect-data app "activate" activate-cb ffi/null ffi/null g/CONNECT-DEFAULT)
     (try
       (reset! gui-loop-running? true)
+      (reset! main-thread (Thread/currentThread))
       (g/g-application-run app 0 ffi/null)
       (finally (reset! gui-loop-running? false)))))
 
