@@ -46,13 +46,26 @@
 
     (attached? [_ _el] true)
 
-    ;; No GTK CSS wiring in v1 — glimmer.widget has no :style/:class vocabulary
-    ;; to fork from (see spec's V1 scope boundaries). Hiccup :style/:class
-    ;; props are accepted (diffed, calling these) but currently inert.
+    ;; :class wired to real GTK CSS classes (gtk_widget_add/remove_css_class)
+    ;; — glitter.core's get-classes already normalizes every :class
+    ;; representation (keyword, symbol, string, or a collection of those) to
+    ;; a plain string before this is ever called, so cn passes straight
+    ;; through with no marshalling needed. GTK4 ships built-in classes
+    ;; ("suggested-action", "destructive-action", "flat", "pill", ...) that
+    ;; work with zero app-provided CSS.
+    ;;
+    ;; :style still has no GTK equivalent — unlike DOM's element.style.color
+    ;; = ... (an inline per-element property), GTK4 styling is exclusively
+    ;; class-based, matched against CSS rules loaded through a
+    ;; GtkCssProvider. Synthesizing an inline :style prop into a real GTK
+    ;; effect would mean generating a unique class name + CSS rule text per
+    ;; widget and loading it through a provider — real design work, out of
+    ;; scope here. Hiccup :style props are still accepted (diffed, calling
+    ;; these) but remain inert.
     (set-style [_ _el _k _v] nil)
     (remove-style [_ _el _k] nil)
-    (add-class [_ _el _cn] nil)
-    (remove-class [_ _el _cn] nil)
+    (add-class [_ el cn] (g/gtk-widget-add-css-class (ptr el) cn) nil)
+    (remove-class [_ el cn] (g/gtk-widget-remove-css-class (ptr el) cn) nil)
 
     (set-attribute [_ el a v _opt]
       (w/apply-props! (:tag @el) (ptr el) {(keyword a) v})

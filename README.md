@@ -49,6 +49,7 @@ failure:
 | `jolt aliased` | aliases expand through the real renderer, on mount and update |
 | `jolt main-thread-smoke` | an off-main-thread `swap!` renders ON the GTK main thread |
 | `jolt scale-smoke` | `:scale`'s `value-changed` signal delivers the right double, no spurious dispatch on programmatic sync |
+| `jolt class-smoke` | `:class` reaches real GTK CSS classes — add, coexist, and remove on a re-render diff |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -133,9 +134,14 @@ rationale on both.
 
 Early. Widget set: window/box/button/label/entry/checkbutton/separator/
 frame/scrolled (forked from glimmer) plus `:scale` (a slider — first-party,
-added directly to glitter; see `docs/guide/gtk-widget-layer.md`). No
-animated mount/unmount transitions, no GTK CSS class/style wiring yet —
-see `NOTICE.md`'s file-by-file notes for exactly what's ported vs. new.
+added directly to glitter; see `docs/guide/gtk-widget-layer.md`). Hiccup
+`:class` reaches real GTK CSS classes (`gtk_widget_add/remove_css_class`
+— GTK4's built-in classes like `"flat"`/`"suggested-action"`/
+`"destructive-action"`/`"pill"` work with zero app-provided CSS); `:style`
+still doesn't — GTK4 has no DOM-`style`-attribute equivalent, only
+class-based styling, so an inline `:style` prop has no direct GTK
+counterpart to wire to. No animated mount/unmount transitions yet — see
+`NOTICE.md`'s file-by-file notes for exactly what's ported vs. new.
 
 Known v1 limitations:
 

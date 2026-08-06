@@ -136,6 +136,13 @@
 (ffi/defcfn gtk-widget-set-hexpand "gtk_widget_set_hexpand" [:pointer :int] :void)
 (ffi/defcfn gtk-widget-set-vexpand "gtk_widget_set_vexpand" [:pointer :int] :void)
 (ffi/defcfn gtk-widget-set-size-request "gtk_widget_set_size_request" [:pointer :int :int] :void)
+;; CSS style classes — GTK4's actual per-widget styling hook: no "inline
+;; style" API the way DOM has (element.style.color = ...), only named
+;; classes matched against CSS rules (built-in ones like "suggested-action"/
+;; "destructive-action"/"flat"/"pill" work with zero app-provided CSS).
+(ffi/defcfn gtk-widget-add-css-class    "gtk_widget_add_css_class"    [:pointer :string] :void)
+(ffi/defcfn gtk-widget-remove-css-class "gtk_widget_remove_css_class" [:pointer :string] :void)
+(ffi/defcfn gtk-widget-has-css-class    "gtk_widget_has_css_class"    [:pointer :string] :int)
 
 ;; --- frame (single-child container with an optional label) -------------------
 (ffi/defcfn gtk-frame-new       "gtk_frame_new"       [:string] :pointer)

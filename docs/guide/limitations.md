@@ -99,13 +99,30 @@ DOM node. There is no Jolt/Chez equivalent of a weak-keyed map available
 to reach for yet, so this gap doesn't currently have a mechanical fix —
 it's a real platform-capability gap, not a missed line of code.
 
-## Not a limitation, but worth restating here: no GTK CSS wiring, no animations
+## No longer a limitation: `:class` reaches real GTK CSS classes
 
-Hiccup `:style`/`:class` props are accepted by the reconciler (diffed,
-`IRender/set-style`/`remove-style`/`add-class`/`remove-class` are called)
-but every one of those methods on `glitter.gtk`'s renderer is currently a
-no-op — `glitter.widget` (forked from glimmer) has no `:style`/`:class`
-vocabulary to build on yet. `on-transition-end` fires its callback
-immediately and synchronously — there is no animated mount/unmount
-transition support. Both are explicit v1 scope boundaries from the design
-spec, not partially-implemented features.
+Hiccup `:class` is diffed by the reconciler (`IRender/add-class`/
+`remove-class`), and `glitter.gtk` now wires both to
+`gtk_widget_add_css_class`/`gtk_widget_remove_css_class` — GTK4's actual
+per-widget styling hook, including its built-in classes (`"flat"`,
+`"suggested-action"`, `"destructive-action"`, `"pill"`, ...) which apply
+with zero app-provided CSS. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#known-gap-removing-a-key-is-a-no-op)
+for the mechanics and `examples/glitter/class_smoke.clj` for the live
+verification (add, coexist, and — the part that actually proves the diff
+path works, not just `add-class` — remove on a re-render).
+
+## Still a limitation: `:style`, and no animations
+
+`:style` is still diffed (`IRender/set-style`/`remove-style` are called)
+but both remain no-ops. Unlike `:class`, there's no small FFI addition
+that fixes this: GTK4 has no equivalent of DOM's inline
+`element.style.color = ...` — styling is exclusively class-based, matched
+against rules loaded through a `GtkCssProvider`. A real `:style` prop
+would need generating a unique class name and CSS rule text per widget,
+managing that provider's lifecycle, and invalidating/reloading the rule
+on every diff — genuine design work, not attempted here.
+`on-transition-end` still fires its callback immediately and
+synchronously — there is no animated mount/unmount transition support.
+Both remain explicit v1 scope boundaries from the design spec, not
+partially-implemented features.

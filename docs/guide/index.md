@@ -53,16 +53,17 @@ live GTK widget tree in sync.
 
 ### GTK integration
 - [`gtk-widget-layer.md`](gtk-widget-layer.md) — the hiccup-tag → widget
-  registry, the signal connect/disconnect lifecycle, and the specific GTK4
-  API traps this project hit and fixed (`insert-before`'s reorder-vs-insert
-  branch, `replace-child!`'s prev-sibling capture).
+  registry, the signal connect/disconnect lifecycle, the specific GTK4 API
+  traps this project hit and fixed (`insert-before`'s reorder-vs-insert
+  branch, `replace-child!`'s prev-sibling capture), `:scale`'s
+  value-bearing custom signal, and `:class`'s real GTK CSS-class wiring.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the five automated live-GTK
+  headless fake-`IRender` test renderer, the seven automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

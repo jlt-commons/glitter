@@ -290,3 +290,49 @@ again, and the widget keeps its last-applied value. GTK has no generic
 "unset this property" API the way DOM's `removeAttribute` does. See
 [`limitations.md`](limitations.md) for the full writeup and why this is
 left unfixed for v1.
+
+**This gap does not apply to `:class`.** `:class` doesn't go through
+`apply-props!`/`:apply` at all — `glitter.core`'s `update-classes`
+diffs the old and new `:classes` sets directly and calls
+`IRender/remove-class` for anything present in the old set but missing
+from the new one, same as any other keyed collection diff in the
+reconciler. `glitter.gtk` wires both `add-class` and `remove-class` to
+real GTK calls:
+
+```clojure
+(add-class    [_ el cn] (g/gtk-widget-add-css-class    (ptr el) cn) nil)
+(remove-class [_ el cn] (g/gtk-widget-remove-css-class (ptr el) cn) nil)
+```
+
+`glitter.core`'s `get-classes` already normalizes every `:class`
+representation — a keyword, a symbol, a string, or a collection of
+those — down to plain strings before either method is ever called, so
+`cn` passes straight through to `gtk_widget_add_css_class`/
+`gtk_widget_remove_css_class` with no marshalling needed. GTK4 ships
+built-in classes (`"flat"`, `"suggested-action"`,
+`"destructive-action"`, `"pill"`, ...) that apply immediately with no
+app-provided CSS.
+
+Verified live end-to-end (`examples/glitter/class_smoke.clj`): a
+built-in class and a custom class both land on mount (confirmed via
+`gtk_widget_has_css_class`, not glitter's own bookkeeping); and,
+crucially, dropping a class from a re-render's `:class` set actually
+removes it from the live widget — the class that was correctly
+**not** re-applied is the weaker half of the test (any bug that just
+skipped `add-class` entirely would still pass that check), so the
+smoke also asserts a *different* class is added in the same
+re-render, proving `update-classes`' diff calls both `add-class` and
+`remove-class` correctly in one pass, not just one or the other.
+
+**`:style` remains unwired.** Unlike `:class`, there is no GTK
+equivalent of DOM's `element.style.color = ...` — an inline,
+per-element property set outside any stylesheet. GTK4 styling is
+exclusively class-based, matched against CSS rules loaded through a
+`GtkCssProvider`. Synthesizing a real effect from an inline `:style`
+map would mean generating a unique class name and CSS rule text per
+widget and loading it through a provider at render time — genuine
+design work (provider lifecycle, rule invalidation on every diff,
+name collision avoidance), not a small FFI addition like `:class`
+turned out to be. Hiccup `:style` props are still accepted and diffed
+by `glitter.core` (calling `set-style`/`remove-style`), but those two
+`IRender` methods remain the no-ops they always were.
