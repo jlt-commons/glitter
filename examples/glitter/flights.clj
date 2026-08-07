@@ -8,20 +8,21 @@
   a widget.'
 
   First real consumer of glitter.nexus (see src/glitter/nexus.clj) —
-  EVERY interaction below is a pure :effect/assoc-in + a registered
-  placeholder, zero hand-written case-dispatch code. As of this
-  commit, todo.clj and crud.clj still dispatch via their own
-  hand-written `execute-actions` case forms wired through plain
-  `core/set-dispatch!` — no nexus involvement yet (see those files'
-  own docstrings for their closures-vs-data-dispatch contrast). A
-  later retrofit of both onto glitter.nexus is planned, which would
-  add the action-EXPANSION layer this demo doesn't need at all (every
-  interaction here is a single :effect/assoc-in, never an action that
-  itself expands into further actions).
+  every interaction below dispatches at most two effects, never an
+  action expansion (zero hand-written case-dispatch code): every field
+  is a pure :effect/assoc-in plus a registered placeholder, except the
+  \"Try again\" button, which dispatches two :effect/assoc-in calls
+  back to back (see view below). todo.clj and crud.clj were
+  retrofitted onto glitter.nexus in later tasks of this same arc (see
+  those files' own docstrings for their pre-retrofit
+  closures-vs-data-dispatch contrast) — this file still doesn't need
+  the action-EXPANSION layer they use (`register-action!`) at all,
+  since none of its interactions need to read current state before
+  deciding what effects to run.
 
   Ports guis/flights.cljc from cjohansen/replicant-7uis (a real, tested,
   complete implementation — unlike crud.cljc's unfinished initial-take
-  skeleton) for the domain-logic SHAPE (get-form-state, before?), but:
+  skeleton) for the domain-logic SHAPE (get-form-state), but:
 
   - Dates use the OFFICIAL spec's DD.MM.YYYY format, not the reference
     port's ISO-ish YYYY-MM-DD (a deviation in that file from its own
@@ -100,12 +101,12 @@
 ;; See crud.clj's field-row for the same shape/:xalign-must-be-a-float
 ;; note — this demo's fields don't share crud.clj's helper directly
 ;; (different label width / no shared ns), so it's redefined here.
-(defn- field-row [label value error? action]
+(defn- field-row [label value error? path]
   [:hbox {:spacing 8}
    [:label {:label label :width-chars 8 :xalign 0.0}]
    [:entry {:text value :hexpand true
             :class (if error? ["error"] [])
-            :on {:change [[:effect/assoc-in [action] [:glitter/value]]]}}]])
+            :on {:change [[:effect/assoc-in [path] [:glitter/value]]]}}]])
 
 (defn view [state]
   (if (:booked? state)
@@ -135,16 +136,14 @@
        [:button {:label "Book" :sensitive (not book-disabled?)
                  :on {:click [[:effect/assoc-in [:booked?] true]]}}]])))
 
-(def ^:private nexus-config
-  {:nexus/effects
-   {:effect/assoc-in (fn [_ system path v] (swap! system assoc-in path v))}
-   :nexus/placeholders
-   {:glitter/value (fn [event] (get-in event [:glitter/dom-event :glitter/value]))
-    :fmt/nth (fn [_ coll idx] (nth coll idx))}})
+(nxr/register-effect! :effect/assoc-in
+                      (fn [_ system path v] (swap! system assoc-in path v)))
 
-(nxr/register-effect! :effect/assoc-in (get-in nexus-config [:nexus/effects :effect/assoc-in]))
-(nxr/register-placeholder! :glitter/value (get-in nexus-config [:nexus/placeholders :glitter/value]))
-(nxr/register-placeholder! :fmt/nth (get-in nexus-config [:nexus/placeholders :fmt/nth]))
+(nxr/register-placeholder! :glitter/value
+                           (fn [event] (get-in event [:glitter/dom-event :glitter/value])))
+
+(nxr/register-placeholder! :fmt/nth (fn [_ coll idx] (nth coll idx)))
+
 (nxr/on-error (fn [_ctx {:keys [err] :as error}]
                 (log/error err "glitter.nexus dispatch error" (dissoc error :err))))
 

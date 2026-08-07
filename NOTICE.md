@@ -94,12 +94,16 @@ is why this is its own bucket.
   implementations with no glitter/GTK equivalent. This file ports the
   accumulation mechanism (the same nested `:entries`/`:chronology` tree,
   verified byte-identical to the relevant upstream functions during task
-  review) and drops every `dp/*`/dataspex call site. Two adaptations:
+  review) and drops every `dp/*`/dataspex call site. Three adaptations:
   `now` uses `tick.core/now` instead of `java.util.Date.` (jolt.time is
   already a project dependency); `find-event` reads `:glitter/dom-event`
   directly instead of hunting through `dispatch-data`'s values for a DOM
   `Event` instance, since glitter's `dispatch-data` always IS the event
-  map.
+  map; `measure-elapsed` returns a plain `{:ms .. :slow? ..}` map
+  instead of upstream's rounded `Timing` record (`inspector.cljc`'s
+  `round-tenth`) — a correct adaptation, not an oversight, since
+  `Timing` is a dataspex render type with no glitter equivalent, simply
+  never written down until now.
 
 ## b12n-adk-clj / b12n-rljlt
 

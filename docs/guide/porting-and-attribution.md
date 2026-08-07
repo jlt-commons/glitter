@@ -423,11 +423,16 @@ Replicant bucket above (see NOTICE.md for the full text).
   `nexus.inspector.cljc`, entangled with `dataspex.*` rendering-protocol
   implementations with no glitter/GTK equivalent. This file ports the
   accumulation mechanism (the same nested `:entries`/`:chronology` tree)
-  and drops every `dp/*`/dataspex call site. Two adaptations: `now` uses
-  `tick.core/now` instead of `java.util.Date.` (jolt.time is already a
-  project dependency); `find-event` reads `:glitter/dom-event` directly
-  instead of hunting through `dispatch-data`'s values for a DOM `Event`
-  instance, since glitter's `dispatch-data` always IS the event map.
+  and drops every `dp/*`/dataspex call site. Three adaptations: `now`
+  uses `tick.core/now` instead of `java.util.Date.` (jolt.time is
+  already a project dependency); `find-event` reads `:glitter/dom-event`
+  directly instead of hunting through `dispatch-data`'s values for a DOM
+  `Event` instance, since glitter's `dispatch-data` always IS the event
+  map; `measure-elapsed` returns a plain `{:ms .. :slow? ..}` map
+  instead of upstream's rounded `Timing` record (`inspector.cljc`'s
+  `round-tenth`) — a correct adaptation, not an oversight, since
+  `Timing` is a dataspex render type with no glitter equivalent, simply
+  never written down until now.
 
 Unlike Replicant/glimmer, nexus is a genuinely separate library (not
 glitter's own reconciler or its widget-layer fork) — glitter depends on

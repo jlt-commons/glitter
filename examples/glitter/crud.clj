@@ -30,8 +30,9 @@
   `:action/delete` each need to READ current state to decide what should
   happen, so they use the ACTION-EXPANSION layer (`register-action!`) —
   the piece `flights.clj` never needs at all, since every one of its
-  interactions is a single `:effect/assoc-in` with no read-before-write.
-  See `flights.clj`'s own docstring for that pure-effects-only contrast.
+  interactions dispatches at most two effects, never an action
+  expansion, with no read-before-write. See `flights.clj`'s own
+  docstring for that pure-effects-only contrast.
 
   DESIGN CHOICE beyond the strict spec text: selecting a row
   auto-populates the Name/Surname fields with that person's current

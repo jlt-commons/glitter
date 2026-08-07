@@ -242,15 +242,17 @@ don't belong in `glitter.nexus`/`glitter.nexus.registry` themselves.
 ### `flights.clj` — pure effects only
 
 `examples/glitter/flights.clj` (the 7GUIs Flight Booker) is the first
-real consumer of `glitter.nexus`, and EVERY interaction in it is a
-single `:effect/assoc-in` plus a registered placeholder — zero
-hand-written case-dispatch code, and no `:nexus/actions`/
-`:nexus/expansions` registered at all:
+real consumer of `glitter.nexus`, and every interaction in it
+dispatches at most two effects, never an action expansion — every
+field is a pure `:effect/assoc-in` plus a registered placeholder,
+except the "Try again" button, which dispatches two `:effect/assoc-in`
+calls back to back. Zero hand-written case-dispatch code either way,
+and no `:nexus/actions`/`:nexus/expansions` registered at all:
 
 ```clojure
 [:entry {:text value :hexpand true
          :class (if error? ["error"] [])
-         :on {:change [[:effect/assoc-in [action] [:glitter/value]]]}}]
+         :on {:change [[:effect/assoc-in [path] [:glitter/value]]]}}]
 ```
 
 `flights.clj` never calls `nxr/register-system->state!` at all — unlike
@@ -271,8 +273,9 @@ this arc (replacing a hand-written `execute-actions` `case` form). Both
 need to READ current state to decide what should happen — `crud.clj`'s
 `:action/select-row`/`:action/create`/`:action/update`/`:action/delete`
 and `todo.clj`'s `:action/toggle`/`:action/add-task` — so both register
-`:nexus/actions` (expansions), the layer `flights.clj` never needs at
-all. `todo.clj`'s `:action/toggle` is the simplest expansion in the
+`:nexus/expansions` (via `register-action!`/`register-expansion!` —
+see above), the layer `flights.clj` never needs at all. `todo.clj`'s
+`:action/toggle` is the simplest expansion in the
 codebase — reads the row's CURRENT `:done` value to `not` it, something
 a pure `:effect/assoc-in` literally cannot express since it has no way
 to read state before writing:
@@ -284,11 +287,40 @@ to read state before writing:
 ```
 
 Both demos still register `:effect/assoc-in` and `:glitter/value` too —
-for the fields that ARE pure passthroughs (`:action/set-filter`-style
-fields in `crud.clj`, the draft-text field in `todo.clj`). The two
-consumer shapes aren't mutually exclusive within one demo; they're a
+for the fields that ARE pure passthroughs (the filter field in
+`crud.clj`, which dispatches a bare `:effect/assoc-in` directly via its
+`field-row` helper, not an action at all; the draft-text field in
+`todo.clj`). The two consumer shapes aren't mutually exclusive within
+one demo; they're a
 per-interaction choice, made by whether that interaction needs to read
 state before deciding what effects to run.
+
+## Action-expansions are not atomic
+
+Every effect inside an action-expansion (the `crud.clj`/`todo.clj`
+consumer shape above) is dispatched separately, and each one drives its
+own full, synchronous `core/reconcile` before the next effect in the
+same expansion runs — not one render for the whole expansion. This
+follows from two facts already true elsewhere in this project:
+`app.clj`'s `on-gui` runs inline when already on the GTK main thread
+(see AGENTS.md convention #6), and every effect in this codebase
+dispatches from a GTK signal callback, which already runs on that
+thread. So there's no batching boundary around an expansion's effects
+the way one hand-written `swap!` implicitly gave the pre-retrofit code.
+
+`crud.clj`'s `:action/delete` is the concrete example: it expands into
+4 `:effect/assoc-in` calls (`:people`, `:selected-id`, `:given-name`,
+`:family-name`), so deleting a person drives 4 renders, where the
+pre-retrofit hand-written version computed the whole transition in one
+`swap!` and drove exactly 1. Today this doesn't expose any wrong
+intermediate state — `crud.clj`'s own intermediate delete-render still
+has `:selected-id` pointing at the just-removed person, but `view`'s
+`selected?` derivation (which checks whether that id is still present
+in `:people`) happens to keep the Update/Delete buttons insensitive
+regardless. A future demo built on this pattern should keep the
+possibility in mind: an expansion's effects are N sequential renders,
+not one atomic transition, and an intermediate render CAN observe
+partially-applied state.
 
 ## The action-log
 
@@ -297,7 +329,13 @@ the nested `:entries`/`:chronology` tree tracking every dispatch, every
 expanded action, and every executed effect, with per-entry elapsed-time
 measurements (`:dispatch-elapsed`, `:expansion-elapsed`,
 `:effect-elapsed`, each a `{:ms .. :slow? ..}` map from
-`measure-elapsed`). It captures, per top-level dispatch: a UUID `:id`, a
+`measure-elapsed`) — note that `:expansion-elapsed` is measured from
+the most-recently-started NESTED item's start time, not the entry's
+own, inherited verbatim from upstream nexus (`inspector.cljc`'s
+`after-action`); not "fixed" here because doing so would be an
+undocumented divergence from a faithful port (see the code comment
+above `after-action` in `action_log.clj`). It captures, per top-level
+dispatch: a UUID `:id`, a
 `tick.core/now` timestamp (`:dispatched-at`), the raw `:dispatch-data`
 (and, if present, the `:glitter/dom-event` under `:dom-event`), and a
 nested `:actions` vector where each action's own `:expansions` holds

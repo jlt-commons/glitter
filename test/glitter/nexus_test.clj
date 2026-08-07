@@ -81,3 +81,23 @@
       (nexus/dispatch config system nil [[:effect/boom]])
       (is (= 1 (count @errors)))
       (is (= "boom" (.getMessage ^Exception (:err (first @errors))))))))
+
+(deftest action-expansion-arity-mismatch-test
+  (testing "a wrong-arity action tuple is caught into :errors, not thrown — the Task 6 regression"
+    (let [system (atom {:idx 0})
+          config {:nexus/effects
+                  {:effect/assoc-in (fn [_ system path v] (swap! system assoc-in path v))}
+                  :nexus/actions
+                  {:action/select-row
+                   ;; 2-arg on purpose — the arity [[:action/select-row]]
+                   ;; (below) mismatches. state is unused: this test only
+                   ;; exercises the arity-mismatch path, not the fn's logic.
+                   (fn [_state idx]
+                     [[:effect/assoc-in [:selected] idx]])}
+                  :nexus/system->state (fn [store] @store)}
+          ;; [[:action/select-row]] omits the trailing idx arg a 2-arg
+          ;; expansion fn needs — (apply f state (next action)) then
+          ;; calls it with just 1 arg.
+          result (nexus/dispatch config system nil [[:action/select-row]])]
+      (is (= 1 (count (:errors result))))
+      (is (instance? clojure.lang.ArityException (:err (first (:errors result))))))))

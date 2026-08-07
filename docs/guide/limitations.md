@@ -398,6 +398,50 @@ sets them across separate single-key re-renders. Documented as a comment
 above `window-spec` rather than fixed. See
 [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs).
 
+## Action-expansions dispatch N sequential renders, not one atomic transition
+
+`app.clj`'s `on-gui` runs inline when already on the GTK main thread,
+and every glitter effect dispatches from a GTK signal callback (that
+thread), so each `:effect/assoc-in` inside an action-expansion
+(`register-action!`) drives its own full, synchronous `core/reconcile`
+before the next effect in that expansion runs — not one render for the
+whole expansion. `crud.clj`'s `:action/delete` is the concrete example:
+4 effects, 4 renders, where the pre-retrofit hand-written version
+computed the whole transition in one `swap!` and drove exactly 1.
+
+**Why this is fine today, but worth knowing:** no demo in this project
+currently exposes wrong intermediate state from this — `crud.clj`'s own
+intermediate delete-render still has `:selected-id` pointing at the
+just-removed person, but `view`'s `selected?` derivation happens to
+keep the Update/Delete buttons insensitive regardless. A future demo
+built on the action-expansion pattern should keep the possibility in
+mind. See
+[`nexus.md`](nexus.md#action-expansions-are-not-atomic) for the full
+mechanics.
+
+**Why left as-is:** a coarser effect type that batches an expansion's
+effects into one render would be new architecture on top of a faithful
+nexus port, not a mechanical fix — out of scope here.
+
+## `glitter.nexus.registry`'s registry is one process-global atom
+
+`glitter.nexus.registry/!registry` is a single top-level atom — two
+glitter apps sharing one process (e.g. two demos' namespaces loaded
+into the same REPL) share one set of registered effects/placeholders/
+expansions, not one each. Every demo in this project runs as its own
+process (`jolt -M:crud`, `jolt -M:flights`, ...), so this has never
+mattered in practice, but it's a real constraint on any future
+multi-app-in-one-process usage.
+
+## No action-log viewer ships
+
+`glitter.nexus.action-log` accumulates a full dispatch/expansion/effect
+tree (see [`nexus.md`](nexus.md#the-action-log)), but `(pr-str @log)`
+is the only inspection method today — there is no GTK-native viewer
+window. A deliberate v1 scope decision from the design spec, not an
+oversight; upstream's own viewer (`nexus.inspector`) is entangled with
+`dataspex.*` rendering protocols that have no glitter/GTK equivalent.
+
 ## Still a limitation: `:style`, and no animations
 
 `:style` is still diffed (`IRender/set-style`/`remove-style` are called)

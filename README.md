@@ -47,9 +47,7 @@ demo — a port of the [7GUIs Flight
 Booker task](https://eugenkiss.github.io/7guis/tasks/#flight-booker):
 a date-constraint form (combobox, two date fields, a Book button)
 dispatched entirely through `glitter.nexus`, a ported data-driven
-action/effect/placeholder engine (see below). `jolt test` runs the unit
-suite. The rest are automated live-GTK smokes, each of which exits
-non-zero on failure:
+action/effect/placeholder engine (see below).
 
 As of this arc, `jolt todo`/`jolt crud`/`jolt flights` all dispatch
 through `glitter.nexus` — a port of
@@ -64,6 +62,9 @@ needs only effects and placeholders; `jolt crud`/`jolt todo` also use
 action-expansions. See [`docs/guide/nexus.md`](docs/guide/nexus.md) for
 the full model, including a live-verified `t/parse-date` leniency
 gotcha that `jolt flights`' date validation had to work around.
+
+`jolt test` runs the unit suite. The rest are automated live-GTK
+smokes, each of which exits non-zero on failure:
 
 | task | pins |
 |---|---|

@@ -6,10 +6,16 @@
  ;; examples/glitter/flights.clj for date parsing/formatting/comparison.
  ;; jolt-lang/logging ports clojure.tools.logging — used by
  ;; glitter.nexus consumers as the :nexus/on-error handler. Both pinned
- ;; SHAs are newer than what's checked out under
- ;; ~/dev/github--jolt-lang--{time,logging} — those local mirrors were
- ;; stale (the time one is outright broken at its pinned commit,
- ;; verified live: `Unable to resolve symbol: odt` in jolt.time.zoned).
+ ;; SHAs are the known-good versions, verified live under real Jolt (not
+ ;; just JVM Clojure) as of when they were pinned — re-verify live
+ ;; before bumping either.
+ ;;
+ ;; The two use different Maven-coordinate conventions on purpose:
+ ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
+ ;; org.clojure/tools.logging deliberately SHADOWS the real upstream
+ ;; org.clojure/tools.logging coordinate — any transitive dependency
+ ;; that pulls in the real clojure.tools.logging gets this jolt-lang
+ ;; shim instead. Not a coordinate-naming inconsistency to "fix."
  :deps {weavejester/hiccup
         {:git/url "https://github.com/weavejester/hiccup"
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}

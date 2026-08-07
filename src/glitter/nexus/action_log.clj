@@ -129,6 +129,15 @@
       (update-log-entry log ctx
                         (fn [entry]
                           (cond-> entry
+                            ;; ::before-action is a single key on ctx, so a
+                            ;; nested action's before-action call overwrites
+                            ;; the outer one's timestamp — :expansion-elapsed
+                            ;; below ends up measured from the most-recently-
+                            ;; started NESTED item, not this entry's own
+                            ;; start time. Inherited verbatim from upstream
+                            ;; nexus's inspector.cljc; not "fixed" here since
+                            ;; that would be an undocumented divergence from
+                            ;; a faithful port — see docs/guide/nexus.md.
                             (seq (get-in entry (conj path :expansions)))
                             (assoc-in (conj path :expansion-elapsed)
                                       (measure-elapsed @log (now-ms) (::before-action ctx)))
