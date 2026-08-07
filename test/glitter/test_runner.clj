@@ -37,6 +37,28 @@
   (System/exit code))
 
 (defn -main [& _]
+  ;; deps.edn's :test alias puts examples/ on this process's classpath
+  ;; (needed so glitter.temperature-test can require glitter.temperature —
+  ;; see deps.edn's own comment). Requiring glitter.temperature-test
+  ;; therefore transitively requires glitter.temperature itself, whose
+  ;; top-level (core/set-dispatch! ...) and nxr/register-*! calls mutate
+  ;; genuinely global, process-wide state (glitter.core/*dispatch*,
+  ;; glitter.nexus.registry/!registry) for the rest of THIS test process —
+  ;; not scoped to glitter.temperature-test's own deftests. Any future
+  ;; example-backed test namespace added here does the same. This is safe
+  ;; today only because glitter.nexus.registry-test's own `use-fixtures
+  ;; :each` resets !registry to {} before/after each of ITS deftests — a
+  ;; future test that relies on global dispatch/registry state some other
+  ;; way could break in an order-dependent way (namespaces run in the
+  ;; order listed below). Verified live: after glitter.nexus.registry-test's
+  ;; deftests run, !registry no longer contains glitter.temperature's
+  ;; require-time registrations at all (its :each fixture's before-only
+  ;; reset leaves !registry holding whatever its OWN last deftest put
+  ;; there) — so a hypothetical test reaching into the shared registry
+  ;; from glitter.temperature-test (listed after registry-test below)
+  ;; would see none of glitter.temperature's registrations. Test
+  ;; glitter.temperature's placeholder/expansion LOGIC via its own named
+  ;; functions instead of the shared registry, for exactly this reason.
   (let [namespaces '[glitter.hiccup-test glitter.assert-test glitter.asserts-test
                      glitter.core-test glitter.alias-test glitter.nexus-test
                      glitter.nexus.registry-test glitter.nexus.action-log-test

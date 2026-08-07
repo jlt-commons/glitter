@@ -56,6 +56,37 @@
     (str (long n))
     (str n)))
 
+(defn parse-number
+  "Parses a just-typed field's raw text into a finite double, or nil for
+  anything that isn't a usable temperature — blank/non-numeric text, AND
+  non-finite results. Double/parseDouble accepts \"Infinity\"/\"-Infinity\"/
+  \"NaN\" and overflows like \"1e400\" (-> ##Inf) without throwing, so the
+  try/catch alone doesn't reject them.
+
+  The finiteness check deliberately does NOT use Double/isFinite —
+  verified live that it doesn't resolve under Jolt (Chez-Scheme host, not
+  the JVM): `No matching field or method: Double/isFinite`. Uses two
+  portable checks instead, both verified live under Jolt: `(= parsed
+  parsed)` excludes NaN (IEEE-754 NaN is never equal to itself, in any
+  host), and `##Inf`/`##-Inf` are Clojure reader literals Jolt supports
+  directly, so equality against them excludes both infinities without
+  any Double static-method call at all.
+
+  Non-finite input is treated the same as any other invalid input: nil
+  (a no-op downstream, per this ns's docstring), not a value that
+  reaches set-temperature and corrupts format-number's (long n) on the
+  next render."
+  [s]
+  (when (string? s)
+    (let [trimmed (str/trim s)]
+      (when (seq trimmed)
+        (let [parsed (try (Double/parseDouble trimmed) (catch Exception _ nil))]
+          (when (and parsed
+                     (= parsed parsed)
+                     (not= parsed ##Inf)
+                     (not= parsed ##-Inf))
+            parsed))))))
+
 (defonce state
   (atom {:celsius 0.0 :fahrenheit 32.0}))
 
@@ -63,10 +94,10 @@
   [:vbox {:spacing 12 :margin 16}
    [:label {:markup "<span size='xx-large' weight='bold'>Temperature Converter</span>" :halign :start}]
    [:hbox {:spacing 8}
-    [:entry {:text (format-number (:celsius state)) :width-chars 8
+    [:entry {:text (format-number (:celsius state)) :width-request 96
              :on {:change [[:action/set-temperature {:celsius [:fmt/number [:glitter/value]]}]]}}]
     [:label {:label "Celsius ="}]
-    [:entry {:text (format-number (:fahrenheit state)) :width-chars 8
+    [:entry {:text (format-number (:fahrenheit state)) :width-request 96
              :on {:change [[:action/set-temperature {:fahrenheit [:fmt/number [:glitter/value]]}]]}}]
     [:label {:label "Fahrenheit"}]]])
 
@@ -77,11 +108,7 @@
                            (fn [event] (get-in event [:glitter/dom-event :glitter/value])))
 
 (nxr/register-placeholder! :fmt/number
-                           (fn [_ s]
-                             (when (string? s)
-                               (let [trimmed (str/trim s)]
-                                 (when (seq trimmed)
-                                   (try (Double/parseDouble trimmed) (catch Exception _ nil)))))))
+                           (fn [_ s] (parse-number s)))
 
 (nxr/register-action! :action/set-temperature
                       (fn [_state temps] (set-temperature temps)))

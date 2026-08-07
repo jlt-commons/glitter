@@ -31,3 +31,21 @@
 
   (testing "Neither key present is a no-op"
     (is (= [] (temperature/set-temperature {})))))
+
+(deftest parse-number-test
+  (testing "Parses valid numeric strings"
+    (is (= 100.0 (temperature/parse-number "100")))
+    (is (= 37.5 (temperature/parse-number "37.5")))
+    (is (= -17.5 (temperature/parse-number "-17.5"))))
+
+  (testing "Rejects blank, non-numeric, and nil input"
+    (is (nil? (temperature/parse-number "")))
+    (is (nil? (temperature/parse-number "   ")))
+    (is (nil? (temperature/parse-number "abc")))
+    (is (nil? (temperature/parse-number nil))))
+
+  (testing "Rejects non-finite doubles Double/parseDouble accepts without throwing"
+    (is (nil? (temperature/parse-number "Infinity")))
+    (is (nil? (temperature/parse-number "-Infinity")))
+    (is (nil? (temperature/parse-number "NaN")))
+    (is (nil? (temperature/parse-number "1e400")))))

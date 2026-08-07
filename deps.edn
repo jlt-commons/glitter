@@ -77,7 +77,7 @@
                                          :main-opts ["-m" "glitter.password-search-entry-smoke"]}
            :expander-paned-smoke {:extra-paths ["examples"]
                                   :main-opts ["-m" "glitter.expander-paned-smoke"]}
-           :test    {:extra-paths ["test" "examples"]     :main-opts ["-m" "glitter.test-runner"]}
+           :test    {:extra-paths ["test" "examples"] :main-opts ["-m" "glitter.test-runner"]}
            :counter {:extra-paths ["examples"] :main-opts ["-m" "glitter.counter"]}
            :todo    {:extra-paths ["examples"] :main-opts ["-m" "glitter.todo"]}
            :smoke   {:extra-paths ["examples"] :main-opts ["-m" "glitter.smoke"]}

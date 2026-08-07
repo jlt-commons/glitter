@@ -266,15 +266,18 @@ non-nil, and `flights.clj` registers no actions/expansions at all, so
 is a direct `assoc-in` on the raw system atom; nothing reads derived
 state back through nexus.
 
-### `crud.clj`/`todo.clj` — action-expansions
+### `crud.clj`/`todo.clj`/`temperature.clj` — action-expansions
 
 `crud.clj` and `todo.clj` were both retrofitted onto `glitter.nexus` in
-this arc (replacing a hand-written `execute-actions` `case` form). Both
-need to READ current state to decide what should happen — `crud.clj`'s
+this arc (replacing a hand-written `execute-actions` `case` form);
+`temperature.clj` (the 7GUIs Temperature Converter) was written against
+`glitter.nexus` from the start, like `flights.clj` before it. All three
+register `:nexus/expansions` (via `register-action!`/`register-expansion!`
+— see above), the layer `flights.clj` never needs at all — but for two
+different reasons. `crud.clj`'s
 `:action/select-row`/`:action/create`/`:action/update`/`:action/delete`
-and `todo.clj`'s `:action/toggle`/`:action/add-task` — so both register
-`:nexus/expansions` (via `register-action!`/`register-expansion!` —
-see above), the layer `flights.clj` never needs at all. `todo.clj`'s
+and `todo.clj`'s `:action/toggle`/`:action/add-task` need to READ
+current state to decide what should happen. `todo.clj`'s
 `:action/toggle` is the simplest expansion in the
 codebase — reads the row's CURRENT `:done` value to `not` it, something
 a pure `:effect/assoc-in` literally cannot express since it has no way
@@ -286,14 +289,37 @@ to read state before writing:
                         [[:effect/assoc-in [:tasks idx :done] (not (get-in state [:tasks idx :done]))]]))
 ```
 
-Both demos still register `:effect/assoc-in` and `:glitter/value` too —
-for the fields that ARE pure passthroughs (the filter field in
-`crud.clj`, which dispatches a bare `:effect/assoc-in` directly via its
-`field-row` helper, not an action at all; the draft-text field in
-`todo.clj`). The two consumer shapes aren't mutually exclusive within
-one demo; they're a
+`temperature.clj`'s single `:action/set-temperature` needs an
+expansion for a different reason: it doesn't read app STATE at all
+(its fn signature is `(fn [_state temps] ...)`, ignoring the first
+arg) — it branches on which key is present in the DISPATCH DATA (has
+`:celsius` come through, or `:fahrenheit`?) to decide which field is
+the source and which is derived, something a single bare
+`:effect/assoc-in` can't express either, just for a different reason
+than `crud.clj`/`todo.clj`'s state-reads. Because `glitter.nexus/dispatch`'s
+assert (quoted above) fires whenever `:nexus/expansions` is non-nil
+at all — regardless of whether the specific expansion that runs
+actually touches state — `temperature.clj` still has to call
+`(nxr/register-system->state! deref)` even though `set-temperature`
+never uses its `state` argument; omitting it throws
+`Assert failed: Either :nexus/system+dispatch-data->state or
+:nexus/system->state must be a function` on the very first dispatch.
+
+All three demos still register `:effect/assoc-in` and `:glitter/value`
+too — `crud.clj`/`todo.clj` for the fields that ARE pure passthroughs
+(the filter field in `crud.clj`, which dispatches a bare
+`:effect/assoc-in` directly via its `field-row` helper, not an action
+at all; the draft-text field in `todo.clj`); `temperature.clj` has no
+pure-passthrough field at all (both its `:entry` fields route through
+`:action/set-temperature`), but still registers `:effect/assoc-in`
+because `set-temperature`'s own expansion result is built from
+`:effect/assoc-in` tuples, and `:glitter/value` because its
+demo-local `:fmt/number` placeholder nests `[:glitter/value]` inside
+its own placeholder chain (`[:fmt/number [:glitter/value]]`). The two
+consumer shapes aren't mutually exclusive within one demo; they're a
 per-interaction choice, made by whether that interaction needs to read
-state before deciding what effects to run.
+state, or branch on dispatch data, before deciding what effects to
+run.
 
 ## Action-expansions are not atomic
 
