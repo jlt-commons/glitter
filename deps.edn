@@ -1,8 +1,24 @@
 {:paths ["src"]
 
+ ;; jolt-lang/time provides the java.time.* surface as a pure-Clojure
+ ;; host shim, with juxt/tick (pulled transitively via jolt-lang/time's
+ ;; own deps.edn) as the idiomatic date/time API on top — used by
+ ;; examples/glitter/flights.clj for date parsing/formatting/comparison.
+ ;; jolt-lang/logging ports clojure.tools.logging — used by
+ ;; glitter.nexus consumers as the :nexus/on-error handler. Both pinned
+ ;; SHAs are newer than what's checked out under
+ ;; ~/dev/github--jolt-lang--{time,logging} — those local mirrors were
+ ;; stale (the time one is outright broken at its pinned commit,
+ ;; verified live: `Unable to resolve symbol: odt` in jolt.time.zoned).
  :deps {weavejester/hiccup
         {:git/url "https://github.com/weavejester/hiccup"
-         :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}}
+         :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
+        io.github.jolt-lang/time
+        {:git/url "https://github.com/jolt-lang/time"
+         :git/sha "9c0d6b6c98acb78e26751d55cfc61fca2ad63191"}
+        org.clojure/tools.logging
+        {:git/url "https://github.com/jolt-lang/logging"
+         :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}}
 
  ;; GTK4 and its GLib dependencies, bound natively via jolt.ffi. Identical
  ;; declarations to glimmer's deps.edn (~/dev/glimmer/deps.edn) — glitter
