@@ -38,7 +38,8 @@
 
 (defn -main [& _]
   (let [namespaces '[glitter.hiccup-test glitter.assert-test glitter.asserts-test
-                     glitter.core-test glitter.alias-test glitter.nexus-test]]
+                     glitter.core-test glitter.alias-test glitter.nexus-test
+                     glitter.nexus.registry-test]]
     (doseq [ns namespaces]
       (try (require ns :reload)
            (catch Exception e
