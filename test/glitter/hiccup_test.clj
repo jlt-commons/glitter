@@ -9,7 +9,8 @@
     (is (false? (h/hiccup? [1 2 3]))))
 
   (testing "update-attrs merges into the attrs map"
-    (is (= [:div {:class "a" :id "x"} "hi"]
+    (is (= [:div {:class "a"
+                  :id "x"} "hi"]
            (h/update-attrs [:div {:class "a"} "hi"] assoc :id "x"))))
 
   (testing "set-attr sets a single attribute"

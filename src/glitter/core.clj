@@ -622,7 +622,8 @@
   "Create DOM node according to virtual DOM in `headers`. Register relevant
   life-cycle hooks from the new node or its descendants in `impl`. Returns a
   tuple of the newly created node and the fully realized vdom."
-  [{:keys [renderer] :as impl} headers]
+  [{:keys [renderer]
+    :as impl} headers]
   (assert/enter-node headers)
   (or
    (when-let [text (hiccup/text headers)]
@@ -703,7 +704,8 @@
       (f (first xs)) [coll-n dom-n]
       :else (recur (unchecked-inc-int coll-n) (unchecked-inc-int dom-n) (next xs)))))
 
-(defn ^:private insert-children [{:keys [renderer] :as impl} el children vdom]
+(defn ^:private insert-children [{:keys [renderer]
+                                  :as impl} el children vdom]
   (reduce (fn [[res n] child]
             (if child
               (let [[node vdom] (create-node impl child)]
@@ -712,7 +714,8 @@
               [(conj! res nil) n]))
           [vdom 0] children))
 
-(defn remove-child [{:keys [renderer] :as impl} unmounts el n vdom]
+(defn remove-child [{:keys [renderer]
+                     :as impl} unmounts el n vdom]
   ;; An assigned id means the node has already started unmounting
   (if-let [id (vdom/unmount-id vdom)]
     ;; If the id is in the unmounts set, it has not yet finished unmounting
@@ -747,7 +750,8 @@
 (defn unchanged? [headers vdom]
   (= (some-> headers hiccup/sexp) (some-> vdom vdom/sexp)))
 
-(defn ^:private move-nodes [{:keys [renderer] :as impl} el headers new-children vdom old-children n n-children]
+(defn ^:private move-nodes [{:keys [renderer]
+                             :as impl} el headers new-children vdom old-children n n-children]
   (let [[o-idx o-dom-idx] (if (hiccup/rkey headers)
                             (index-of #(same? headers %) old-children)
                             [-1 -1])
@@ -927,7 +931,8 @@
           (let [[nc oc n move-n vdom-node] (move-nodes impl el new-headers new-c old-vdom old-c n n-children)]
             (recur nc oc n move-n n-children true (cond-> vdom vdom-node (conj! vdom-node)))))))))
 
-(defn reconcile* [{:keys [renderer] :as impl} el headers vdom index]
+(defn reconcile* [{:keys [renderer]
+                   :as impl} el headers vdom index]
   (assert/enter-node headers)
   (asserts/assert-no-conditional-attributes headers vdom)
   (or (when (unchanged? headers vdom)

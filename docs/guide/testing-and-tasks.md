@@ -235,11 +235,12 @@ deletes the hook file (idempotent — reports "no pre-commit hook found" on
 a second run rather than erroring). `git commit --no-verify` skips the
 hook for one commit.
 
-**Deliberately not included: `clojure-lsp format --dry`.** The codebase
-currently has real drift against clojure-lsp's default formatting style in
-a handful of files, found while first wiring these tasks up: clojure-lsp's
-formatter wraps `{:keys [x] :as y}`-shaped destructuring across two lines
-even when the whole form comfortably fits on one —
+**Formatting: reversed from "leave it" to "format everything," and why.**
+The codebase originally had real drift against clojure-lsp's default
+formatting style in a handful of files, found while first wiring these
+tasks up: clojure-lsp's formatter wraps `{:keys [x] :as y}`-shaped
+destructuring across two lines even when the whole form comfortably fits
+on one —
 
 ```clojure
 ;; clojure-lsp's default output
@@ -255,16 +256,27 @@ signature on one line.** Since `glitter.core` and the other Bucket-1 files
 are supposed to stay a mechanical, diffable port of Replicant (see
 [`porting-and-attribution.md`](porting-and-attribution.md)), reformatting
 them to clojure-lsp's default would simultaneously read worse than the
-hand-tuned original *and* reduce future diffability against upstream, for
-no offsetting benefit. No config override was found that suppresses just
-this rule (`:cljfmt {:function-arguments-indentation ...}` was tried with
-both documented values, `:standard`/`:community` — neither preserves the
-inline form). Rather than force a mass-reformat or silently accept the
-readability regression, this was left as a known, open decision: `bb
-lsp:format`/`bb lsp:format-check` remain available as on-demand tools, but
-nothing runs them automatically, and they're not part of either git hook.
-If a `.lsp/config.edn` override is found later that reconciles this, wire
-`format --dry` into the hooks at that point — not before.
+hand-tuned original *and* reduce future diffability against upstream. No
+config override was found that suppresses just this rule
+(`:cljfmt {:function-arguments-indentation ...}` was tried with both
+documented values, `:standard`/`:community` — neither preserves the
+inline form). This was originally left as a known, open decision: `bb
+lsp:format`/`bb lsp:format-check` available as on-demand tools, nothing
+run automatically, neither wired into a git hook.
+
+That decision was revisited and reversed: `bb lsp:format` has now been
+run across the entire codebase (`bb lsp:format-check` is clean), trading
+away upstream Replicant diffability on the ~4 Bucket-1 files in favor of
+one uniform style everywhere, including files that had no upstream to
+diff against in the first place (`gtk.clj`, `test_renderer.clj`, and
+Bucket-2 files like `widget.clj`/`app.clj` — the diffability argument
+never applied to those, so leaving them unformatted alongside the ported
+files was a broader style inconsistency than the original rationale
+justified). The pre-commit hooks still don't include `format --dry` —
+not because of unresolved drift (there is none now) but because the FAST
+hook is deliberately scoped to lint + clean-ns only; adding `format --dry`
+now that the codebase conforms is a natural, cheap follow-up, not
+blocked on anything.
 
 **Why `check:positional-args`'s `exceptions` set is empty despite 32
 current findings.** Running it against glitter's own `src/glitter/` finds

@@ -4,7 +4,8 @@
             [glitter.test-renderer :as tr]))
 
 (defn- render
-  ([hiccup] (render {:tag-name "body" :children []} hiccup nil))
+  ([hiccup] (render {:tag-name "body"
+                     :children []} hiccup nil))
   ([el hiccup vdom]
    (let [r (tr/renderer)
          result (core/reconcile r (atom el) hiccup vdom)]
@@ -13,7 +14,8 @@
 (deftest builds-nodes-test
   (testing "Builds nodes — mirrors replicant core_test.cljc's 'Builds nodes'"
     (let [r (tr/renderer)
-          el (atom {:tag-name "body" :children []})]
+          el (atom {:tag-name "body"
+                    :children []})]
       (core/reconcile r el [:h1 {} "Hello world"])
       (is (= [[:create-element "h1"]
               [:create-text-node "Hello world"]
@@ -26,7 +28,8 @@
             (already manually probe-verified against real upstream replicant.core
             during this project's brainstorming phase)"
     (let [r (tr/renderer)
-          el (atom {:tag-name "ul" :children []})
+          el (atom {:tag-name "ul"
+                    :children []})
           result1 (core/reconcile r el
                                   [:ul {}
                                    [:li {:glitter/key "0"} "Item #1"]
@@ -61,7 +64,8 @@
 (deftest lifecycle-on-mount-test
   (testing "Triggers on-mount on first mount"
     (let [r (tr/renderer)
-          el (atom {:tag-name "body" :children []})
+          el (atom {:tag-name "body"
+                    :children []})
           calls (atom [])]
       (core/reconcile r el
                       [:div {:glitter/on-mount (fn [e] (swap! calls conj (:glitter/life-cycle e)))}])

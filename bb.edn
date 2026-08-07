@@ -265,18 +265,21 @@
 
   ;; --- Git hooks ------------------------------------------------------------
   ;; FAST hook: lint errors-only (ignores the 2 known-legitimate warnings —
-  ;; see lint:errors above) + clean-ns dry-run. No `format --dry` here: the
-  ;; codebase currently has drift against clojure-lsp's default cljfmt
-  ;; style in a few files (map/binding-form line-wrapping choices), left
-  ;; unresolved deliberately rather than auto-fixed — clojure-lsp's default
-  ;; wraps `{:keys [x] :as y}` destructuring across two lines even when it
-  ;; fits on one, which upstream Replicant's own source does NOT do (verified
-  ;; against replicant.core directly), so blindly running `bb lsp:format`
-  ;; on the files ported from it would both read worse than the hand-tuned
-  ;; original AND reduce future diffability against upstream for no
-  ;; benefit. Not wired into any gate until that's resolved one way or the
-  ;; other. `bb lsp:format-check`/`bb lsp:format` remain available as
-  ;; on-demand tools.
+  ;; see lint:errors above) + clean-ns dry-run. No `format --dry` here — not
+  ;; because of unresolved drift (the whole codebase, `bb lsp:format`ed in one
+  ;; pass, now conforms to clojure-lsp's default cljfmt style, confirmed clean
+  ;; via `bb lsp:format-check`) but because FAST is deliberately scoped to
+  ;; lint + clean-ns only. Earlier, `bb lsp:format` was deliberately withheld
+  ;; from even the 10 Replicant-ported files (clojure-lsp's default wraps
+  ;; `{:keys [x] :as y}` destructuring across two lines even when it fits on
+  ;; one, which upstream Replicant's own source does NOT do — verified
+  ;; against replicant.core directly), trading upstream diffability against
+  ;; those files for the readability of the hand-tuned original. That
+  ;; tradeoff was revisited and reversed in favor of one uniform style across
+  ;; the whole codebase as new features land — see git history for the
+  ;; `bb lsp:format` commit. `bb lsp:format-check`/`bb lsp:format` remain
+  ;; available as on-demand tools; adding `format --dry` to this hook (now
+  ;; that there's nothing for it to flag) is a natural, cheap follow-up.
   hooks:install {:doc "Install FAST git pre-commit hook (lint errors + clean-ns, ~2s)"
                  :task (let [hook ".git/hooks/pre-commit"]
                          (spit hook (str "#!/bin/bash\n"

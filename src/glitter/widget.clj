@@ -64,7 +64,15 @@
            :show :line_height :allow_breaks :insert_hyphens :text_transform
            :gravity :gravity_hint :overline :overline_color}
    :a    #{:href}
-   :b nil :big nil :i nil :mark nil :s nil :small nil :sub nil :sup nil :tt nil
+   :b nil
+   :big nil
+   :i nil
+   :mark nil
+   :s nil
+   :small nil
+   :sub nil
+   :sup nil
+   :tt nil
    :u nil})
 
 (defn- markup-element? [form] (and (vector? form) (keyword? (first form))))
@@ -87,12 +95,14 @@
                 (when (and attrs (seq attrs))
                   (if (nil? allowed)
                     (throw (ex-info (str "glitter/markup: :" (name tag) " takes no attributes")
-                                    {:tag tag :attrs (keys attrs)}))
+                                    {:tag tag
+                                     :attrs (keys attrs)}))
                     (doseq [k (keys attrs)]
                       (when-not (contains? allowed k)
                         (throw (ex-info (str "glitter/markup: :" (name k)
                                              " is not a :" (name tag) " attribute")
-                                        {:tag tag :attr k}))))))
+                                        {:tag tag
+                                         :attr k}))))))
                 (run! validate! children))))
           (validate! [form]
             (cond
@@ -141,9 +151,11 @@
 ;; :orientation so a bare [:hbox ...] actually lays out horizontally (the box
 ;; ctor builds vertical by default and :apply corrects it). An explicit
 ;; :orientation in props always wins.
-(def ^:private aliases {:hbox :box :vbox :box})
+(def ^:private aliases {:hbox :box
+                        :vbox :box})
 
-(def ^:private tag-orientation {:hbox :horizontal :vbox :vertical})
+(def ^:private tag-orientation {:hbox :horizontal
+                                :vbox :vertical})
 
 (defn- normalize-tag [tag] (get aliases tag tag))
 
@@ -897,7 +909,8 @@
                            tag ". Registered tags: "
                            (str/join ", " (sort (map str (keys @specs))))
                            ". Register one with glitter.widget/register-widget!.")
-                      {:tag tag :registered (set (keys @specs))}))))
+                      {:tag tag
+                       :registered (set (keys @specs))}))))
 
 (defn container-kind
   "How a tag holds children: :box (ordered append/remove), :window (single child),

@@ -35,14 +35,21 @@
     (create-element [_ tag-name options]
       (let [tag (keyword tag-name)
             widget (w/create! tag (or options {}))]
-        (atom {:tag tag :widget widget :children [] :handlers {}})))
+        (atom {:tag tag
+               :widget widget
+               :children []
+               :handlers {}})))
 
     (create-text-node [_ text]
       ;; GTK has no text-node primitive; a bare string/number hiccup child
       ;; becomes its own :label widget (mirrors glimmer's leaf convention —
       ;; see the design spec's "Text/leaf content has no DOM equivalent").
       (let [widget (w/create! :label {:label text})]
-        (atom {:tag :label :widget widget :children [] :handlers {} :text text})))
+        (atom {:tag :label
+               :widget widget
+               :children []
+               :handlers {}
+               :text text})))
 
     (attached? [_ _el] true)
 
@@ -131,7 +138,8 @@
               ;; triggered.
               dispatch! (fn [src-widget]
                           (when-not (w/suppressing? src-widget)
-                            (handler (cond-> {:glitter/node el :glitter/gtk-widget src-widget}
+                            (handler (cond-> {:glitter/node el
+                                              :glitter/gtk-widget src-widget}
                                        value-fn (assoc :glitter/value (value-fn src-widget))))))
               ;; Almost every GTK signal glitter connects is
               ;; void(widget, user_data), covered by the default branch.
@@ -228,7 +236,9 @@
                    (jolt.ffi/foreign-callable
                     (fn [src-widget _page page-num _data]
                       (when-not (w/suppressing? src-widget)
-                        (handler {:glitter/node el :glitter/gtk-widget src-widget :glitter/value page-num})))
+                        (handler {:glitter/node el
+                                  :glitter/gtk-widget src-widget
+                                  :glitter/value page-num})))
                     [:pointer :pointer :uint :pointer] :void :collect-safe)
 
                    :else
@@ -237,7 +247,8 @@
                     [:pointer :pointer] :void :collect-safe))
               id (g/g-signal-connect-data (ptr el) signal cb jolt.ffi/null jolt.ffi/null g/CONNECT-DEFAULT)]
           (w/retain-callable! cb)
-          (swap! el assoc-in [:handlers event] {:id id :cb cb})))
+          (swap! el assoc-in [:handlers event] {:id id
+                                                :cb cb})))
       nil)
 
     (remove-event-handler [_ el event _opt]
@@ -339,7 +350,10 @@
   merged into every reconcile call automatically."
   [window view state-atom]
   (let [r (renderer)
-        root-el (atom {:tag :window :widget window :children [] :handlers {}})
+        root-el (atom {:tag :window
+                       :widget window
+                       :children []
+                       :handlers {}})
         vdom (atom nil)
         render! (fn [state]
                   (reset! vdom (:vdom (core/reconcile r root-el (view state) @vdom

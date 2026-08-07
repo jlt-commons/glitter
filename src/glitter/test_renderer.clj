@@ -29,7 +29,8 @@
 
                (create-element [_ tag-name _options]
                  (swap! log conj [:create-element tag-name])
-                 (atom {:tag-name tag-name :children []}))
+                 (atom {:tag-name tag-name
+                        :children []}))
 
                (set-style [_ el k v] (swap! log conj [:set-style (:tag-name @el) k v]) nil)
                (remove-style [_ el k] (swap! log conj [:remove-style (:tag-name @el) k]) nil)
@@ -101,7 +102,8 @@
                proto/IMemory
                (remember [_ node data] (swap! memory assoc node data) nil)
                (recall [_ node] (get @memory node)))]
-    (with-meta impl {:log log :memory memory})))
+    (with-meta impl {:log log
+                     :memory memory})))
 
 (defn events
   "The accumulated call log from a renderer built by `renderer`, as a plain

@@ -72,7 +72,10 @@
 (defn ^:private run*
   [on-activate opts]
   (let [{:keys [app-id title width height auto-quit-ms]
-         :or {app-id "glitter.app" title "glitter" width 400 height 300}} opts
+         :or {app-id "glitter.app"
+              title "glitter"
+              width 400
+              height 300}} opts
         app (g/gtk-application-new app-id g/APPLICATION-DEFAULT-FLAGS)
         activate (fn [_app _data]
                    (let [win (g/gtk-application-window-new app)]

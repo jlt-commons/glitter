@@ -30,12 +30,12 @@
              alias# (:alias @current-context)
              fd# (:data @current-context)]
          (reset! error
-          (cond-> {:title ~title
-                   :message ~message
-                   :hiccup (or ~hiccup @current-node)}
-            fn# (assoc :fname fn#)
-            alias# (assoc :alias alias#)
-            fd# (assoc :data fd#)))))))
+                 (cond-> {:title ~title
+                          :message ~message
+                          :hiccup (or ~hiccup @current-node)}
+                   fn# (assoc :fname fn#)
+                   alias# (assoc :alias alias#)
+                   fd# (assoc :data fd#)))))))
 
 ;; API
 
