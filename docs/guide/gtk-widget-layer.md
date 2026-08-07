@@ -1083,6 +1083,191 @@ not re-tested in the permanent smoke — the same "document, don't ship a
 test that asserts broken behavior" precedent `:center-box`'s smoke
 already set.
 
+## `:aspect-frame`/`:calendar` — a quick win, and a genuinely new value type
+
+`GtkAspectFrame` (`gtk_aspect_frame_set_child`) is a single-child
+container — the exact `:frame`/`:scrolled`/`:revealer`/`:expander`
+strategy reused verbatim, one more `case` line in each of
+`append-child!`/`remove-child!`/`replace-child!`. Its own construction
+params — `xalign`/`yalign`/`ratio`/`obey-child` — are plain floats/bool,
+confirmed individually re-settable post-construction via their own
+setters (`gtk/gtkaspectframe.h`), so unlike `:paned`'s `orientation`
+(a `GType` that may not be registered yet at first widget construction)
+they carry no chicken-and-egg risk and resolve directly from props at
+ctor time, with GTK's own documented defaults as fallback.
+
+`GtkCalendar` is a genuinely new value-bearing leaf widget.
+`"day-selected"` is confirmed via `gtk/gtkcalendar.c`'s `g_signal_new`
+call to be the plain 2-arg-void shape — but `gtk_calendar_get_date`
+returns a `GDateTime*`, a value type this project has never marshalled
+before. GLib's `GDateTime` is refcounted, and the exact ownership rules
+matter enough that they're worth pinning precisely rather than guessing
+from general GObject conventions:
+
+```c
+/* gtk_calendar_get_date's actual C body — confirmed by reading it directly */
+GDateTime *
+gtk_calendar_get_date (GtkCalendar *self)
+{
+  return g_date_time_ref (self->date);   /* caller owns a NEW ref */
+}
+```
+
+```c
+/* gtk_calendar_select_day's signature — a plain in-param, standard GLib
+   convention: does NOT take ownership of what's passed in */
+void gtk_calendar_select_day (GtkCalendar *calendar, GDateTime *date);
+```
+
+So every call site that reads OR constructs a `GDateTime` owns a
+reference it must release:
+
+```clojure
+(defn- calendar-date= [widget]
+  (let [d (g/gtk-calendar-get-date widget)   ; owns a NEW ref
+        result [(g/g-date-time-get-year d) (g/g-date-time-get-month d)
+                 (g/g-date-time-get-day-of-month d)]]
+    (g/g-date-time-unref d)                  ; release it
+    result))
+
+(defn- set-calendar-date! [widget [year month day :as date]]
+  (when (and year month day (not= (vec date) (calendar-date= widget)))
+    (let [gdt (g/g-date-time-new-local year month day 0 0 0.0)]  ; owns a NEW ref
+      (swap! suppressing conj widget)
+      (g/gtk-calendar-select-day widget gdt)   ; does NOT take ownership
+      (swap! suppressing disj widget)
+      (g/g-date-time-unref gdt))))             ; release it
+```
+
+Skipping either `unref` would leak one `GDateTime` object per render or
+dispatch — small individually, but unbounded over a long-running app's
+lifetime. `aspect_frame_calendar_smoke.clj`'s round-trip (a real
+interaction dispatching a `[year month day]` value, then a programmatic
+`reset!` syncing the widget back with the suppressing guard proven to
+hold) is what actually exercises this discipline under repeated use, not
+just confirms it compiles.
+
+## `:overlay`/`:flow-box` — a third container shape, and a verified difference, not an assumption
+
+`GtkOverlay` breaks the pattern every multi-child container up to this
+point has followed. `:box` is an ordered append-list; `:center-box`/
+`:paned` are fixed NAMED slots, each independently queryable via its own
+getter. `GtkOverlay` has exactly ONE queryable slot —
+`gtk_overlay_get_child`, the main content — plus an UNBOUNDED set of
+floating overlay children with **no enumeration getter at all**
+(confirmed: `gtk/gtkoverlay.h` has no "get overlays" function of any
+kind). The "query live via getters, never track separately" pattern
+`center-box-slot-setter`/`paned-slot-setter` both rely on simply doesn't
+have anything to query for the overlay set.
+
+The design: the FIRST hiccup child becomes main content; every
+subsequent child becomes an overlay, unconditionally —
+
+```clojure
+(defn- overlay-append-child! [parent child]
+  (if (ptr-null? (g/gtk-overlay-get-child parent))
+    (g/gtk-overlay-set-child parent child)
+    (g/gtk-overlay-add-overlay parent child)))
+```
+
+— and `overlay-remove-child!` decides which branch by checking whether
+`child` IS the current main content (the one thing that IS queryable);
+if not, it's assumed to be a registered overlay (safe, since every
+overlay-container child glitter ever attaches goes through this same
+function first). `overlay-replace-child!`'s overlay branch (remove old,
+append new) does NOT preserve z-order — GTK has no "insert overlay at
+position N" API to do better, a deliberate, documented simplification
+rather than an oversight. The single named slot (main content) inherits
+the identical structural v1 gap `:center-box`/`:paned` have: no
+same-tag-swap once occupied — `overlay-insert-after!` only handles the
+`sibling = nil` (main slot, still empty) case for real.
+
+Because GTK exposes no overlay-enumeration API, verifying a REMOVAL
+actually happened can't use the "check occupancy via the specific
+container's own getter" pattern every earlier container smoke uses.
+`overlay_flow_box_smoke.clj` instead reuses the GENERIC widget-tree walk
+(`gtk_widget_get_first_child`/`get_next_sibling`) every structural smoke
+in this project already has, since overlay children ARE real GTK
+widget-tree children — just laid out specially by `GtkOverlay`'s own
+layout manager:
+
+```clojure
+(defn- count-children [w]
+  (loop [c (g/gtk-widget-get-first-child w) n 0]
+    (if (or (nil? c) (zero? c)) n (recur (g/gtk-widget-get-next-sibling c) (inc n)))))
+```
+
+`:overlay-child-count-on-mount` reads `2` (main + one overlay);
+`:overlay-child-count-after-drop` reads `1` after removing the overlay —
+proof the removal reached live GTK state, not just that `main` stayed
+correct.
+
+### `:flow-box` — apply the `:list-box` lessons, but verify, don't assume
+
+`GtkFlowBox`'s `append`/`insert`/`remove` share the identical signature
+shape `GtkListBox`'s do (confirmed against `gtk/gtkflowbox.c`), strongly
+suggesting the same auto-wrap-in-a-child-widget behavior
+(`GtkListBoxRow` for `:list-box`, `GtkFlowBoxChild` for `:flow-box`) —
+and `gtk_flow_box_insert`'s body confirms it: a plain child gets wrapped
+in a fresh `GtkFlowBoxChild` exactly like `gtk_list_box_insert` wraps in
+a fresh `GtkListBoxRow`.
+
+The temptation, given the structural similarity, is to assume
+`gtk_flow_box_remove` has the identical "needs the wrapper, not the
+plain child" gotcha `:list-box` needed a fix for two rounds ago. **It
+does not** — verified by reading `gtk_flow_box_remove`'s C body
+directly, not by assuming the lesson transfers between sibling widgets:
+
+```c
+/* gtk_flow_box_remove's actual C body — confirmed by reading it directly */
+if (GTK_IS_FLOW_BOX_CHILD (widget))
+  child = GTK_FLOW_BOX_CHILD (widget);
+else
+  {
+    child = (GtkFlowBoxChild*) gtk_widget_get_parent (widget);
+    if (!GTK_IS_FLOW_BOX_CHILD (child))
+      {
+        g_warning ("Tried to remove non-child %p", widget);
+        return;
+      }
+  }
+```
+
+Unlike `gtk_list_box_remove` (which requires the row directly and warns
+otherwise), `gtk_flow_box_remove` accepts EITHER the wrapped
+`GtkFlowBoxChild` OR the plain inner widget, auto-unwrapping via
+`gtk_widget_get_parent` internally when needed. So
+`flow-box-remove-child!`/`flow-box-replace-child!` call
+`gtk_flow_box_remove` with the plain child straight away — no
+`list-box-row-of`-style recovery helper needed for removal at all.
+Positional INSERT still needs a sibling's *wrapper* (to read its index
+via `gtk_flow_box_child_get_index`), so `flow-box-child-of` exists for
+that one purpose, mirroring `list-box-row-of`'s shape but used only on
+the insert/reorder side.
+
+`"child-activated"` is confirmed via `g_signal_new` to be
+`void(GtkFlowBox*, GtkFlowBoxChild*, gpointer)` — the identical
+3-arg-void shape already generalized for `:list-box`/`:expander`/
+`:paned`, another free reuse with zero new `foreign-callable` call
+sites. v1 deliberately wires `:on-child-activated` with **no value-fn**:
+reading back "which child" would need `GList` traversal via
+`gtk_flow_box_get_selected_children` — a genuinely new FFI complexity
+class (walking a linked list through raw pointers) this project hasn't
+needed yet, and not worth taking on for a first pass when
+`:on-click`/`:on-toggled` already establish the precedent that a
+dispatched event without a `:glitter/value` is a normal, supported
+shape.
+
+`overlay_flow_box_smoke.clj`'s flow-box assertions swap the MIDDLE
+child's tag (`:label` -> `:button`) while all three positions are
+occupied and confirm both siblings stay untouched — proving
+`flow-box-insert-after!` (built on the verified-safe `gtk_flow_box_insert`
+clamping behavior, same as `:list-box`'s) works correctly, without
+needing `:flow-box` to inherit any of `:center-box`/`:paned`'s
+fixed-slot capacity limits: `GtkFlowBoxChild`s have per-item capacity,
+not a bounded slot count, so this class of gap simply doesn't apply
+here.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

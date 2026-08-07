@@ -73,14 +73,19 @@ live GTK widget tree in sync.
   `:expander`/`:paned` — free reuse of `:list-box`'s generalized
   3-arg-void shape for their `notify::*` signals, and `:paned`'s own
   2-named-slot container with a structural gap verified to fail
-  differently from `:center-box`'s.
+  differently from `:center-box`'s, `:aspect-frame`/`:calendar` — a
+  quick single-child-container win alongside this project's first
+  refcounted `GDateTime` marshalling, and `:overlay`/`:flow-box` — a
+  THIRD, genuinely different container shape (one queryable main slot
+  plus an unenumerable overlay set) and a `:list-box` sibling verified
+  to NOT share its `gtk_list_box_remove` gotcha, not assumed to.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the fifteen automated live-GTK
+  headless fake-`IRender` test renderer, the seventeen automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

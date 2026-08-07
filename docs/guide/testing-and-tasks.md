@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and fifteen automated smokes that drive a *real* GTK4 window
+fake renderer, and seventeen automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter — several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Fifteen examples under `examples/glitter/` each open a real GTK window,
+Seventeen examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -76,6 +76,8 @@ on mismatch:
 | `jolt spin-button-list-box-smoke` | `:spin-button`'s `"value-changed"` reads back through the RIGHT getter despite sharing `:scale`'s signal name; `:list-box`'s `"row-selected"` (a third callable shape) delivers the selected row's index, and a tag-swapped/removed row doesn't corrupt its siblings or spuriously dispatch | a real FFI `gtk_spin_button_set_value` call and a real `gtk_list_box_select_row` call simulate live interactions; a subsequent re-render swaps the selected row's TAG then removes it entirely, asserting dispatch counts and sibling row content stay correct throughout — see [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs) |
 | `jolt password-search-entry-smoke` | `:password-entry`/`:search-entry` reuse `:entry`'s `GtkEditable`-delegate `"changed"` signal NAME but each needed its own `signal-value` entry; `:search-entry`'s own `"search-changed"` fires synchronously on a text clear | a real FFI `gtk_editable_set_text` call types into the password entry and clears the search entry (the documented-in-source path that skips `"search-changed"`'s normal debounce), asserting both dispatched values and that a subsequent programmatic sync causes no spurious dispatch — see [`gtk-widget-layer.md`](gtk-widget-layer.md#password-entrysearch-entry--free-gtkeditable-reuse-and-a-signal-value-miss) |
 | `jolt expander-paned-smoke` | `:expander`'s `"notify::expanded"` and `:paned`'s `"notify::position"` (both free reuses of `:list-box`'s generalized 3-arg-void callable shape) deliver correctly, and `:paned`'s 2 named slots survive a safe last-slot tag swap | real FFI `gtk_expander_set_expanded`/`gtk_paned_set_position` calls simulate live interactions, asserting dispatched values, dispatch counts before/after a subsequent programmatic `reset!`, and both paned slots' content after the swap — see [`gtk-widget-layer.md`](gtk-widget-layer.md#expanderpaned--free-signal-reuse-and-a-second-structural-gap) |
+| `jolt aspect-frame-calendar-smoke` | `:aspect-frame`'s single-child container reuse lands on real GTK state; `:calendar`'s refcounted `GDateTime` round-trips through a real interaction and a programmatic sync with no leaks or spurious dispatch | reads `gtk_aspect_frame_get_xalign`/`get_yalign`/`get_ratio`/`get_child` back on mount; a real FFI `gtk_calendar_select_day` call simulates a live pick, asserting the dispatched `[year month day]`, dispatch count before/after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#aspect-framecalendar--a-quick-win-and-a-genuinely-new-value-type) |
+| `jolt overlay-flow-box-smoke` | `:overlay`'s 1-main+N-overlay shape survives a real removal (verified via a generic widget-tree walk, since GTK exposes no overlay-enumeration API); `:flow-box`'s tag-swapped middle child lands correctly without corrupting either sibling | a re-render drops the overlay child entirely, asserting the actual GTK child count drops by exactly one while main stays untouched; a separate re-render swaps `:flow-box`'s middle child's TAG, asserting both neighbors' content stays correct — see [`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo
@@ -115,13 +117,14 @@ bb scale-smoke | class-smoke | leaf-widgets-smoke | toggle-level-smoke
 bb link-button-smoke | switch-smoke
 bb revealer-center-box-smoke | spin-button-list-box-smoke
 bb password-search-entry-smoke | expander-paned-smoke
+bb aspect-frame-calendar-smoke | overlay-flow-box-smoke
                         # individual live-GTK smokes
-bb smokes               # all fifteen smokes in sequence; stops at first failure
+bb smokes               # all seventeen smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly — never the
 `jolt <task>` shorthand — so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all fifteen smokes with a plain
+CI gate on their own. `bb smokes` chains all seventeen smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

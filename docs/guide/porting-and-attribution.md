@@ -98,7 +98,22 @@ listed here for provenance, not legal requirement:
   `gtk-expander-set-child`, `gtk-paned-new`, `gtk-paned-set-start-child`,
   `gtk-paned-get-start-child`, `gtk-paned-set-end-child`,
   `gtk-paned-get-end-child`, `gtk-paned-set-position`,
-  `gtk-paned-get-position`).
+  `gtk-paned-get-position`), and twenty-nine more for
+  `:aspect-frame`/`:calendar`/`:overlay`/`:flow-box`
+  (`gtk-aspect-frame-new`, `gtk-aspect-frame-set-child`,
+  `gtk-aspect-frame-get-child`, `gtk-aspect-frame-set-xalign`,
+  `gtk-aspect-frame-get-xalign`, `gtk-aspect-frame-set-yalign`,
+  `gtk-aspect-frame-get-yalign`, `gtk-aspect-frame-set-ratio`,
+  `gtk-aspect-frame-get-ratio`, `gtk-aspect-frame-set-obey-child`,
+  `gtk-aspect-frame-get-obey-child`, `gtk-calendar-new`,
+  `gtk-calendar-select-day`, `gtk-calendar-get-date`,
+  `g-date-time-new-local`, `g-date-time-get-year`,
+  `g-date-time-get-month`, `g-date-time-get-day-of-month`,
+  `g-date-time-unref`, `gtk-overlay-new`, `gtk-overlay-set-child`,
+  `gtk-overlay-get-child`, `gtk-overlay-add-overlay`,
+  `gtk-overlay-remove-overlay`, `gtk-flow-box-new`,
+  `gtk-flow-box-append`, `gtk-flow-box-remove`, `gtk-flow-box-insert`,
+  `gtk-flow-box-child-get-index`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -167,6 +182,24 @@ listed here for provenance, not legal requirement:
   `:center-box`'s structural v1 gap with a verified-DIFFERENT failure
   shape — see
   [`gtk-widget-layer.md`](gtk-widget-layer.md#expanderpaned--free-signal-reuse-and-a-second-structural-gap)).
+
+  Round 8 adds `aspect-frame-spec`/`:aspect-frame` (single-child
+  container, same strategy as `:frame`/`:scrolled`/`:revealer`/
+  `:expander` — quick win, see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#aspect-framecalendar--a-quick-win-and-a-genuinely-new-value-type)),
+  `calendar-date=`/`set-calendar-date!`/`calendar-spec`/`:calendar` + the
+  new `:on-day-selected` signal (this project's first `GDateTime`-
+  refcounted value type — same anchor as `:aspect-frame` above),
+  `overlay-spec`/`:overlay` + `overlay-append-child!`/
+  `overlay-remove-child!`/`overlay-replace-child!`/`overlay-insert-after!`
+  (a THIRD new container strategy — one queryable main slot plus an
+  unbounded, unenumerable overlay set — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption)),
+  and `flow-box-spec`/`:flow-box` + `flow-box-child-of`/
+  `flow-box-index-after`/`flow-box-insert-after!`/`flow-box-replace-child!`/
+  `flow-box-reorder-child!` + the new `:on-child-activated` signal (a
+  `:list-box` sibling verified to NOT share `gtk_list_box_remove`'s
+  gotcha — same anchor as `:overlay` above).
   See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`

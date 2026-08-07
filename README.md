@@ -58,6 +58,8 @@ failure:
 | `jolt spin-button-list-box-smoke` | `:spin-button`'s `value-changed` reads back through the right getter despite sharing `:scale`'s signal name; `:list-box`'s `row-selected` (a third callable shape) delivers the selected row's index, and a tag-swapped/removed row doesn't corrupt its siblings or spuriously dispatch |
 | `jolt password-search-entry-smoke` | `:password-entry`/`:search-entry` reuse `:entry`'s `GtkEditable`-delegate `changed` signal; `:search-entry`'s own `search-changed` fires synchronously on a text clear, no spurious dispatch on programmatic sync |
 | `jolt expander-paned-smoke` | `:expander`'s `notify::expanded` and `:paned`'s `notify::position` deliver correctly — free reuse of the 3-arg-void callable shape `:list-box` generalized — and `:paned`'s 2 named slots survive a safe tag swap |
+| `jolt aspect-frame-calendar-smoke` | `:aspect-frame`'s single-child container reuse; `:calendar`'s `GDateTime`-refcounted date round-trips through a real interaction and a programmatic sync with no leaks or spurious dispatch |
+| `jolt overlay-flow-box-smoke` | `:overlay`'s 1-main+N-overlay shape survives a real removal, verified via a generic widget-tree walk since GTK exposes no overlay-enumeration API; `:flow-box`'s tag-swapped middle child lands correctly without corrupting siblings |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -144,7 +146,8 @@ Early. Widget set: window/box/button/label/entry/checkbutton/separator/
 frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
 `:progress-bar`/`:image`/`:toggle-button`/`:level-bar`/`:link-button`/
 `:switch`/`:revealer`/`:center-box`/`:spin-button`/`:list-box`/
-`:password-entry`/`:search-entry`/`:expander`/`:paned`
+`:password-entry`/`:search-entry`/`:expander`/`:paned`/`:aspect-frame`/
+`:calendar`/`:overlay`/`:flow-box`
 (first-party, added directly to glitter; see
 `docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
 `:level-bar`/`:revealer` are display-only props with no signal to wire
@@ -231,6 +234,32 @@ are full lands correctly (no trailing slot to corrupt into); swapping
 the first slot's tag silently drops the new widget and leaves that slot
 empty. See `docs/guide/gtk-widget-layer.md` for both traces.
 
+**`:aspect-frame` (quick win) and `:calendar` (a genuinely new value
+type).** `:aspect-frame` reuses `:frame`'s single-child container
+strategy verbatim — only its own xalign/yalign/ratio/obey-child
+construction params are new, and being plain floats/bool they carry no
+GType-registration risk. `:calendar`'s `"day-selected"` is the standard
+2-arg-void shape, but `gtk_calendar_get_date` returns a `GDateTime*` —
+this project's first refcounted GLib value type. Confirmed by reading
+`gtk_calendar_get_date`'s C body directly that it calls `g_date_time_ref`
+internally, so every read/construct site must `g_date_time_unref` what
+it refs, or every render/dispatch leaks one `GDateTime` object.
+
+**`:overlay` — a third, genuinely different container shape — and
+`:flow-box`, a `:list-box` sibling with a verified DIFFERENCE, not an
+assumed similarity.** `GtkOverlay` has exactly one queryable slot (the
+main content) plus an unbounded set of floating overlay children with NO
+enumeration getter at all — unlike `:center-box`/`:paned`, overlay
+occupancy can't be queried live; the first hiccup child becomes main,
+every later child becomes an overlay. It inherits the same class of
+structural gap as `:center-box`/`:paned` for its one named slot.
+`:flow-box` auto-wraps children the identical way `:list-box` does, but
+`gtk_flow_box_remove` does NOT share `gtk_list_box_remove`'s gotcha —
+its C body explicitly accepts either the wrapped child or the plain
+widget, confirmed by reading it directly rather than assuming the
+lesson transfers between sibling widgets. See
+`docs/guide/gtk-widget-layer.md` for both write-ups.
+
 Known v1 limitations:
 
 - **Removing an attribute entirely is a no-op.** Setting one to a new value
@@ -254,3 +283,11 @@ Known v1 limitations:
   occupied either** — same remedy, but the failure shape differs:
   swapping the last slot lands correctly, swapping the first silently
   drops the new widget and leaves that slot empty.
+- **`:overlay` cannot safely swap the main child's hiccup tag once
+  occupied either** — same class of gap, and GTK exposes no way to
+  enumerate overlay children at all, so this is unverifiable by a live
+  smoke beyond the append/remove/replace path that's already covered.
+- **`:flow-box`'s `:on-child-activated` carries no `:glitter/value`.**
+  Reading back "which child" would need `GList` marshalling via
+  `gtk_flow_box_get_selected_children` — a new FFI complexity class
+  deliberately deferred.

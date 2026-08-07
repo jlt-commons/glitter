@@ -173,7 +173,9 @@
          :on-row-activated    "row-activated"
          :on-search-changed   "search-changed"
          :on-expanded         "notify::expanded"
-         :on-position-changed "notify::position"}))
+         :on-position-changed "notify::position"
+         :on-day-selected     "day-selected"
+         :on-child-activated  "child-activated"}))
 
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
@@ -182,7 +184,7 @@
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
 (declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!
-         set-spin-button-value! set-expander-expanded! set-paned-position!)
+         set-spin-button-value! set-expander-expanded! set-paned-position! set-calendar-date!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -238,6 +240,19 @@
             (when (contains? p :orientation) (g/gtk-orientable-set-orientation w (->orientation (:orientation p))))
             (when (contains? p :position)    (set-paned-position! w (:position p))))
    :container :paned})
+
+(defn- overlay-spec []
+  ;; Genuinely different shape from :box/:center-box/:paned: exactly ONE
+  ;; queryable main-content slot (gtk_overlay_get_child) plus an
+  ;; UNBOUNDED set of floating overlay children with no enumeration
+  ;; getter at all — see overlay-append-child!/overlay-remove-child!/
+  ;; overlay-replace-child!/overlay-insert-after! (below, beside the
+  ;; other container-management fns) for the resulting design and its
+  ;; documented v1 scope. No signal, no props beyond the universal
+  ;; GtkWidget ones.
+  {:ctor  (fn [_] (g/gtk-overlay-new))
+   :apply (fn [_ _])
+   :container :overlay})
 
 (defn- button-spec []
   {:ctor    (fn [p] (if (:label p) (g/gtk-button-new-with-label (:label p)) (g/gtk-button-new)))
@@ -389,6 +404,36 @@
             (when (contains? p :expanded) (set-expander-expanded! w (:expanded p))))
    :container :expander})
 
+(defn- aspect-frame-spec []
+  ;; Single-child container (gtk_aspect_frame_set_child) — same strategy
+  ;; as :frame/:scrolled/:revealer/:expander. Unlike :scale's/:paned's
+  ;; orientation, xalign/yalign/ratio/obey-child are plain floats/bool —
+  ;; no GType-registration chicken-and-egg risk — so they're resolved
+  ;; directly from props at construction time, with GTK's own documented
+  ;; defaults (0.5/0.5/1.0/false) as fallback, and individually
+  ;; re-settable via :apply on later renders too.
+  {:ctor  (fn [p]
+            (g/gtk-aspect-frame-new
+             (float (or (:xalign p) 0.5)) (float (or (:yalign p) 0.5))
+             (float (or (:ratio p) 1.0)) (->bool (:obey-child p))))
+   :apply (fn [w p]
+            (when (contains? p :xalign)     (g/gtk-aspect-frame-set-xalign w (float (:xalign p))))
+            (when (contains? p :yalign)     (g/gtk-aspect-frame-set-yalign w (float (:yalign p))))
+            (when (contains? p :ratio)      (g/gtk-aspect-frame-set-ratio w (float (:ratio p))))
+            (when (contains? p :obey-child) (g/gtk-aspect-frame-set-obey-child w (->bool (:obey-child p)))))
+   :container :aspect-frame})
+
+(defn- calendar-spec []
+  ;; A real value-bearing leaf widget — "day-selected" is confirmed via
+  ;; gtk/gtkcalendar.c to be the plain 2-arg-void shape, no
+  ;; set-event-handler generalization needed. :date is a [year month day]
+  ;; vector; see set-calendar-date! (below, beside the other suppressing-
+  ;; guard setters) for the GDateTime refcounting this needs — a
+  ;; genuinely new value type/complexity class for this project.
+  {:ctor  (fn [_] (g/gtk-calendar-new))
+   :apply (fn [w p] (when (contains? p :date) (set-calendar-date! w (:date p))))
+   :container :none})
+
 (defn- scale-spec []
   ;; gtk_scale_new_with_range needs orientation + an initial min/max/step at
   ;; construction time — unlike box/separator, there's no cheap "construct
@@ -506,6 +551,23 @@
    :apply (fn [_ _])
    :container :list-box})
 
+(defn- flow-box-spec []
+  ;; A flowing/wrapping sibling to :list-box — same auto-wrap-in-a-child
+  ;; shape for append/insert, but gtk_flow_box_remove is SMARTER than
+  ;; gtk_list_box_remove (accepts either the wrapped GtkFlowBoxChild or
+  ;; the plain child directly — confirmed by reading its C body, not
+  ;; assumed just because the widgets are siblings) — see the
+  ;; :flow-box container-management fns' own docstrings. v1 wires
+  ;; :on-child-activated with NO value-fn (dispatches with no
+  ;; :glitter/value, same as :on-click without one) — reading back
+  ;; "which child" would need GList marshalling via
+  ;; gtk_flow_box_get_selected_children, a new FFI complexity class
+  ;; deliberately deferred. No :apply props beyond the universal
+  ;; GtkWidget ones.
+  {:ctor  (fn [_] (g/gtk-flow-box-new))
+   :apply (fn [_ _])
+   :container :flow-box})
+
 (defn- switch-spec []
   ;; The widget signal-callable-shape (below) exists FOR: "state-set" isn't
   ;; the uniform void(widget, user_data) shape, so it needs a registered
@@ -522,6 +584,7 @@
          :box            (box-spec)
          :center-box     (center-box-spec)
          :paned          (paned-spec)
+         :overlay        (overlay-spec)
          :button         (button-spec)
          :link-button    (link-button-spec)
          :label          (label-spec)
@@ -533,6 +596,7 @@
          :switch         (switch-spec)
          :separator      (separator-spec)
          :frame          (frame-spec)
+         :aspect-frame   (aspect-frame-spec)
          :scrolled       (scrolled-spec)
          :revealer       (revealer-spec)
          :expander       (expander-spec)
@@ -542,7 +606,9 @@
          :progress-bar   (progress-bar-spec)
          :image          (image-spec)
          :level-bar      (level-bar-spec)
-         :list-box       (list-box-spec)}))
+         :calendar       (calendar-spec)
+         :list-box       (list-box-spec)
+         :flow-box       (flow-box-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -712,6 +778,36 @@
     (g/gtk-paned-set-position widget (int position))
     (swap! suppressing disj widget)))
 
+(defn- calendar-date=
+  "Read `widget`'s currently selected date as [year month day], unref-ing
+  the GDateTime gtk_calendar_get_date hands back (it's a NEW ref — see
+  ffi.clj's own comment on why every call site here must unref what it
+  refs)."
+  [widget]
+  (let [d (g/gtk-calendar-get-date widget)
+        result [(g/g-date-time-get-year d) (g/g-date-time-get-month d) (g/g-date-time-get-day-of-month d)]]
+    (g/g-date-time-unref d)
+    result))
+
+(defn- set-calendar-date!
+  "Set a calendar's selected date ([year month day]), but only when it
+  differs from the widget's current date, and while suppressing the
+  :on-day-selected handler for the synchronous 'day-selected' emission
+  gtk_calendar_select_day causes. Same set-compare-suppress shape as
+  every other value-bearing widget's programmatic setter here, plus
+  GDateTime refcounting: g_date_time_new_local hands back a ref THIS
+  code owns, and gtk_calendar_select_day does not take ownership of it
+  (a plain in-param, the standard GLib convention) — so it must be
+  unref'd after the call, or every programmatic date change leaks one
+  GDateTime object."
+  [widget [year month day :as date]]
+  (when (and year month day (not= (vec date) (calendar-date= widget)))
+    (let [gdt (g/g-date-time-new-local year month day 0 0 0.0)]
+      (swap! suppressing conj widget)
+      (g/gtk-calendar-select-day widget gdt)
+      (swap! suppressing disj widget)
+      (g/g-date-time-unref gdt))))
+
 (defn- list-box-selected-index
   "The currently selected row's index, or nil if none — read via
   gtk_list_box_get_selected_row -> gtk_list_box_row_get_index AFTER the
@@ -763,7 +859,8 @@
          [:list-box "row-selected"]         list-box-selected-index
          [:list-box "row-activated"]        list-box-selected-index
          [:expander "notify::expanded"]     (fn [widget] (g/gtk-expander-get-expanded widget))
-         [:paned "notify::position"]        (fn [widget] (g/gtk-paned-get-position widget))}))
+         [:paned "notify::position"]        (fn [widget] (g/gtk-paned-get-position widget))
+         [:calendar "day-selected"]         calendar-date=}))
 
 ;; Almost every GTK signal glitter connects has the uniform
 ;; void(widget, user_data) shape glitter.gtk's set-event-handler builds by
@@ -1080,6 +1177,74 @@
     (= sibling (g/gtk-paned-get-start-child parent)) (g/gtk-paned-set-end-child parent child)
     :else nil))
 
+;; :overlay helpers — a genuinely different shape from :box/:center-box/
+;; :paned. GtkOverlay has exactly ONE queryable slot (the main content,
+;; via gtk_overlay_get_child) plus an UNBOUNDED set of floating overlay
+;; children with NO enumeration getter at all (confirmed: gtk/gtkoverlay.h
+;; has no "get overlays" function) — so, unlike every other multi-child
+;; container here, occupancy of the OVERLAY set can't be queried live.
+;; Convention: the FIRST hiccup child is the main content; every
+;; subsequent child is an overlay, unconditionally.
+(defn- overlay-append-child!
+  "First child becomes the main content (if that slot is still empty);
+  every later child becomes an overlay, appended via gtk_overlay_add_overlay
+  (which has no positional variant — z-order among overlays follows GTK's
+  own internal append order, not tracked or reproduced here)."
+  [parent child]
+  (if (ptr-null? (g/gtk-overlay-get-child parent))
+    (g/gtk-overlay-set-child parent child)
+    (g/gtk-overlay-add-overlay parent child)))
+
+(defn- overlay-remove-child!
+  "If `child` is the current main content, clear that slot
+  (gtk_overlay_set_child parent NULL); otherwise assume it's a
+  registered overlay and call gtk_overlay_remove_overlay directly — safe
+  even without an enumeration getter, since every overlay-container
+  child glitter ever attaches went through overlay-append-child!/
+  overlay-insert-after! above, so it's always actually registered."
+  [parent child]
+  (if (= child (g/gtk-overlay-get-child parent))
+    (g/gtk-overlay-set-child parent ffi/null)
+    (g/gtk-overlay-remove-overlay parent child)))
+
+(defn- overlay-replace-child!
+  "Swap `old-child` for `new-child` at the same ROLE (main vs. overlay).
+  Main-content swap is a clean in-place gtk_overlay_set_child call — no
+  position to preserve, there's only one main slot. An OVERLAY swap does
+  NOT preserve z-order: remove the old overlay, append the new one at
+  whatever position GTK's own internal order puts it — GtkOverlay has no
+  'insert overlay at position N' API to do better than this, so this is
+  a deliberate, documented simplification, not an oversight."
+  [parent old-child new-child]
+  (if (= old-child (g/gtk-overlay-get-child parent))
+    (g/gtk-overlay-set-child parent new-child)
+    (do (g/gtk-overlay-remove-overlay parent old-child)
+        (g/gtk-overlay-add-overlay parent new-child))))
+
+(defn- overlay-insert-after!
+  "Insert `child` immediately after `sibling`. Only handles the ONE case
+  that matters for a plain, non-keyed reconcile: `sibling` nil (this is
+  becoming the FIRST/main child) — mirrors overlay-append-child!'s own
+  'main slot empty -> become main' check, so a fresh mount's main child
+  lands correctly. `sibling` non-nil (inserting a new OVERLAY relative to
+  an existing one) has no positional meaning GTK's API can honor, so it
+  falls back to a plain append-as-overlay — same z-order caveat as
+  overlay-replace-child!'s overlay branch.
+
+  KNOWN V1 GAP, same ROOT CAUSE as :center-box's/:paned's (see
+  center-box-insert-after!'s docstring for the full trace): if the MAIN
+  slot is already occupied and its hiccup TAG gets swapped, this
+  no-ops for the 'insert new' half of the reconciler's 'insert new, then
+  remove old' sequence — the new widget is created but never attached,
+  and the subsequent removal of the old main child leaves that slot
+  empty, same failure shape :paned's FIRST-slot swap has. No same-slot
+  tag swap for the main child once it's occupied — change props instead
+  of tags, or nest a stable wrapper tag one level down."
+  [parent child sibling]
+  (if (ptr-null? sibling)
+    (overlay-append-child! parent child)
+    (g/gtk-overlay-add-overlay parent child)))
+
 ;; :list-box helpers. gtk_list_box_append/insert auto-wrap a plain child in
 ;; a GtkListBoxRow (confirmed against gtk/gtklistbox.c's own bodies), so
 ;; APPENDING/INSERTING takes the child widget directly. gtk_list_box_remove
@@ -1174,34 +1339,99 @@
     (swap! suppressing disj parent))
   (list-box-insert-after! parent child sibling))
 
+;; :flow-box helpers — a flowing/wrapping sibling to :list-box.
+;; append/insert auto-wrap a plain child in a GtkFlowBoxChild (same shape
+;; as :list-box's GtkListBoxRow auto-wrap, confirmed against
+;; gtk/gtkflowbox.c's gtk_flow_box_insert body). UNLIKE :list-box,
+;; gtk_flow_box_remove does NOT need the wrapper — its C body explicitly
+;; accepts either the wrapped GtkFlowBoxChild or the plain widget,
+;; auto-unwrapping via gtk_widget_get_parent internally (confirmed by
+;; reading it directly, not assumed just because the widgets are
+;; siblings) — so remove/replace call gtk_flow_box_remove with the plain
+;; child straight away, no list-box-row-of-style recovery helper needed
+;; for removal. Positional INSERT still needs a sibling's WRAPPER (for
+;; its index), so flow-box-child-of exists for that one purpose. v1
+;; doesn't wire "selected-children-changed" (see flow-box-spec's own
+;; docstring for why), so the incidental-deselection-signal class of
+;; gotcha :list-box needed a suppressing-guard for doesn't apply here —
+;; verified live, not assumed, since :child-activated is a different
+;; signal than the one that class of gotcha would fire.
+(defn- flow-box-child-of
+  "The GtkFlowBoxChild wrapping `child` in a :flow-box, or nil if `child`
+  isn't currently parented."
+  [child]
+  (let [wrapper (g/gtk-widget-get-parent child)]
+    (when-not (ptr-null? wrapper) wrapper)))
+
+(defn- flow-box-index-after
+  "Convert `sibling` (nil, or the tracked PREVIOUS sibling's own GTK
+  WIDGET pointer — not its wrapping GtkFlowBoxChild) into the index
+  gtk_flow_box_insert wants: one past sibling's live wrapper index, or 0
+  (front) if sibling is nil. Always re-reads at CALL time, same freshness
+  concern list-box-index-after has."
+  [sibling]
+  (if (ptr-null? sibling)
+    0
+    (inc (g/gtk-flow-box-child-get-index (g/gtk-widget-get-parent sibling)))))
+
+(defn- flow-box-insert-after! [parent child sibling]
+  (g/gtk-flow-box-insert parent child (flow-box-index-after sibling)))
+
+(defn- flow-box-replace-child!
+  "Swap `old-child` for `new-child` at the SAME position. Captures
+  old-child's wrapper index via gtk_widget_get_parent BEFORE removing it
+  — removal invalidates it afterward, same 'capture before you mutate'
+  concern list-box-replace-child! has — then re-inserts new-child
+  (auto-wrapped into a FRESH GtkFlowBoxChild) at that same, still-valid
+  slot."
+  [parent old-child new-child]
+  (let [wrapper (flow-box-child-of old-child)
+        idx (when wrapper (g/gtk-flow-box-child-get-index wrapper))]
+    (g/gtk-flow-box-remove parent old-child)
+    (g/gtk-flow-box-insert parent new-child (or idx -1))))
+
+(defn- flow-box-reorder-child!
+  "Move an ALREADY-parented `child` to sit immediately after `sibling`.
+  Removes child first, then computes the target index — same
+  post-removal-freshness reasoning as list-box-reorder-child!."
+  [parent child sibling]
+  (g/gtk-flow-box-remove parent child)
+  (flow-box-insert-after! parent child sibling))
+
 (defn append-child!
   "Add `child` to the end of `parent`. Dispatches on the parent's container kind."
   [parent-tag parent child]
   (case (container-kind parent-tag)
-    :box        (g/gtk-box-append parent child)
-    :window     (g/gtk-window-set-child parent child)
-    :frame      (g/gtk-frame-set-child parent child)
-    :scrolled   (g/gtk-scrolled-window-set-child parent child)
-    :revealer   (g/gtk-revealer-set-child parent child)
-    :expander   (g/gtk-expander-set-child parent child)
-    :center-box (center-box-append-child! parent child)
-    :paned      (paned-append-child! parent child)
-    :list-box   (g/gtk-list-box-append parent child)
+    :box          (g/gtk-box-append parent child)
+    :window       (g/gtk-window-set-child parent child)
+    :frame        (g/gtk-frame-set-child parent child)
+    :aspect-frame (g/gtk-aspect-frame-set-child parent child)
+    :scrolled     (g/gtk-scrolled-window-set-child parent child)
+    :revealer     (g/gtk-revealer-set-child parent child)
+    :expander     (g/gtk-expander-set-child parent child)
+    :center-box   (center-box-append-child! parent child)
+    :paned        (paned-append-child! parent child)
+    :overlay      (overlay-append-child! parent child)
+    :list-box     (g/gtk-list-box-append parent child)
+    :flow-box     (g/gtk-flow-box-append parent child)
     nil))
 
 (defn remove-child!
   "Remove `child` from `parent`."
   [parent-tag parent child]
   (case (container-kind parent-tag)
-    :box        (g/gtk-box-remove parent child)
-    :window     (g/gtk-window-set-child parent ffi/null)
-    :frame      (g/gtk-frame-set-child parent ffi/null)
-    :scrolled   (g/gtk-scrolled-window-set-child parent ffi/null)
-    :revealer   (g/gtk-revealer-set-child parent ffi/null)
-    :expander   (g/gtk-expander-set-child parent ffi/null)
-    :center-box (center-box-remove-child! parent child)
-    :paned      (paned-remove-child! parent child)
-    :list-box   (list-box-remove-child! parent child)
+    :box          (g/gtk-box-remove parent child)
+    :window       (g/gtk-window-set-child parent ffi/null)
+    :frame        (g/gtk-frame-set-child parent ffi/null)
+    :aspect-frame (g/gtk-aspect-frame-set-child parent ffi/null)
+    :scrolled     (g/gtk-scrolled-window-set-child parent ffi/null)
+    :revealer     (g/gtk-revealer-set-child parent ffi/null)
+    :expander     (g/gtk-expander-set-child parent ffi/null)
+    :center-box   (center-box-remove-child! parent child)
+    :paned        (paned-remove-child! parent child)
+    :overlay      (overlay-remove-child! parent child)
+    :list-box     (list-box-remove-child! parent child)
+    :flow-box     (g/gtk-flow-box-remove parent child)
     nil))
 
 (defn replace-child!
@@ -1218,55 +1448,63 @@
                       prev (when-not (or (nil? prev) (zero? prev)) prev)]
                   (g/gtk-box-remove parent old-child)
                   (g/gtk-box-insert-child-after parent new-child (or prev ffi/null)))
-    :window     (g/gtk-window-set-child parent new-child)
-    :frame      (g/gtk-frame-set-child parent new-child)
-    :scrolled   (g/gtk-scrolled-window-set-child parent new-child)
-    :revealer   (g/gtk-revealer-set-child parent new-child)
-    :expander   (g/gtk-expander-set-child parent new-child)
-    :center-box (center-box-replace-child! parent old-child new-child)
-    :paned      (paned-replace-child! parent old-child new-child)
-    :list-box   (list-box-replace-child! parent old-child new-child)
+    :window       (g/gtk-window-set-child parent new-child)
+    :frame        (g/gtk-frame-set-child parent new-child)
+    :aspect-frame (g/gtk-aspect-frame-set-child parent new-child)
+    :scrolled     (g/gtk-scrolled-window-set-child parent new-child)
+    :revealer     (g/gtk-revealer-set-child parent new-child)
+    :expander     (g/gtk-expander-set-child parent new-child)
+    :center-box   (center-box-replace-child! parent old-child new-child)
+    :paned        (paned-replace-child! parent old-child new-child)
+    :overlay      (overlay-replace-child! parent old-child new-child)
+    :list-box     (list-box-replace-child! parent old-child new-child)
+    :flow-box     (flow-box-replace-child! parent old-child new-child)
     nil))
 
 (defn reorder-child!
   "Move `child` to sit immediately after `sibling` (nil = move to first position)
-  within `parent`. GtkBox and GtkListBox both support real positional
-  reordering (list-box via list-box-reorder-child! above, computing a
-  fresh live index rather than the sibling-pointer approach GtkBox's own
-  API uses). The single-child containers (window/frame/scrolled/revealer/
-  expander) no-op because they only ever have one child. :center-box/
-  :paned no-op too, but as a genuinely STRUCTURAL limit, not an avoided
-  one: their slots are fixed NAMED identities (start/center/end, or
-  start/end), not positions — 'move this widget to sit after that one'
-  has no well-defined meaning when every slot already has a name. Used by
-  the keyed reconciler to fix widget order after reuse/create when
-  survivors were reordered or a new item must precede an existing one."
+  within `parent`. GtkBox, GtkListBox, and GtkFlowBox all support real
+  positional reordering (list-box/flow-box each via their own
+  *-reorder-child! above, computing a fresh live index rather than the
+  sibling-pointer approach GtkBox's own API uses). The single-child
+  containers (window/frame/aspect-frame/scrolled/revealer/expander) no-op
+  because they only ever have one child. :center-box/:paned no-op too,
+  but as a genuinely STRUCTURAL limit, not an avoided one: their slots
+  are fixed NAMED identities (start/center/end, or start/end), not
+  positions — 'move this widget to sit after that one' has no
+  well-defined meaning when every slot already has a name. :overlay
+  no-ops for the same structural reason applied to its OWN shape: GTK has
+  no 'move this overlay to position N' API at all. Used by the keyed
+  reconciler to fix widget order after reuse/create when survivors were
+  reordered or a new item must precede an existing one."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box      (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))
     :list-box (list-box-reorder-child! parent child sibling)
+    :flow-box (flow-box-reorder-child! parent child sibling)
     nil))
 
 (defn insert-child-after!
   "Insert `child` into `parent` immediately after `sibling` (nil = insert as the
   first child). GtkBox, GtkCenterBox (via center-box-insert-after! above),
-  GtkPaned (via paned-insert-after! above), and GtkListBox (via
-  list-box-insert-after! above) all support this; the single-child
-  containers (window/frame/scrolled/revealer/expander) no-op because they
-  only ever have one child. This is NOT an optional nicety for
-  :center-box/:paned/:list-box — found live that glitter.core's
-  reconciler calls THIS fn (not replace-child!) even for a plain,
-  non-keyed, same-position TAG SWAP (e.g. a :label becoming a :button at
-  some fixed child index): it inserts the new node first, then removes
-  the old one as a separate step. Leaving this a no-op for a container
-  (this project's ORIGINAL v1 scope call for :center-box/:list-box, since
-  reverted) desyncs glitter.gtk's own :children bookkeeping — updated
-  unconditionally by IRender/insert-before regardless of whether the
-  underlying GTK call did anything — from live GTK state, and the
-  reconciler's subsequent removal step (which removes 'whatever is
-  tracked at position N') ends up removing the WRONG child. Caught only
-  by a live re-render smoke, not by a plain append-only one — see
-  gtk-widget-layer.md. New relative to the glimmer original: glimmer's
+  GtkPaned (via paned-insert-after! above), GtkOverlay (via
+  overlay-insert-after! above), GtkListBox, and GtkFlowBox (via their own
+  *-insert-after! above) all support this; the single-child containers
+  (window/frame/aspect-frame/scrolled/revealer/expander) no-op because
+  they only ever have one child. This is NOT an optional nicety for
+  :center-box/:paned/:overlay/:list-box/:flow-box — found live that
+  glitter.core's reconciler calls THIS fn (not replace-child!) even for a
+  plain, non-keyed, same-position TAG SWAP (e.g. a :label becoming a
+  :button at some fixed child index): it inserts the new node first, then
+  removes the old one as a separate step. Leaving this a no-op for a
+  container (this project's ORIGINAL v1 scope call for
+  :center-box/:list-box, since reverted) desyncs glitter.gtk's own
+  :children bookkeeping — updated unconditionally by IRender/insert-before
+  regardless of whether the underlying GTK call did anything — from live
+  GTK state, and the reconciler's subsequent removal step (which removes
+  'whatever is tracked at position N') ends up removing the WRONG child.
+  Caught only by a live re-render smoke, not by a plain append-only one —
+  see gtk-widget-layer.md. New relative to the glimmer original: glimmer's
   own reconciler only ever appends (reorder-child! moves an EXISTING
   child), but glitter.gtk's IRender/insert-before needs a genuine
   positional insertion of a NEW child (glimmer never needed this because
@@ -1277,5 +1515,7 @@
     :box        (g/gtk-box-insert-child-after parent child (or sibling ffi/null))
     :center-box (center-box-insert-after! parent child sibling)
     :paned      (paned-insert-after! parent child sibling)
+    :overlay    (overlay-insert-after! parent child sibling)
     :list-box   (list-box-insert-after! parent child sibling)
+    :flow-box   (flow-box-insert-after! parent child sibling)
     nil))

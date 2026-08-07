@@ -159,16 +159,46 @@ the live verification of both failure shapes:
 not a one-widget patch, and swapping a fixed-slot container's tag
 dynamically is a narrow usage pattern.
 
-## `:list-box`'s `reorder-child!` is implemented but not live-verified
+## `:overlay` cannot safely swap its main child's hiccup tag once occupied
 
-`list-box-reorder-child!` (moving an already-parented row to a new
-position) is real, reasoned-through code — not a documented no-op like
-`:center-box`'s equivalent — but no smoke in this project currently
-exercises a genuine reorder (only a same-position tag-swap, which goes
-through `insert-child-after!`, and a pure append/remove, were live-tested).
-Treat it as implemented, not verified-under-fire, until a keyed-list
-reordering smoke covers it. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs).
+Same class of gap as `:center-box`/`:paned` — `GtkOverlay`'s one named
+slot (the main content) has no transient capacity for a second
+simultaneous occupant, so `overlay-insert-after!` only handles the
+`sibling = nil, slot still empty` case for real. Same remedy: change
+props, not tags, or nest a stable wrapper tag one level down.
+
+A second, more fundamental gap on top: GTK exposes **no API to
+enumerate current overlay children at all** (confirmed: no "get
+overlays" function in `gtk/gtkoverlay.h`), so anything beyond
+"append/remove/replace the main slot correctly, plus append/remove an
+overlay" is unverifiable by a live smoke, not merely untested. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption).
+
+## `:list-box`'s and `:flow-box`'s `reorder-child!` are implemented but not live-verified
+
+`list-box-reorder-child!`/`flow-box-reorder-child!` (moving an
+already-parented row/child to a new position) are real, reasoned-through
+code — not documented no-ops like `:center-box`'s/`:paned`'s/`:overlay`'s
+equivalents — but no smoke in this project currently exercises a genuine
+reorder for either (only a same-position tag-swap, which goes through
+`insert-child-after!`, and a pure append/remove, were live-tested for
+both). Treat both as implemented, not verified-under-fire, until a
+keyed-list reordering smoke covers them. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs)
+and
+[`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption).
+
+## `:flow-box`'s `:on-child-activated` dispatches with no value
+
+v1 deliberately does not wire a value-fn for `"child-activated"` —
+reading back "which child" would need `GList` traversal via
+`gtk_flow_box_get_selected_children`, a new FFI complexity class (walking
+a linked list through raw pointers) this project hasn't needed
+elsewhere. `:on-click`/`:on-toggled` already establish the precedent
+that a dispatched event with no `:glitter/value` is a normal, supported
+shape — apps that need "which child was activated" must correlate it
+themselves (e.g. via their own understanding of what's currently
+rendered in the flow-box) until a real fix lands.
 
 ## No longer a limitation: `:class` reaches real GTK CSS classes
 

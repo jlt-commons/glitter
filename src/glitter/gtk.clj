@@ -155,9 +155,11 @@
               ;; GtkPaned has a dedicated interaction signal of its own)
               ;; share this EXACT shape too — void(GObject*, GParamSpec*,
               ;; gpointer) is the standard "notify" signature, and a
-              ;; GParamSpec* is just another :pointer under FFI — so both
-              ;; reuse this branch for free, no new literal call site
-              ;; needed.
+              ;; GParamSpec* is just another :pointer under FFI. So does
+              ;; GtkFlowBox's "child-activated" — void(GtkFlowBox*,
+              ;; GtkFlowBoxChild*, gpointer), confirmed against
+              ;; gtk/gtkflowbox.c's g_signal_new call. All four reuse this
+              ;; one branch for free, no new literal call site needed.
               ;;
               ;; This can't be collapsed into one data-driven call: jolt's
               ;; foreign-callable/__ccallable is a compile-time special
@@ -174,7 +176,7 @@
                     (fn [src-widget _state _data] (dispatch! src-widget) 0)
                     [:pointer :int :pointer] :int :collect-safe)
 
-                   (#{"row-selected" "row-activated" "notify::expanded" "notify::position"} signal)
+                   (#{"row-selected" "row-activated" "notify::expanded" "notify::position" "child-activated"} signal)
                    (jolt.ffi/foreign-callable
                     (fn [src-widget _pspec-or-row _data] (dispatch! src-widget))
                     [:pointer :pointer :pointer] :void :collect-safe)

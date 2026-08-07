@@ -409,6 +409,91 @@
 (ffi/defcfn gtk-paned-set-position    "gtk_paned_set_position"    [:pointer :int] :void)
 (ffi/defcfn gtk-paned-get-position    "gtk_paned_get_position"    [:pointer] :int)
 
+;; --- aspect frame (single-child container, maintains an aspect ratio) --------
+;; gtk_aspect_frame_set_child makes it a single-child container — same
+;; strategy as :frame/:scrolled/:revealer/:expander. All four construction
+;; params (xalign/yalign/ratio/obey-child) are individually re-settable
+;; post-construction too (confirmed against gtk/gtkaspectframe.h), unlike
+;; :scale's/:paned's orientation, which needs a GType registered before it
+;; can be resolved — plain floats/bool carry no such registration risk.
+;; get-xalign/get-yalign/get-ratio/get-obey-child exist only for smoke-test
+;; verification (same shape as gtk-level-bar-get-value/gtk-button-get-label).
+(ffi/defcfn gtk-aspect-frame-new             "gtk_aspect_frame_new"             [:float :float :float :int] :pointer)
+(ffi/defcfn gtk-aspect-frame-set-child       "gtk_aspect_frame_set_child"       [:pointer :pointer] :void)
+(ffi/defcfn gtk-aspect-frame-get-child       "gtk_aspect_frame_get_child"       [:pointer] :pointer)
+(ffi/defcfn gtk-aspect-frame-set-xalign      "gtk_aspect_frame_set_xalign"      [:pointer :float] :void)
+(ffi/defcfn gtk-aspect-frame-get-xalign      "gtk_aspect_frame_get_xalign"      [:pointer] :float)
+(ffi/defcfn gtk-aspect-frame-set-yalign      "gtk_aspect_frame_set_yalign"      [:pointer :float] :void)
+(ffi/defcfn gtk-aspect-frame-get-yalign      "gtk_aspect_frame_get_yalign"      [:pointer] :float)
+(ffi/defcfn gtk-aspect-frame-set-ratio       "gtk_aspect_frame_set_ratio"       [:pointer :float] :void)
+(ffi/defcfn gtk-aspect-frame-get-ratio       "gtk_aspect_frame_get_ratio"       [:pointer] :float)
+(ffi/defcfn gtk-aspect-frame-set-obey-child  "gtk_aspect_frame_set_obey_child"  [:pointer :int] :void)
+(ffi/defcfn gtk-aspect-frame-get-obey-child  "gtk_aspect_frame_get_obey_child"  [:pointer] :int)
+
+;; --- calendar (date picker) ---------------------------------------------------
+;; "day-selected" is confirmed via gtk/gtkcalendar.c's g_signal_new to be the
+;; plain 2-arg-void shape, but gtk_calendar_get_date returns a GDateTime* — a
+;; genuinely new value type this project hasn't marshalled before. GDateTime
+;; is refcounted (glib/gdatetime.h): gtk_calendar_get_date's own C body calls
+;; g_date_time_ref internally (confirmed by reading it directly, not assumed),
+;; so the caller owns a NEW ref and must g_date_time_unref it; a date
+;; constructed via g_date_time_new_local is likewise caller-owned and must be
+;; unref'd after gtk_calendar_select_day (which does not take ownership of an
+;; in-param, the standard GLib convention) — every call site in
+;; glitter.widget's set-calendar-date!/signal-value entry unrefs what it refs,
+;; or every render/dispatch would leak one GDateTime object.
+(ffi/defcfn gtk-calendar-new              "gtk_calendar_new"              [] :pointer)
+(ffi/defcfn gtk-calendar-select-day       "gtk_calendar_select_day"       [:pointer :pointer] :void)
+(ffi/defcfn gtk-calendar-get-date         "gtk_calendar_get_date"         [:pointer] :pointer)
+(ffi/defcfn g-date-time-new-local         "g_date_time_new_local"         [:int :int :int :int :int :double] :pointer)
+(ffi/defcfn g-date-time-get-year          "g_date_time_get_year"          [:pointer] :int)
+(ffi/defcfn g-date-time-get-month         "g_date_time_get_month"         [:pointer] :int)
+(ffi/defcfn g-date-time-get-day-of-month  "g_date_time_get_day_of_month"  [:pointer] :int)
+(ffi/defcfn g-date-time-unref             "g_date_time_unref"             [:pointer] :void)
+
+;; --- overlay (one main child, N floating overlay children) -------------------
+;; A genuinely different shape from every other multi-child container here:
+;; :box is an ordered append-list, :center-box/:paned are fixed NAMED slots
+;; queried live via per-slot getters — GtkOverlay has exactly ONE queryable
+;; slot (gtk_overlay_get_child, the main content) and an UNBOUNDED set of
+;; overlay children with NO enumeration getter at all (confirmed: no
+;; "get overlays" function in gtk/gtkoverlay.h), so occupancy for the
+;; overlay set specifically can't be queried live the way every other
+;; container here does. glitter.widget's overlay-* container functions
+;; treat the FIRST hiccup child as main and every subsequent child as an
+;; overlay unconditionally — see their own docstrings for the resulting
+;; v1 scope (no main-slot tag swap once occupied, same class of gap
+;; :center-box/:paned document, plus overlay-replace-child! not
+;; preserving z-order position on a tag swap).
+(ffi/defcfn gtk-overlay-new             "gtk_overlay_new"             [] :pointer)
+(ffi/defcfn gtk-overlay-set-child       "gtk_overlay_set_child"       [:pointer :pointer] :void)
+(ffi/defcfn gtk-overlay-get-child       "gtk_overlay_get_child"       [:pointer] :pointer)
+(ffi/defcfn gtk-overlay-add-overlay     "gtk_overlay_add_overlay"     [:pointer :pointer] :void)
+(ffi/defcfn gtk-overlay-remove-overlay  "gtk_overlay_remove_overlay"  [:pointer :pointer] :void)
+
+;; --- flow box (a flowing/wrapping sibling to :list-box) -----------------------
+;; append/insert auto-wrap a plain child in a GtkFlowBoxChild — same shape
+;; as :list-box's GtkListBoxRow auto-wrap (confirmed against
+;; gtk/gtkflowbox.c's gtk_flow_box_insert body) — but gtk_flow_box_remove
+;; does NOT share :list-box's gtk_list_box_remove gotcha: its C body
+;; explicitly accepts EITHER the wrapped GtkFlowBoxChild OR the plain
+;; inner widget, auto-unwrapping via gtk_widget_get_parent internally
+;; (confirmed by reading its body directly — do not assume this transfers
+;; from :list-box's stricter behavior just because the widgets are
+;; siblings). "child-activated" is confirmed via g_signal_new to be
+;; void(GtkFlowBox*, GtkFlowBoxChild*, gpointer) — the same 3-arg-void
+;; shape already generalized for :list-box/:expander/:paned, another free
+;; reuse. v1 deliberately does NOT wire a value-fn for it (would need
+;; GList marshalling via gtk_flow_box_get_selected_children, a new FFI
+;; complexity class not needed for a first pass) — :on-child-activated
+;; dispatches with no :glitter/value, same as :on-click/:on-toggled
+;; without an explicit value-fn.
+(ffi/defcfn gtk-flow-box-new                 "gtk_flow_box_new"                 [] :pointer)
+(ffi/defcfn gtk-flow-box-append              "gtk_flow_box_append"              [:pointer :pointer] :void)
+(ffi/defcfn gtk-flow-box-remove              "gtk_flow_box_remove"              [:pointer :pointer] :void)
+(ffi/defcfn gtk-flow-box-insert              "gtk_flow_box_insert"              [:pointer :pointer :int] :void)
+(ffi/defcfn gtk-flow-box-child-get-index     "gtk_flow_box_child_get_index"     [:pointer] :int)
+
 ;; --- signals & reference counting (libgobject) -------------------------------
 ;; g_signal_connect_data(instance, detailed_signal, c_handler, data, destroy_data, flags)
 ;; Returns the handler id (a gulong). destroy_data is a GClosureNotify fn ptr —
