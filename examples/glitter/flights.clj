@@ -9,11 +9,15 @@
 
   First real consumer of glitter.nexus (see src/glitter/nexus.clj) —
   EVERY interaction below is a pure :effect/assoc-in + a registered
-  placeholder, zero hand-written case-dispatch code, unlike
-  todo.clj's/crud.clj's PRE-nexus-retrofit case branches (see those
-  files' own docstrings for the contrast, and their current
-  post-retrofit form for how they use the action-EXPANSION layer this
-  demo doesn't need at all).
+  placeholder, zero hand-written case-dispatch code. As of this
+  commit, todo.clj and crud.clj still dispatch via their own
+  hand-written `execute-actions` case forms wired through plain
+  `core/set-dispatch!` — no nexus involvement yet (see those files'
+  own docstrings for their closures-vs-data-dispatch contrast). A
+  later retrofit of both onto glitter.nexus is planned, which would
+  add the action-EXPANSION layer this demo doesn't need at all (every
+  interaction here is a single :effect/assoc-in, never an action that
+  itself expands into further actions).
 
   Ports guis/flights.cljc from cjohansen/replicant-7uis (a real, tested,
   complete implementation — unlike crud.cljc's unfinished initial-take
