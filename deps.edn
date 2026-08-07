@@ -69,7 +69,13 @@
            :picture-editable-label-smoke {:extra-paths ["examples"]
                                           :main-opts ["-m" "glitter.picture-editable-label-smoke"]}
            :notebook-scale-button-smoke {:extra-paths ["examples"]
-                                         :main-opts ["-m" "glitter.notebook-scale-button-smoke"]}}
+                                         :main-opts ["-m" "glitter.notebook-scale-button-smoke"]}
+           :inscription-search-bar-smoke {:extra-paths ["examples"]
+                                          :main-opts ["-m" "glitter.inscription-search-bar-smoke"]}
+           :header-bar-action-bar-smoke {:extra-paths ["examples"]
+                                         :main-opts ["-m" "glitter.header-bar-action-bar-smoke"]}
+           :menu-button-popover-smoke {:extra-paths ["examples"]
+                                       :main-opts ["-m" "glitter.menu-button-popover-smoke"]}}
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"

@@ -252,6 +252,62 @@ test. See
 [`gtk-widget-layer.md`](gtk-widget-layer.md#pictureeditable-label--a-quick-win-a-third-gtkeditable-delegate-and-a-general-gtkeditable-finding)
 for the full trace.
 
+## `:header-bar`/`:action-bar` cannot safely swap the title/center-widget's hiccup tag while occupied
+
+Same root cause and same class of gap as `:center-box`'s/`:paned`'s/
+`:overlay`'s: `*-insert-after!`'s `sibling` nil branch falls through to
+`*-append-child!`, which sees the title/center-widget slot still
+occupied and pack-starts the new widget instead of replacing the
+title — the reconciler's subsequent removal of the old title then
+leaves that slot empty with the new widget stranded in the pack-start
+list. Change props instead of tags, or nest a stable wrapper tag one
+level down.
+
+## `:header-bar`/`:action-bar` never call `pack_end`
+
+Confirmed by reading `gtk_header_bar_pack`'s and
+`gtk_action_bar_pack_end`'s C bodies directly: both widgets'
+`pack_end` reverse-accumulate (a `gtk_box_prepend` under one name, a
+`gtk_box_insert_child_after(..., NULL)` — also a prepend — under the
+other) — feeding END-region children one at a time in hiccup order, as
+the reconciler naturally does, would silently land them in REVERSE
+order with no public API to fix afterward. v1 only wires `pack_start`;
+`gtk_header_bar_pack_end`/`gtk_action_bar_pack_end` are not bound to
+anything in this codebase. A future round adding end-region support
+must also solve the reversal (e.g. resyncing the whole region on every
+mutation), not just call the function. Neither widget's pack-start
+region can be reordered either, for a genuinely structural reason: it's
+a real ordered list internally, but a PRIVATE `GtkBox` glitter has no
+pointer to — only the append-only `pack_start` functions are public.
+
+## `:header-bar`'s `:show-title-buttons` shares glitter's own pack-start list
+
+`gtk_header_bar_set_show_title_buttons(bar, TRUE)` prepends a native
+`GtkWindowControls` widget into the SAME `start_box` glitter's own
+pack-start children live in (confirmed by reading
+`create_window_controls`'s C body directly). This is real GTK
+behavior, not a glitter defect, and does not affect glitter's own
+correctness (`gtk_header_bar_remove`/`replace` only ever act on
+widgets glitter itself created) — but any code inspecting the header
+bar's pack-start region directly (rather than through glitter's own
+API) needs to account for GTK's own widget potentially occupying the
+front of that list. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#header-baraction-bar--a-genuinely-new-hybrid-container-shape)
+for the full trace, including how `header_bar_action_bar_smoke.clj`
+asserts the shift explicitly.
+
+## `:search-bar` cannot auto-manage search mode via key capture
+
+v1 does not wire `gtk_search_bar_connect_entry`/
+`gtk_search_bar_set_key_capture_widget` — both need a raw
+`GtkEditable`/`GtkWidget` pointer glitter has no hiccup-level
+convention for passing sideways yet (every other cross-widget
+relationship in this project is either a normal tree child or a
+single named prop, not "here's a pointer to a DIFFERENT widget
+elsewhere in the tree"). `:search-mode` remains fully controllable
+programmatically; only the Ctrl+F/Escape auto-toggle convenience is
+missing.
+
 ## No longer a limitation: `:class` reaches real GTK CSS classes
 
 Hiccup `:class` is diffed by the reconciler (`IRender/add-class`/

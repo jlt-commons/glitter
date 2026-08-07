@@ -1487,6 +1487,226 @@ mount (the notebook's own auto-select), `2` after a real page switch,
 programmatic sync-back of both widgets — is what proves both findings
 end-to-end against live GTK state, not just that the code compiles.
 
+## `:inscription`/`:search-bar` — two more quick, no-signal wins
+
+`GtkInscription` has no signal at all (confirmed: no `g_signal_new` in
+`gtk/gtkinscription.c`) — a lighter-weight sibling to `:label`: no
+markup interpretation, fixed `:text-overflow` handling (a
+`GtkInscriptionOverflow` nick — `:clip`/`:ellipsize-start`/
+`:ellipsize-middle`/`:ellipsize-end`) instead of Pango's ellipsize/wrap
+options. Purely display-only, same shape as `:picture`.
+
+`GtkSearchBar` is also entirely props/display-driven (no `g_signal_new`
+in `gtk/gtksearchbar.c` either) — a single-child container, same
+strategy as `:frame`/`:revealer`, controlled by `:search-mode`/
+`:show-close-button`. Pairs naturally with `:search-entry` as its
+child. v1 deliberately does not wire `gtk_search_bar_connect_entry`/
+`gtk_search_bar_set_key_capture_widget` — both need a raw
+`GtkEditable`/`GtkWidget` pointer glitter has no hiccup-level
+convention for passing sideways yet, and `:search-mode` is fully
+controllable programmatically without them.
+
+Neither widget touched `glitter.gtk` at all this round — the first
+round where every new widget is entirely `:apply`-driven, with zero
+signal wiring of any kind.
+
+## `:header-bar`/`:action-bar` — a genuinely new hybrid container shape
+
+Every multi-child container up to this point has been either a plain
+ordered list (`:box`/`:list-box`/`:flow-box`/`:notebook`) or a FIXED
+set of independently-named slots (`:center-box`'s three,`:paned`'s
+two, `:overlay`'s one-plus-unbounded-unenumerable). `GtkHeaderBar` and
+`GtkActionBar` are a genuinely different shape again: one named
+title-widget/center-widget slot, plus an **ordered** pack-start list —
+unbounded, like `:box`'s children, but coexisting with a named slot the
+way `:center-box`'s do.
+
+v1 convention, mirroring `:overlay`'s own "query GTK's own occupancy,
+don't track position separately" pattern: the FIRST hiccup child
+becomes the title-widget (`:header-bar`) or center-widget
+(`:action-bar`) if that slot is still empty; every LATER child gets
+`pack_start`'d, in order:
+
+```clojure
+(defn- header-bar-append-child! [parent child]
+  (if (ptr-null? (g/gtk-header-bar-get-title-widget parent))
+    (g/gtk-header-bar-set-title-widget parent child)
+    (g/gtk-header-bar-pack-start parent child)))
+```
+
+A real, verified finding drove the decision to stop there and not also
+wire `pack_end`. Reading `gtk_header_bar_pack`'s C body directly:
+
+```c
+/* gtk_header_bar_pack's actual C body — confirmed by reading it directly */
+if (pack_type == GTK_PACK_START)
+  gtk_box_append (GTK_BOX (bar->start_box), widget);
+else if (pack_type == GTK_PACK_END)
+  gtk_box_prepend (GTK_BOX (bar->end_box), widget);
+```
+
+`pack_start` is a safe `gtk_box_append` — hiccup order lands correctly
+when the reconciler feeds children one at a time in its normal append
+sequence. `pack_end` is a `gtk_box_prepend` — feeding END children one
+at a time in hiccup order would silently land them in REVERSE order in
+the live GTK tree, with no public API to fix the positioning
+afterward (there is no `gtk_header_bar_reorder`, and `bar->end_box`
+is a private field glitter has no pointer to). `GtkActionBar`'s
+`pack_end` carries the identical risk via a DIFFERENT GTK call —
+confirmed independently, not assumed to carry over just because the
+widgets look alike:
+
+```c
+/* gtk_action_bar_pack_end's actual C body — confirmed by reading it directly */
+gtk_box_insert_child_after (GTK_BOX (action_bar->end_box), child, NULL);
+```
+
+`gtk_box_insert_child_after(box, child, NULL)` is this project's own
+established convention for "insert as the FIRST child" — a prepend
+under a different name. Both widgets reverse-accumulate on `pack_end`;
+v1 therefore only calls `pack_start` anywhere in this codebase.
+`gtk_header_bar_pack_end`/`gtk_action_bar_pack_end` are bound to
+nothing — a future round wiring them must also solve the reversal, not
+just call the function.
+
+`gtk_header_bar_remove`/`gtk_action_bar_remove` each handle EITHER role
+(title/center-widget or a pack-start child) in one call — confirmed via
+their C bodies, which branch on the child's actual GTK parent
+(`start_box` vs. `center_box`) — so, unlike `:overlay`'s remove, no role
+check is needed before calling it. `*-replace-child!` DOES need to check
+the role first (removal loses that information), same "capture before
+you mutate" concern every other `replace-child!` here has.
+
+**Known v1 gap**, same root cause as `:center-box`'s/`:paned`'s/
+`:overlay`'s: if the title/center-widget slot is already occupied and
+its hiccup TAG gets swapped, `*-insert-after!`'s `sibling` nil branch
+falls through to `*-append-child!`, which sees the slot still occupied
+and pack-starts the new widget instead of replacing the title — the
+reconciler's subsequent removal of the old title then leaves that slot
+empty with the new widget stranded in the pack-start list. Change
+props instead of tags, or nest a stable wrapper tag one level down.
+
+Neither widget's pack-start region can be reordered either — a THIRD
+variant of the same structural reason `:overlay` can't reorder its
+overlay children: the region is a real ordered list internally, but
+it's a PRIVATE `GtkBox` glitter has no pointer to; only the append-only
+`pack_start` functions are public API.
+
+### A second real finding: `:show-title-buttons` shares the SAME list
+
+Neither widget exposes an enumeration getter for its pack-start region
+(same situation `:overlay`'s own smoke is already in), so
+`header_bar_action_bar_smoke.clj` identifies the real `start_box` by
+the `"start"` CSS class GTK itself adds internally (confirmed via both
+`gtk_header_bar_init`'s and `gtk_action_bar_init`'s C bodies), after
+walking down through each widget's own private wrapper
+(`GtkWindowHandle` for `:header-bar`, `GtkRevealer` for `:action-bar`)
+and its `GtkCenterBox` — a structural depth (4 levels) confirmed by
+reading both init functions directly, not guessed. The first attempt
+at this smoke assumed a flat 3-sibling composite and mis-treated a
+`GtkCenterBox` pointer as a `GtkButton`, caught immediately by a live
+`GTK-CRITICAL` rather than a silent wrong answer.
+
+That same investigation surfaced a second, independent real finding:
+`gtk_header_bar_set_show_title_buttons(bar, TRUE)` calls
+`create_window_controls(bar)`, which `gtk_box_prepend`s a native
+`GtkWindowControls` widget into `bar->start_box` — THE SAME pack-start
+region glitter's own hiccup children live in:
+
+```c
+/* create_window_controls's actual C body (tail) — confirmed by reading it directly */
+gtk_box_prepend (GTK_BOX (bar->start_box), controls);
+bar->start_window_controls = controls;
+```
+
+Toggling `:show-title-buttons` true therefore lands a GTK-managed,
+non-button widget at the FRONT of the pack-start list, shifting
+glitter's own tracked children back by one position. This is real GTK
+behavior sharing the same mutable list, not a glitter bug — and not
+something glitter's own container-management code needs to guard
+against, since `gtk_header_bar_remove`/`replace` only ever act on
+widgets glitter itself created, never on GTK's own internal controls
+widget. `header_bar_action_bar_smoke.clj` asserts the shift explicitly
+rather than avoiding it: mounts with `:show-title-buttons false` (so
+the mount-time read sees only glitter's own two buttons), then toggles
+it true on re-render and confirms the pack-start count grows by one
+while glitter's own buttons keep their relative order, now at the tail.
+
+## `:menu-button`/`:popover` — a popup surface, not a normal tree child
+
+Every container up to this point manages a REAL tree child — something
+`append-child!`/`remove-child!` parents directly into the widget
+hierarchy glitter's diff walks. `:menu-button`'s relationship to
+`:popover` is different: its ONE hiccup child (if present) is expected
+to be a `:popover`, attached via `gtk_menu_button_set_popover` — a
+popup surface, not a box-shaped child. Confirmed by reading
+`gtk_menu_button_set_popover`'s C body directly that this is real
+ownership (`gtk_widget_set_parent`/`unparent`), not a passive
+reference:
+
+```c
+/* gtk_menu_button_set_popover's actual C body (relevant lines) —
+   confirmed by reading it directly */
+if (popover)
+  {
+    gtk_widget_set_parent (menu_button->popover, GTK_WIDGET (menu_button));
+    g_signal_connect_swapped (menu_button->popover, "closed",
+                              G_CALLBACK (menu_deactivate_cb), menu_button);
+    ...
+  }
+```
+
+`:popover` itself is an ordinary single-child container
+(`gtk_popover_set_child`), same strategy as `:frame`/`:revealer`.
+
+Both signals turned out to be free reuses of the plain 2-arg-void shape
+already generalized in this project — confirmed via
+`gtk/gtkmenubutton.c`'s and `gtk/gtkpopover.c`'s own `g_signal_new`
+calls that `"activate"` and `"closed"` are both `G_TYPE_NONE, 0`. No new
+`foreign-callable` branch was needed in `glitter.gtk/set-event-handler`
+at all — the first round where every new signal is a free reuse.
+`:on-activate` was already a registered `signals` entry (added
+speculatively in an earlier round, unused until now); `:on-closed` is
+new, but only as a signal NAME entry, not a new shape.
+
+`gtk_popover_popdown`'s underlying `gtk_popover_hide` vfunc is confirmed
+(by reading it directly) to emit `"closed"` SYNCHRONOUSLY as part of
+the same call — `_gtk_widget_set_visible_flag` -> `gtk_widget_unmap` ->
+`g_signal_emit(CLOSED)`, all in one function body — so `:popover`'s
+`:visible` prop drives `popup`/`popdown` through the usual
+suppressing-guard setter, same synchronous-emission shape as every
+other value-bearing widget here:
+
+```clojure
+(defn- set-popover-visible! [widget visible?]
+  (let [target (->bool visible?)]
+    (when (not= target (g/gtk-widget-get-visible widget))
+      (swap! suppressing conj widget)
+      (if visible? (g/gtk-popover-popup widget) (g/gtk-popover-popdown widget))
+      (swap! suppressing disj widget))))
+```
+
+This is a controlled-component contract identical to `:notebook`'s
+`:current-page`: `:menu-button`'s own internal click handling opens the
+popover independently of glitter (confirmed live: `set_popover` wires
+its OWN internal `"closed"` listener, separate from glitter's — GTK
+happily supports multiple listeners on one signal), so an app is
+expected to sync its own `:visible` state from `:on-activate` (open)
+and `:on-closed` (close). `menu_button_popover_smoke.clj` plays that
+app's role explicitly and verifies BOTH directions of the suppressing
+guard: opening/closing programmatically after the real click cycle
+causes no spurious extra dispatch either way.
+
+`gtk_widget_activate` on `:menu-button`, unlike GtkButton's own
+activation (`:link-button`'s ~250ms press-animation gotcha), does NOT
+need that delay — confirmed live, not assumed just because both are
+"button-like": the dispatch fires reliably within a much shorter
+deferred window than `:link-button` ever needed. `:menu-button` is not
+a `GtkButton` subclass; its `"activate"` signal is wired via
+`gtk_widget_class_set_activate_signal`, a generic `GtkWidget`
+mechanism entirely outside `GtkButton`'s own press-animation state
+machine.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

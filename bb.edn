@@ -9,6 +9,7 @@
 ;;   | password-search-entry-smoke | expander-paned-smoke
 ;;   | aspect-frame-calendar-smoke | overlay-flow-box-smoke
 ;;   | picture-editable-label-smoke | notebook-scale-button-smoke
+;;   | inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popover-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
@@ -61,6 +62,9 @@
           (row "overlay-flow-box-smoke" ":overlay's 1-main+N-overlay shape; :flow-box's list-box-lesson reuse")
           (row "picture-editable-label-smoke" ":picture's display-only GdkPaintable props; :editable-label's 3rd GtkEditable delegate")
           (row "notebook-scale-button-smoke" ":notebook's raw-arg switch-page + mount-time auto-select; :scale-button's tag-aware value-changed")
+          (row "inscription-search-bar-smoke" ":inscription's no-signal display props; :search-bar's single-child :search-mode props")
+          (row "header-bar-action-bar-smoke" ":header-bar/:action-bar's hybrid title+pack-start shape, incl. the show-title-buttons prepend finding")
+          (row "menu-button-popover-smoke" ":menu-button's popover-as-child relationship; :popover's suppressing-guarded :visible + free-reuse signals")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -148,6 +152,15 @@
   notebook-scale-button-smoke {:doc "Live-GTK smoke: :notebook's raw-signal-arg switch-page + mount-time auto-select-page-0; :scale-button's tag-aware value-changed"
                                :task (shell "jolt" "-M:notebook-scale-button-smoke")}
 
+  inscription-search-bar-smoke {:doc "Live-GTK smoke: :inscription's no-signal display props; :search-bar's single-child :search-mode/:show-close-button props"
+                                :task (shell "jolt" "-M:inscription-search-bar-smoke")}
+
+  header-bar-action-bar-smoke {:doc "Live-GTK smoke: :header-bar/:action-bar's hybrid title/center-widget + pack-start shape, incl. the show-title-buttons native-controls-prepend finding"
+                               :task (shell "jolt" "-M:header-bar-action-bar-smoke")}
+
+  menu-button-popover-smoke {:doc "Live-GTK smoke: :menu-button's popover-as-child relationship (gtk_menu_button_set_popover); :popover's suppressing-guarded :visible + free-reuse :on-activate/:on-closed signals"
+                             :task (shell "jolt" "-M:menu-button-popover-smoke")}
+
   smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
           :task (do (shell "jolt" "-M:smoke")
                     (shell "jolt" "-M:keyed")
@@ -167,7 +180,10 @@
                     (shell "jolt" "-M:aspect-frame-calendar-smoke")
                     (shell "jolt" "-M:overlay-flow-box-smoke")
                     (shell "jolt" "-M:picture-editable-label-smoke")
-                    (shell "jolt" "-M:notebook-scale-button-smoke"))}
+                    (shell "jolt" "-M:notebook-scale-button-smoke")
+                    (shell "jolt" "-M:inscription-search-bar-smoke")
+                    (shell "jolt" "-M:header-bar-action-bar-smoke")
+                    (shell "jolt" "-M:menu-button-popover-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings

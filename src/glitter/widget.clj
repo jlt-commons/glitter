@@ -191,7 +191,8 @@
          :on-position-changed "notify::position"
          :on-day-selected     "day-selected"
          :on-child-activated  "child-activated"
-         :on-switch-page      "switch-page"}))
+         :on-switch-page      "switch-page"
+         :on-closed           "closed"}))
 
 ;; Widgets whose signal we are currently firing ourselves (via a programmatic
 ;; setter — gtk_editable_set_text, gtk_check_button_set_active). connect-signals
@@ -379,6 +380,26 @@
     (g/gtk-scale-button-set-value widget (double value))
     (swap! suppressing disj widget)))
 
+(defn- set-popover-visible!
+  "Open/close a popover via gtk_popover_popup/popdown, but only when it
+  differs from the widget's current visibility, and while suppressing
+  the :on-closed handler for the synchronous 'closed' emission popdown
+  causes (confirmed via gtk/gtkpopover.c: gtk_popover_hide, popdown's
+  underlying vfunc, emits 'closed' synchronously as part of the same
+  call). Same set-compare-suppress shape as every other value-bearing
+  widget's programmatic setter here — this is the controlled-component
+  half of the contract; :menu-button's own internal click handling (via
+  gtk_menu_button_set_popover) opens the popover independently of this
+  setter, so an app is expected to sync its own :visible state from
+  :on-activate (open) and :on-closed (close), same pattern :notebook's
+  :current-page already establishes."
+  [widget visible?]
+  (let [target (->bool visible?)]
+    (when (not= target (g/gtk-widget-get-visible widget))
+      (swap! suppressing conj widget)
+      (if visible? (g/gtk-popover-popup widget) (g/gtk-popover-popdown widget))
+      (swap! suppressing disj widget))))
+
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
 ;; The suppressing setters above are defined ahead of the specs so their
@@ -467,6 +488,29 @@
    :apply (fn [w p] (when (contains? p :current-page) (set-notebook-current-page! w (:current-page p))))
    :container :notebook})
 
+(defn- header-bar-spec []
+  ;; A genuinely new HYBRID container: one named title-widget slot plus
+  ;; an ordered pack-start list — see header-bar-append-child! (below,
+  ;; beside the other container-management fns) for the full shape and
+  ;; why v1 deliberately does not wire pack_end. No signal of its own.
+  {:ctor  (fn [_] (g/gtk-header-bar-new))
+   :apply (fn [w p]
+            (when (contains? p :show-title-buttons)
+              (g/gtk-header-bar-set-show-title-buttons w (->bool (:show-title-buttons p)))))
+   :container :header-bar})
+
+(defn- action-bar-spec []
+  ;; Same hybrid shape as :header-bar (title-widget -> center-widget),
+  ;; independently verified rather than assumed to carry over just
+  ;; because the widgets look similar — see action-bar-append-child!
+  ;; below. :revealed reuses ActionBar's own genuinely revealer-wrapped
+  ;; internal structure (confirmed via its class_init) — a plain prop,
+  ;; no signal, no suppressing guard needed.
+  {:ctor  (fn [_] (g/gtk-action-bar-new))
+   :apply (fn [w p]
+            (when (contains? p :revealed) (g/gtk-action-bar-set-revealed w (->bool (:revealed p)))))
+   :container :action-bar})
+
 (defn- button-spec []
   {:ctor    (fn [p] (if (:label p) (g/gtk-button-new-with-label (:label p)) (g/gtk-button-new)))
    :apply   (fn [w p]
@@ -489,6 +533,38 @@
             (when (:tooltip p)             (g/gtk-widget-set-tooltip-text w (:tooltip p)))
             (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
+
+(defn- menu-button-spec []
+  ;; :menu-button's ONE hiccup child (if present) is expected to be a
+  ;; :popover, attached via gtk_menu_button_set_popover — a genuinely new
+  ;; RELATIONSHIP, not a normal append-child!-managed tree child (see
+  ;; :menu-button's case in append-child!/remove-child!/replace-child!
+  ;; above — same single-relationship shape as :window's set-child, just
+  ;; a different underlying setter). :label sets the button's own visible
+  ;; face, fully independent of the popover relationship. :on-activate is
+  ;; a free reuse of the existing signals entry — confirmed via
+  ;; gtk/gtkmenubutton.c's g_signal_new that \"activate\" is the plain
+  ;; 2-arg-void shape, no value-fn needed (same as :on-click).
+  {:ctor  (fn [_] (g/gtk-menu-button-new))
+   :apply (fn [w p]
+            (when (contains? p :label)     (g/gtk-menu-button-set-label w (:label p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :menu-button})
+
+(defn- popover-spec []
+  ;; Single-child container (gtk_popover_set_child), same strategy as
+  ;; :frame/:revealer. :visible drives popup/popdown through the usual
+  ;; suppressing-guard setter (set-popover-visible!, above beside the
+  ;; other setters) — a controlled-component contract identical to
+  ;; :notebook's :current-page: the app is expected to sync its own
+  ;; :visible state via :menu-button's :on-activate (open) and this
+  ;; widget's own :on-closed (close).
+  {:ctor  (fn [_] (g/gtk-popover-new))
+   :apply (fn [w p]
+            (when (contains? p :visible)   (set-popover-visible! w (:visible p)))
+            (when (contains? p :has-arrow) (g/gtk-popover-set-has-arrow w (->bool (:has-arrow p))))
+            (when (contains? p :autohide)  (g/gtk-popover-set-autohide w (->bool (:autohide p)))))
+   :container :popover})
 
 (defn- label-spec []
   {:ctor  (fn [p] (g/gtk-label-new (or (:label p) (:text p) "")))
@@ -632,6 +708,22 @@
             (when (contains? p :label)    (g/gtk-expander-set-label w (or (:label p) "")))
             (when (contains? p :expanded) (set-expander-expanded! w (:expanded p))))
    :container :expander})
+
+(defn- search-bar-spec []
+  ;; Single-child container (gtk_search_bar_set_child), same strategy as
+  ;; :revealer — no signal of its own (confirmed: no g_signal_new in
+  ;; gtk/gtksearchbar.c), :search-mode/:show-close-button are plain
+  ;; props. Pairs naturally with :search-entry as this widget's child.
+  ;; v1 skips gtk_search_bar_connect_entry/set_key_capture_widget — both
+  ;; need a raw GtkEditable/GtkWidget pointer glitter has no hiccup-level
+  ;; convention for passing sideways yet.
+  {:ctor  (fn [_] (g/gtk-search-bar-new))
+   :apply (fn [w p]
+            (when (contains? p :search-mode)
+              (g/gtk-search-bar-set-search-mode w (->bool (:search-mode p))))
+            (when (contains? p :show-close-button)
+              (g/gtk-search-bar-set-show-close-button w (->bool (:show-close-button p)))))
+   :container :search-bar})
 
 (defn- aspect-frame-spec []
   ;; Single-child container (gtk_aspect_frame_set_child) — same strategy
@@ -786,6 +878,22 @@
             (when (contains? p :alternative-text) (g/gtk-picture-set-alternative-text w (:alternative-text p))))
    :container :none})
 
+(defn- inscription-spec []
+  ;; Display-only — no signal at all (confirmed: no g_signal_new in
+  ;; gtk/gtkinscription.c). A lighter-weight sibling to :label: no markup
+  ;; interpretation, fixed :text-overflow handling (a GtkInscriptionOverflow
+  ;; nick — :clip/:ellipsize-start/:ellipsize-middle/:ellipsize-end)
+  ;; instead of Pango ellipsize/wrap options. v1 scope mirrors :picture's
+  ;; minimal prop set — xalign/yalign/min-chars/nat-chars/wrap-mode all
+  ;; deferred.
+  {:ctor  (fn [p] (g/gtk-inscription-new (or (:text p) "")))
+   :apply (fn [w p]
+            (when (contains? p :text)
+              (g/gtk-inscription-set-text w (:text p)))
+            (when (contains? p :text-overflow)
+              (g/gtk-inscription-set-text-overflow w (->enum "GtkInscriptionOverflow" (:text-overflow p)))))
+   :container :none})
+
 (defn- level-bar-spec []
   ;; Display-only — driven by :value/:min-value/:max-value/:inverted, no
   ;; signal to wire. Min/max applied BEFORE value (same ordering concern as
@@ -877,7 +985,13 @@
          :level-bar      (level-bar-spec)
          :calendar       (calendar-spec)
          :list-box       (list-box-spec)
-         :flow-box       (flow-box-spec)}))
+         :flow-box       (flow-box-spec)
+         :header-bar     (header-bar-spec)
+         :action-bar     (action-bar-spec)
+         :menu-button    (menu-button-spec)
+         :popover        (popover-spec)
+         :search-bar     (search-bar-spec)
+         :inscription    (inscription-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -1590,6 +1704,100 @@
     (when (>= idx 0) (g/gtk-notebook-remove-page parent idx)))
   (notebook-insert-after! parent child sibling))
 
+;; :header-bar helpers. A genuinely new HYBRID shape: one named
+;; title-widget slot plus an ORDERED pack-start list — not a fixed set of
+;; named slots (:center-box/:paned) and not a plain ordered list (:box/
+;; :list-box/:flow-box/:notebook). Modeled directly on overlay-append-
+;; child!'s "query GTK's own occupancy, don't track position separately"
+;; pattern: the title slot is the FIRST hiccup child (if it's still
+;; empty), every later child is pack_start'd, in order.
+;;
+;; v1 deliberately does NOT wire pack_end at all — see ffi.clj's own
+;; comment on gtk_header_bar_pack's C body: pack_end calls
+;; gtk_box_prepend internally, which would silently REVERSE hiccup order
+;; if fed one child at a time in the reconciler's normal append
+;; sequence. Fixing that needs either resyncing the whole end-region on
+;; every mutation or a positional pack_end API GTK doesn't expose — real
+;; work, deliberately deferred rather than shipping a container that
+;; silently reorders its own children.
+(defn- header-bar-append-child! [parent child]
+  (if (ptr-null? (g/gtk-header-bar-get-title-widget parent))
+    (g/gtk-header-bar-set-title-widget parent child)
+    (g/gtk-header-bar-pack-start parent child)))
+
+(defn- header-bar-remove-child!
+  "gtk_header_bar_remove handles EITHER role (title-widget or a
+  pack-start child) in one call — confirmed via its C body, which
+  branches on the child's actual GTK parent (start_box vs. center_box)
+  — so, unlike :overlay's remove, no role check is needed here first."
+  [parent child]
+  (g/gtk-header-bar-remove parent child))
+
+(defn- header-bar-replace-child!
+  "Swap `old-child` for `new-child` at the SAME role. Checks whether
+  old-child IS the title-widget BEFORE removing it — removal loses that
+  information, same 'capture before you mutate' concern every other
+  replace-child! here has."
+  [parent old-child new-child]
+  (let [was-title? (= old-child (g/gtk-header-bar-get-title-widget parent))]
+    (g/gtk-header-bar-remove parent old-child)
+    (if was-title?
+      (g/gtk-header-bar-set-title-widget parent new-child)
+      (g/gtk-header-bar-pack-start parent new-child))))
+
+(defn- header-bar-insert-after!
+  "Only the ONE case that matters for a plain, non-keyed reconcile:
+  `sibling` nil (this is becoming the FIRST/title child) — mirrors
+  header-bar-append-child!'s own 'title slot empty -> become title'
+  check. `sibling` non-nil (inserting relative to an existing pack-start
+  child) has no positional meaning gtk_header_bar_pack_start's API can
+  honor, so it falls back to a plain pack_start append — same
+  'no position to preserve' shape as :overlay's own insert-after!.
+
+  KNOWN V1 GAP, same root cause as :center-box's/:paned's/:overlay's: if
+  the title slot is already occupied and its hiccup TAG gets swapped,
+  this no-ops for the 'insert new' half of the reconciler's 'insert new,
+  then remove old' sequence — change props instead of tags, or nest a
+  stable wrapper tag one level down."
+  [parent child sibling]
+  (if (ptr-null? sibling)
+    (header-bar-append-child! parent child)
+    (g/gtk-header-bar-pack-start parent child)))
+
+;; :action-bar helpers. Same hybrid shape as :header-bar (title-widget ->
+;; center-widget), independently verified rather than assumed to carry
+;; over just because the widgets look similar — ffi.clj's own comment
+;; traces gtk_action_bar_pack_end's C body separately (a different GTK
+;; call, gtk_box_insert_child_after(..., NULL), but the same prepend-
+;; shaped reversal risk), and v1 makes the identical call: pack_end is
+;; not wired.
+(defn- action-bar-append-child! [parent child]
+  (if (ptr-null? (g/gtk-action-bar-get-center-widget parent))
+    (g/gtk-action-bar-set-center-widget parent child)
+    (g/gtk-action-bar-pack-start parent child)))
+
+(defn- action-bar-remove-child!
+  "gtk_action_bar_remove handles either role in one call, same shape as
+  gtk_header_bar_remove — confirmed via its own C body (see ffi.clj's
+  comment), not assumed to match just because it looks like a sibling."
+  [parent child]
+  (g/gtk-action-bar-remove parent child))
+
+(defn- action-bar-replace-child! [parent old-child new-child]
+  (let [was-center? (= old-child (g/gtk-action-bar-get-center-widget parent))]
+    (g/gtk-action-bar-remove parent old-child)
+    (if was-center?
+      (g/gtk-action-bar-set-center-widget parent new-child)
+      (g/gtk-action-bar-pack-start parent new-child))))
+
+(defn- action-bar-insert-after!
+  "Same shape and same KNOWN V1 GAP as header-bar-insert-after! — see
+  its docstring."
+  [parent child sibling]
+  (if (ptr-null? sibling)
+    (action-bar-append-child! parent child)
+    (g/gtk-action-bar-pack-start parent child)))
+
 (defn append-child!
   "Add `child` to the end of `parent`. Dispatches on the parent's container kind."
   [parent-tag parent child]
@@ -1607,6 +1815,11 @@
     :notebook     (notebook-append-child! parent child)
     :list-box     (g/gtk-list-box-append parent child)
     :flow-box     (g/gtk-flow-box-append parent child)
+    :search-bar   (g/gtk-search-bar-set-child parent child)
+    :menu-button  (g/gtk-menu-button-set-popover parent child)
+    :popover      (g/gtk-popover-set-child parent child)
+    :header-bar   (header-bar-append-child! parent child)
+    :action-bar   (action-bar-append-child! parent child)
     nil))
 
 (defn remove-child!
@@ -1626,6 +1839,11 @@
     :notebook     (notebook-remove-child! parent child)
     :list-box     (list-box-remove-child! parent child)
     :flow-box     (g/gtk-flow-box-remove parent child)
+    :search-bar   (g/gtk-search-bar-set-child parent ffi/null)
+    :menu-button  (g/gtk-menu-button-set-popover parent ffi/null)
+    :popover      (g/gtk-popover-set-child parent ffi/null)
+    :header-bar   (header-bar-remove-child! parent child)
+    :action-bar   (action-bar-remove-child! parent child)
     nil))
 
 (defn replace-child!
@@ -1654,6 +1872,11 @@
     :notebook     (notebook-replace-child! parent old-child new-child)
     :list-box     (list-box-replace-child! parent old-child new-child)
     :flow-box     (flow-box-replace-child! parent old-child new-child)
+    :search-bar   (g/gtk-search-bar-set-child parent new-child)
+    :menu-button  (g/gtk-menu-button-set-popover parent new-child)
+    :popover      (g/gtk-popover-set-child parent new-child)
+    :header-bar   (header-bar-replace-child! parent old-child new-child)
+    :action-bar   (action-bar-replace-child! parent old-child new-child)
     nil))
 
 (defn reorder-child!
@@ -1669,9 +1892,14 @@
   start/end), not positions — 'move this widget to sit after that one'
   has no well-defined meaning when every slot already has a name.
   :overlay no-ops for the same structural reason applied to its OWN
-  shape: GTK has no 'move this overlay to position N' API at all. Used
-  by the keyed reconciler to fix widget order after reuse/create when
-  survivors were reordered or a new item must precede an existing one."
+  shape: GTK has no 'move this overlay to position N' API at all.
+  :header-bar/:action-bar no-op too, for a THIRD variant of the same
+  structural reason: their pack-start region IS a real ordered list
+  internally, but it's a PRIVATE GtkBox glitter has no pointer to —
+  only gtk_header_bar_pack_start/gtk_action_bar_pack_start (append-only)
+  are public API, no reorder call exists to reach it. Used by the keyed
+  reconciler to fix widget order after reuse/create when survivors were
+  reordered or a new item must precede an existing one."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box      (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))
@@ -1715,4 +1943,6 @@
     :list-box   (list-box-insert-after! parent child sibling)
     :flow-box   (flow-box-insert-after! parent child sibling)
     :notebook   (notebook-insert-after! parent child sibling)
+    :header-bar (header-bar-insert-after! parent child sibling)
+    :action-bar (action-bar-insert-after! parent child sibling)
     nil))

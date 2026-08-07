@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and nineteen automated smokes that drive a *real* GTK4 window
+fake renderer, and twenty-two automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter — several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -80,6 +80,9 @@ on mismatch:
 | `jolt overlay-flow-box-smoke` | `:overlay`'s 1-main+N-overlay shape survives a real removal (verified via a generic widget-tree walk, since GTK exposes no overlay-enumeration API); `:flow-box`'s tag-swapped middle child lands correctly without corrupting either sibling | a re-render drops the overlay child entirely, asserting the actual GTK child count drops by exactly one while main stays untouched; a separate re-render swaps `:flow-box`'s middle child's TAG, asserting both neighbors' content stays correct — see [`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption) |
 | `jolt picture-editable-label-smoke` | `:picture`'s display-only `GdkPaintable` props land on real GTK state; `:editable-label` (a third `GtkEditable`-delegate reuse) dispatches its typed value and a programmatic `:editing` toggle causes no spurious dispatch | reads `gtk_picture_get_alternative_text`/`get_can_shrink`/`get_content_fit` back on mount and after a re-render; a real FFI `gtk_editable_set_text` call (starting from empty text, sidestepping the general non-empty-bulk-replace double-`"changed"` finding) simulates typing, asserting the dispatched value and dispatch count before/after a subsequent programmatic edit-mode toggle — see [`gtk-widget-layer.md`](gtk-widget-layer.md#pictureeditable-label--a-quick-win-a-third-gtkeditable-delegate-and-a-general-gtkeditable-finding) |
 | `jolt notebook-scale-button-smoke` | `:notebook`'s `"switch-page"` (a sixth callable shape, reading `page-num` from its own raw signal argument rather than a stale getter) delivers correctly, including the real mount-time auto-select-page-0 dispatch; `:scale-button`'s `"value-changed"` (sharing `:scale`'s/`:spin-button`'s signal NAME but needing tag-aware dispatch) delivers the right double | real FFI `gtk_notebook_set_current_page`/`gtk_scale_button_set_value` calls simulate live interactions, asserting dispatch counts starting from `1` (not `0`) to account for the notebook's own mount-time auto-select, then before/after a subsequent programmatic sync of both widgets — see [`gtk-widget-layer.md`](gtk-widget-layer.md#notebookscale-button--a-sixth-callable-shape-a-mount-time-surprise-and-a-tag-aware-dispatch) |
+| `jolt inscription-search-bar-smoke` | `:inscription`'s display-only text/overflow props land on real GTK state; `:search-bar`'s single-child container reuse and `:search-mode`/`:show-close-button` props re-apply correctly on a re-render | reads `gtk_inscription_get_text`/`get_text_overflow` and `gtk_search_bar_get_search_mode`/`get_show_close_button` back on mount and after a re-render — see [`gtk-widget-layer.md`](gtk-widget-layer.md#inscriptionsearch-bar--two-more-quick-no-signal-wins) |
+| `jolt header-bar-action-bar-smoke` | `:header-bar`/`:action-bar`'s hybrid title/center-widget-plus-pack-start shape lands children in the right roles and right order; the real `:show-title-buttons` native-window-controls-prepend finding is asserted explicitly, not avoided | walks each widget's real internal tree (identified by the `"start"` CSS class GTK itself adds) to read back pack-start button order on mount, then toggles `:show-title-buttons` on a re-render and confirms the pack-start count grows by one while glitter's own buttons keep their relative order — see [`gtk-widget-layer.md`](gtk-widget-layer.md#header-baraction-bar--a-genuinely-new-hybrid-container-shape) |
+| `jolt menu-button-popover-smoke` | `:menu-button`'s popover-as-child relationship (`gtk_menu_button_set_popover`, not a normal tree child) delivers correctly; `:popover`'s `:visible` suppressing-guarded setter and free-reuse `:on-activate`/`:on-closed` signals round-trip through a real click, a real close, and a programmatic sync in both directions with no spurious dispatch | a real `gtk_widget_activate` click and a real `gtk_popover_popdown` call simulate live interactions, asserting dispatch counts before/after each and before/after a subsequent programmatic open-then-close of the popover — see [`gtk-widget-layer.md`](gtk-widget-layer.md#menu-buttonpopover--a-popup-surface-not-a-normal-tree-child) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo
@@ -121,13 +124,14 @@ bb revealer-center-box-smoke | spin-button-list-box-smoke
 bb password-search-entry-smoke | expander-paned-smoke
 bb aspect-frame-calendar-smoke | overlay-flow-box-smoke
 bb picture-editable-label-smoke | notebook-scale-button-smoke
+bb inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popover-smoke
                         # individual live-GTK smokes
-bb smokes               # all nineteen smokes in sequence; stops at first failure
+bb smokes               # all twenty-two smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly — never the
 `jolt <task>` shorthand — so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all nineteen smokes with a plain
+CI gate on their own. `bb smokes` chains all twenty-two smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

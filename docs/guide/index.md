@@ -89,14 +89,27 @@ live GTK widget tree in sync.
   stale), a verified real mount-time auto-dispatch when a notebook's
   first page is added, and a THIRD widget sharing `"value-changed"`'s
   signal name that needed the first tag-aware (not just signal-name-
-  keyed) `set-event-handler` dispatch.
+  keyed) `set-event-handler` dispatch, `:inscription`/`:search-bar` —
+  two more quick, entirely no-signal wins (the first round where zero
+  widgets need any `glitter.gtk` changes at all), `:header-bar`/
+  `:action-bar` — a genuinely new hybrid container shape (one named
+  title/center-widget slot plus an ORDERED pack-start list) that
+  surfaced two real findings: `pack_end` silently reverses hiccup
+  order on both widgets (confirmed independently for each, not
+  assumed to carry over — v1 only wires `pack_start`), and toggling
+  `:show-title-buttons` prepends GTK's own native window-controls
+  widget into the SAME pack-start list glitter's children live in, and
+  `:menu-button`/`:popover` — the FIRST popup surface in this project
+  and the first hiccup relationship that isn't a normal
+  append-child!-managed tree child, with both signals turning out to
+  be free reuses of the default 2-arg-void shape.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the nineteen automated live-GTK
+  headless fake-`IRender` test renderer, the twenty-two automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

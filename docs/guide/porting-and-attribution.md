@@ -126,7 +126,31 @@ listed here for provenance, not legal requirement:
   `gtk-notebook-remove-page`, `gtk-notebook-page-num`,
   `gtk-notebook-set-current-page`, `gtk-notebook-get-current-page`,
   `gtk-scale-button-new`, `gtk-scale-button-set-value`,
-  `gtk-scale-button-get-value`).
+  `gtk-scale-button-get-value`), one more for `:popover`'s suppressing-
+  guard setter (`gtk-widget-get-visible`), and forty for
+  `:inscription`/`:search-bar`/`:header-bar`/`:action-bar`/
+  `:menu-button`/`:popover`
+  (`gtk-inscription-new`, `gtk-inscription-get-text`,
+  `gtk-inscription-set-text`, `gtk-inscription-get-text-overflow`,
+  `gtk-inscription-set-text-overflow`, `gtk-search-bar-new`,
+  `gtk-search-bar-set-child`, `gtk-search-bar-get-child`,
+  `gtk-search-bar-set-search-mode`, `gtk-search-bar-get-search-mode`,
+  `gtk-search-bar-set-show-close-button`,
+  `gtk-search-bar-get-show-close-button`, `gtk-header-bar-new`,
+  `gtk-header-bar-set-title-widget`, `gtk-header-bar-get-title-widget`,
+  `gtk-header-bar-pack-start`, `gtk-header-bar-remove`,
+  `gtk-header-bar-set-show-title-buttons`,
+  `gtk-header-bar-get-show-title-buttons`, `gtk-action-bar-new`,
+  `gtk-action-bar-pack-start`, `gtk-action-bar-set-center-widget`,
+  `gtk-action-bar-get-center-widget`, `gtk-action-bar-remove`,
+  `gtk-action-bar-set-revealed`, `gtk-action-bar-get-revealed`,
+  `gtk-menu-button-new`, `gtk-menu-button-set-label`,
+  `gtk-menu-button-get-label`, `gtk-menu-button-set-popover`,
+  `gtk-menu-button-get-popover`, `gtk-popover-new`,
+  `gtk-popover-set-child`, `gtk-popover-get-child`,
+  `gtk-popover-set-has-arrow`, `gtk-popover-get-has-arrow`,
+  `gtk-popover-set-autohide`, `gtk-popover-get-autohide`,
+  `gtk-popover-popup`, `gtk-popover-popdown`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -237,6 +261,34 @@ listed here for provenance, not legal requirement:
   signal name, the first case needing a TAG-aware, not just signal-
   name-keyed, `set-event-handler` dispatch — same anchor as `:notebook`
   above).
+
+  Round 10 adds `inscription-spec`/`:inscription` and
+  `search-bar-spec`/`:search-bar` (both entirely display/props-driven,
+  no signal, no `glitter.gtk` changes needed at all — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#inscriptionsearch-bar--two-more-quick-no-signal-wins)),
+  `header-bar-spec`/`:header-bar` + `action-bar-spec`/`:action-bar` +
+  `header-bar-append-child!`/`header-bar-remove-child!`/
+  `header-bar-replace-child!`/`header-bar-insert-after!` +
+  `action-bar-append-child!`/`action-bar-remove-child!`/
+  `action-bar-replace-child!`/`action-bar-insert-after!` (a genuinely
+  new HYBRID container shape — one named title/center-widget slot plus
+  an ORDERED pack-start list — that surfaced two real findings: both
+  widgets' `pack_end` silently reverses hiccup order, confirmed
+  independently for each rather than assumed to carry over, so v1 only
+  wires `pack_start`; and toggling `:show-title-buttons` prepends GTK's
+  own native window-controls widget into the SAME pack-start region —
+  see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#header-baraction-bar--a-genuinely-new-hybrid-container-shape)),
+  and `menu-button-spec`/`:menu-button` + `popover-spec`/`:popover` +
+  `set-popover-visible!` + the new `:on-closed` signal entry (the
+  FIRST popup surface in this project and the first hiccup
+  relationship that isn't a normal append-child!-managed tree child —
+  `:menu-button`'s ONE hiccup child, if present, is attached via
+  `gtk_menu_button_set_popover` rather than any container-management
+  case branch reused from an existing widget; both `:on-activate` and
+  `:on-closed` turned out to be free reuses of the default 2-arg-void
+  callable shape, needing zero `glitter.gtk` changes — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#menu-buttonpopover--a-popup-surface-not-a-normal-tree-child)).
   See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`

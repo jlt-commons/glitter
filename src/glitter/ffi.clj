@@ -298,6 +298,9 @@
 ;; halign/valign take a GtkAlign enum value, resolved at runtime by glitter.genum
 ;; from an idiomatic keyword nick (:start, :fill, :center).
 (ffi/defcfn gtk-widget-set-visible    "gtk_widget_set_visible"    [:pointer :int] :void)
+;; get-visible added for :popover's suppressing-guard setter (round 10) — no
+;; earlier widget here needed to READ its own visibility back.
+(ffi/defcfn gtk-widget-get-visible    "gtk_widget_get_visible"    [:pointer] :int)
 (ffi/defcfn gtk-widget-set-sensitive  "gtk_widget_set_sensitive"  [:pointer :int] :void)
 (ffi/defcfn gtk-widget-set-tooltip-text "gtk_widget_set_tooltip_text" [:pointer :string] :void)
 (ffi/defcfn gtk-widget-set-margin-start   "gtk_widget_set_margin_start"   [:pointer :int] :void)
@@ -583,6 +586,113 @@
 (ffi/defcfn gtk-scale-button-new       "gtk_scale_button_new"       [:double :double :double :pointer] :pointer)
 (ffi/defcfn gtk-scale-button-set-value "gtk_scale_button_set_value" [:pointer :double] :void)
 (ffi/defcfn gtk-scale-button-get-value "gtk_scale_button_get_value" [:pointer] :double)
+
+;; --- inscription (a lighter-weight, no-markup text display than :label) ------
+;; No signal at all (confirmed: no g_signal_new in gtk/gtkinscription.c) —
+;; display-only, same shape as :spinner/:progress-bar/:image/:picture. v1
+;; scope: :text + :text-overflow only; xalign/yalign/min-chars/nat-chars/
+;; wrap-mode all deferred (GTK 4.8+ API — installed brew gtk4 is 4.22, so
+;; no version gate needed here).
+(ffi/defcfn gtk-inscription-new               "gtk_inscription_new"               [:string] :pointer)
+(ffi/defcfn gtk-inscription-get-text          "gtk_inscription_get_text"          [:pointer] :string)
+(ffi/defcfn gtk-inscription-set-text          "gtk_inscription_set_text"          [:pointer :string] :void)
+(ffi/defcfn gtk-inscription-get-text-overflow "gtk_inscription_get_text_overflow" [:pointer] :int)
+(ffi/defcfn gtk-inscription-set-text-overflow "gtk_inscription_set_text_overflow" [:pointer :int] :void)
+
+;; --- search bar (a revealer-purpose-built-for-search-UI single-child container)
+;; No signal of its own (confirmed: no g_signal_new in gtk/gtksearchbar.c) —
+;; :search-mode driven entirely by a props-set boolean, same
+;; props-driven/single-child strategy as :revealer. v1 skips
+;; gtk_search_bar_connect_entry/set_key_capture_widget — both need a raw
+;; GtkEditable/GtkWidget pointer glitter has no hiccup-level convention for
+;; passing sideways yet; :search-mode can still be toggled programmatically
+;; without them.
+(ffi/defcfn gtk-search-bar-new                   "gtk_search_bar_new"                   [] :pointer)
+(ffi/defcfn gtk-search-bar-set-child              "gtk_search_bar_set_child"              [:pointer :pointer] :void)
+(ffi/defcfn gtk-search-bar-get-child              "gtk_search_bar_get_child"              [:pointer] :pointer)
+(ffi/defcfn gtk-search-bar-set-search-mode        "gtk_search_bar_set_search_mode"        [:pointer :int] :void)
+(ffi/defcfn gtk-search-bar-get-search-mode        "gtk_search_bar_get_search_mode"        [:pointer] :int)
+(ffi/defcfn gtk-search-bar-set-show-close-button  "gtk_search_bar_set_show_close_button"  [:pointer :int] :void)
+(ffi/defcfn gtk-search-bar-get-show-close-button  "gtk_search_bar_get_show_close_button"  [:pointer] :int)
+
+;; --- header bar (window titlebar container — a new hybrid slot shape) --------
+;; Confirmed by reading gtk_header_bar_pack's C body directly: pack_start
+;; calls gtk_box_append (safe, matches hiccup order), but pack_end calls
+;; gtk_box_prepend — a genuinely surprising internal detail that would
+;; silently REVERSE hiccup order if glitter fed pack_end children one at a
+;; time in the reconciler's normal append order. v1 therefore only wires
+;; pack_start (see glitter.widget's header-bar-append-child! for the full
+;; reasoning) — gtk_header_bar_pack_end is deliberately NOT bound here; a
+;; future round adding it must also solve the reversal, not just call it.
+;; No signal of its own. gtk_header_bar_remove handles removing EITHER a
+;; pack_start child OR the title-widget (confirmed via its C body: it
+;; branches on the child's actual GTK parent — start_box vs. center_box —
+;; so one binding covers both cases glitter needs).
+(ffi/defcfn gtk-header-bar-new                    "gtk_header_bar_new"                    [] :pointer)
+(ffi/defcfn gtk-header-bar-set-title-widget       "gtk_header_bar_set_title_widget"       [:pointer :pointer] :void)
+(ffi/defcfn gtk-header-bar-get-title-widget       "gtk_header_bar_get_title_widget"       [:pointer] :pointer)
+(ffi/defcfn gtk-header-bar-pack-start             "gtk_header_bar_pack_start"             [:pointer :pointer] :void)
+(ffi/defcfn gtk-header-bar-remove                 "gtk_header_bar_remove"                 [:pointer :pointer] :void)
+(ffi/defcfn gtk-header-bar-set-show-title-buttons "gtk_header_bar_set_show_title_buttons" [:pointer :int] :void)
+(ffi/defcfn gtk-header-bar-get-show-title-buttons "gtk_header_bar_get_show_title_buttons" [:pointer] :int)
+
+;; --- action bar (a :header-bar sibling — same hybrid shape, same reversal) ---
+;; gtk_action_bar_pack_end is confirmed via its C body to be
+;; gtk_box_insert_child_after(action_bar->end_box, child, NULL) — inserting
+;; with a NULL sibling means "insert as the FIRST child" (this project's own
+;; established insert-before convention), i.e. a PREPEND under a different
+;; name — the exact same reversal risk as :header-bar's pack_end, confirmed
+;; independently rather than assumed to carry over just because the widgets
+;; look similar. Same v1 call: only pack_start is bound/used.
+;; gtk_action_bar_set_revealed/get_revealed is new, not shared with
+;; :header-bar — ActionBar's internal structure is genuinely
+;; revealer-wrapped (confirmed: gtk_revealer_set_child(self->revealer,
+;; self->center_box) in its class_init), so this is real API, not a guess.
+(ffi/defcfn gtk-action-bar-new              "gtk_action_bar_new"              [] :pointer)
+(ffi/defcfn gtk-action-bar-pack-start       "gtk_action_bar_pack_start"       [:pointer :pointer] :void)
+(ffi/defcfn gtk-action-bar-set-center-widget "gtk_action_bar_set_center_widget" [:pointer :pointer] :void)
+(ffi/defcfn gtk-action-bar-get-center-widget "gtk_action_bar_get_center_widget" [:pointer] :pointer)
+(ffi/defcfn gtk-action-bar-remove           "gtk_action_bar_remove"           [:pointer :pointer] :void)
+(ffi/defcfn gtk-action-bar-set-revealed     "gtk_action_bar_set_revealed"     [:pointer :int] :void)
+(ffi/defcfn gtk-action-bar-get-revealed     "gtk_action_bar_get_revealed"     [:pointer] :int)
+
+;; --- menu button + popover (a popup surface, not a normal tree child) --------
+;; The first genuinely new RELATIONSHIP in this project: a :menu-button's
+;; hiccup child (if present) is expected to be a :popover, attached via
+;; gtk_menu_button_set_popover — NOT a normal append-child!-managed tree
+;; child the way every other single-child container here works. Confirmed
+;; by reading gtk_menu_button_set_popover's C body directly that it DOES
+;; genuinely parent the popover (gtk_widget_set_parent/unparent), so this
+;; is real ownership, not a passive reference. "activate" is confirmed via
+;; gtk/gtkmenubutton.c's g_signal_new to be the plain G_TYPE_NONE, 0
+;; shape — already registered as :on-activate in glitter.widget/signals
+;; (originally added speculatively, first real use here) — free reuse,
+;; no new callable branch. GtkPopover's "closed" is likewise confirmed
+;; G_TYPE_NONE, 0 — also a free reuse, needing only a new signal NAME
+;; entry (:on-closed), not a new shape.
+;;
+;; Confirmed via gtkpopover.c that gtk_popover_popdown's underlying
+;; gtk_popover_hide vfunc emits "closed" SYNCHRONOUSLY as part of the same
+;; call (_gtk_widget_set_visible_flag -> gtk_widget_unmap ->
+;; g_signal_emit(CLOSED)) — same "synchronous emission, suppress it during
+;; a programmatic setter" shape as every other value-bearing widget here.
+;; gtk_popover_popdown itself early-returns when already invisible, so a
+;; redundant call is already a safe no-op even before glitter's own
+;; suppressing-guard equality check.
+(ffi/defcfn gtk-menu-button-new           "gtk_menu_button_new"           [] :pointer)
+(ffi/defcfn gtk-menu-button-set-label     "gtk_menu_button_set_label"     [:pointer :string] :void)
+(ffi/defcfn gtk-menu-button-get-label     "gtk_menu_button_get_label"     [:pointer] :string)
+(ffi/defcfn gtk-menu-button-set-popover   "gtk_menu_button_set_popover"   [:pointer :pointer] :void)
+(ffi/defcfn gtk-menu-button-get-popover   "gtk_menu_button_get_popover"   [:pointer] :pointer)
+(ffi/defcfn gtk-popover-new               "gtk_popover_new"               [] :pointer)
+(ffi/defcfn gtk-popover-set-child         "gtk_popover_set_child"         [:pointer :pointer] :void)
+(ffi/defcfn gtk-popover-get-child         "gtk_popover_get_child"         [:pointer] :pointer)
+(ffi/defcfn gtk-popover-set-has-arrow     "gtk_popover_set_has_arrow"     [:pointer :int] :void)
+(ffi/defcfn gtk-popover-get-has-arrow     "gtk_popover_get_has_arrow"     [:pointer] :int)
+(ffi/defcfn gtk-popover-set-autohide      "gtk_popover_set_autohide"      [:pointer :int] :void)
+(ffi/defcfn gtk-popover-get-autohide      "gtk_popover_get_autohide"      [:pointer] :int)
+(ffi/defcfn gtk-popover-popup             "gtk_popover_popup"             [:pointer] :void)
+(ffi/defcfn gtk-popover-popdown           "gtk_popover_popdown"           [:pointer] :void)
 
 ;; --- signals & reference counting (libgobject) -------------------------------
 ;; g_signal_connect_data(instance, detailed_signal, c_handler, data, destroy_data, flags)

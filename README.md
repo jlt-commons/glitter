@@ -62,6 +62,9 @@ failure:
 | `jolt overlay-flow-box-smoke` | `:overlay`'s 1-main+N-overlay shape survives a real removal, verified via a generic widget-tree walk since GTK exposes no overlay-enumeration API; `:flow-box`'s tag-swapped middle child lands correctly without corrupting siblings |
 | `jolt picture-editable-label-smoke` | `:picture`'s display-only `GdkPaintable` props land on real GTK state; `:editable-label` (a third `GtkEditable`-delegate reuse) dispatches its typed value, no spurious dispatch on a programmatic `:editing` toggle |
 | `jolt notebook-scale-button-smoke` | `:notebook`'s `switch-page` (a sixth callable shape, reading `page-num` from its own raw signal argument, not a stale getter) delivers correctly, including its real mount-time auto-select-page-0 dispatch; `:scale-button`'s `value-changed` (sharing `:scale`'s/`:spin-button`'s signal name but needing tag-aware dispatch) delivers the right double |
+| `jolt inscription-search-bar-smoke` | `:inscription`'s display-only text/overflow props and `:search-bar`'s single-child `search-mode`/`show-close-button` props land on real GTK state, on mount and after a re-render |
+| `jolt header-bar-action-bar-smoke` | `:header-bar`/`:action-bar`'s hybrid title/center-widget-plus-pack-start shape lands children in the right roles and order; the real `show-title-buttons` native-window-controls-prepend finding is asserted explicitly |
+| `jolt menu-button-popover-smoke` | `:menu-button`'s popover-as-child relationship and `:popover`'s suppressing-guarded `visible` prop plus free-reuse `activate`/`closed` signals round-trip through a real click, a real close, and a programmatic sync in both directions with no spurious dispatch |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -152,7 +155,8 @@ frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
 `:switch`/`:revealer`/`:center-box`/`:spin-button`/`:list-box`/
 `:password-entry`/`:search-entry`/`:expander`/`:paned`/`:aspect-frame`/
 `:calendar`/`:overlay`/`:flow-box`/`:picture`/`:editable-label`/
-`:notebook`/`:scale-button`
+`:notebook`/`:scale-button`/`:inscription`/`:search-bar`/`:header-bar`/
+`:action-bar`/`:menu-button`/`:popover`
 (first-party, added directly to glitter; see
 `docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
 `:level-bar`/`:revealer` are display-only props with no signal to wire
@@ -302,6 +306,32 @@ not just the signal name, to pick the right callable. Verified SAFE to
 still re-read via the usual getter, unlike `:notebook`'s signal. See
 `docs/guide/gtk-widget-layer.md` for both write-ups.
 
+**`:inscription`/`:search-bar` (zero `glitter.gtk` changes), `:header-bar`/
+`:action-bar` (a genuinely new hybrid container), and `:menu-button`/
+`:popover` (the first popup surface).** `:inscription`/`:search-bar` are
+entirely display/props-driven, no signal — the first round needing no
+`glitter.gtk` changes at all. `:header-bar`/`:action-bar` are a hybrid
+shape: one named title/center-widget slot plus an ORDERED pack-start
+list. Confirmed by reading `gtk_header_bar_pack`'s C body directly:
+`pack_start` safely appends, but `pack_end` prepends — silently
+reversing hiccup order if fed one child at a time — confirmed
+independently for `gtk_action_bar_pack_end` too rather than assumed to
+carry over; v1 only wires `pack_start` on either widget. A second real
+finding, caught live while writing the smoke: toggling
+`:show-title-buttons` prepends GTK's own native window-controls widget
+into the SAME pack-start region glitter's children live in — asserted
+explicitly, not avoided. `:menu-button`'s ONE hiccup child, if present,
+is attached via `gtk_menu_button_set_popover` (confirmed real
+parenting, not a passive reference) rather than any existing
+container-management branch — the first hiccup relationship that isn't
+a normal tree child. Both `:on-activate` and `:on-closed` turned out to
+be free reuses of the default 2-arg-void shape. `:popover`'s `:visible`
+prop is a controlled-component contract identical to `:notebook`'s
+`:current-page`: `:menu-button`'s own click handling opens the popover
+independently of glitter, so an app syncs its own state via
+`:on-activate`/`:on-closed`. See `docs/guide/gtk-widget-layer.md` for
+all three write-ups.
+
 Known v1 limitations:
 
 - **Removing an attribute entirely is a no-op.** Setting one to a new value
@@ -346,3 +376,19 @@ Known v1 limitations:
   `:entry`/`:password-entry`/`:search-entry`/`:editable-label` alike;
   only matters for a programmatic bulk replace via
   `gtk_editable_set_text`, not normal typing.
+- **`:header-bar`/`:action-bar` cannot safely swap the title/center-widget's
+  hiccup tag while occupied** — same class of gap as `:center-box`/
+  `:paned`/`:overlay`.
+- **`:header-bar`/`:action-bar` never call `pack_end`** (both
+  reverse-accumulate, confirmed via their C bodies) and can't reorder
+  their pack-start region either (a real ordered list, but a private
+  `GtkBox` glitter has no pointer to).
+- **`:header-bar`'s `:show-title-buttons` shares glitter's own
+  pack-start list** with GTK's own native window-controls widget,
+  prepended when toggled true — real GTK behavior, asserted explicitly
+  rather than avoided.
+- **`:search-bar` cannot auto-manage search mode via key capture** —
+  `gtk_search_bar_connect_entry`/`set_key_capture_widget` both need a
+  raw widget pointer glitter has no hiccup-level convention for passing
+  sideways yet; `:search-mode` remains fully controllable
+  programmatically.
