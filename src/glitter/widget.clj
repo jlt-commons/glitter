@@ -69,34 +69,37 @@
 
 (defn- markup-element? [form] (and (vector? form) (keyword? (first form))))
 
-(declare markup-validate!)
-
-(defn- markup-validate-element! [form]
-  (let [tag     (first form)
-        body    (rest form)
-        attrs?  (map? (first body))
-        attrs   (if attrs? (first body) nil)
-        children (if attrs? (rest body) body)]
-    (if-not (contains? pango-tags tag)
-      (throw (ex-info (str "glitter/markup: :" (name tag) " is not a Pango tag")
-                      {:tag tag})))
-    (let [allowed (get pango-tags tag)]
-      (when (and attrs (seq attrs))
-        (if (nil? allowed)
-          (throw (ex-info (str "glitter/markup: :" (name tag) " takes no attributes")
-                          {:tag tag :attrs (keys attrs)}))
-          (doseq [k (keys attrs)]
-            (when-not (contains? allowed k)
-              (throw (ex-info (str "glitter/markup: :" (name k)
-                                   " is not a :" (name tag) " attribute")
-                              {:tag tag :attr k}))))))
-      (run! markup-validate! children))))
-
+;; markup-validate!/validate-element! are mutually recursive (an element's
+;; children get validated by the outer fn, a nested element gets routed back
+;; to the inner one) — letfn lets both close over each other with no forward
+;; declare, since validate-element! has no caller outside this fn.
 (defn- markup-validate! [form]
-  (cond
-    (markup-element? form)  (markup-validate-element! form)
-    (sequential? form)      (run! markup-validate! form)
-    :else                   nil))
+  (letfn [(validate-element! [form]
+            (let [tag      (first form)
+                  body     (rest form)
+                  attrs?   (map? (first body))
+                  attrs    (if attrs? (first body) nil)
+                  children (if attrs? (rest body) body)]
+              (if-not (contains? pango-tags tag)
+                (throw (ex-info (str "glitter/markup: :" (name tag) " is not a Pango tag")
+                                {:tag tag})))
+              (let [allowed (get pango-tags tag)]
+                (when (and attrs (seq attrs))
+                  (if (nil? allowed)
+                    (throw (ex-info (str "glitter/markup: :" (name tag) " takes no attributes")
+                                    {:tag tag :attrs (keys attrs)}))
+                    (doseq [k (keys attrs)]
+                      (when-not (contains? allowed k)
+                        (throw (ex-info (str "glitter/markup: :" (name k)
+                                             " is not a :" (name tag) " attribute")
+                                        {:tag tag :attr k}))))))
+                (run! validate! children))))
+          (validate! [form]
+            (cond
+              (markup-element? form)  (validate-element! form)
+              (sequential? form)      (run! validate! form)
+              :else                   nil))]
+    (validate! form)))
 
 (defn markup
   "Render hiccup `form` to a Pango markup string for a label's :markup prop.
@@ -178,15 +181,196 @@
          :on-child-activated  "child-activated"
          :on-switch-page      "switch-page"}))
 
+;; Widgets whose signal we are currently firing ourselves (via a programmatic
+;; setter — gtk_editable_set_text, gtk_check_button_set_active). connect-signals
+;; gates handlers on this set, so a programmatic prop change can't feed back into
+;; a reset!/re-render loop. GTK emits the signal synchronously during the setter,
+;; so a plain conj-around-call-disj brackets exactly the spurious emission.
+;; Defined here, ahead of the widget specs below, so their :apply closures can
+;; call these setters directly with no forward declare needed.
+(def ^:private suppressing (atom #{}))
+
+(defn- set-entry-text!
+  "Set an entry's text, but only when it differs from the current text, and while
+  suppressing the :on-change handler for the synchronous 'changed' emission this
+  causes. Avoids the set_text -> on-change -> reset! -> re-render -> set_text loop."
+  [widget text]
+  (when (and (some? text) (not= text (g/gtk-editable-get-text widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-editable-set-text widget text)
+    (swap! suppressing disj widget)))
+
+(defn- set-checkbutton-active!
+  "Set a checkbutton's active state, but only when it differs from the widget's
+  current state, and while suppressing the :on-toggled handler for the synchronous
+  'toggled' emission gtk_check_button_set_active causes. Without this, a bulk
+  update (e.g. 'complete all' flipping every task's :done) would re-render each
+  row, set_active would fire 'toggled', and the row's handler would flip the task
+  straight back."
+  [widget active?]
+  (let [target (->bool active?)]
+    (when (not= target (g/gtk-checkbutton-get-active widget))
+      (swap! suppressing conj widget)
+      (g/gtk-checkbutton-set-active widget target)
+      (swap! suppressing disj widget))))
+
+(defn- set-toggle-button-active!
+  "Set a toggle button's active state, but only when it differs from the
+  widget's current state, and while suppressing the :on-toggled handler for
+  the synchronous 'toggled' emission gtk_toggle_button_set_active causes.
+  Same set-compare-suppress shape as set-checkbutton-active! — GtkToggleButton
+  is a separate GTK4 class (not related to GtkCheckButton pre-GTK4 relation
+  removed), so it needs its own pair of FFI calls, but the loop-prevention
+  concern is identical."
+  [widget active?]
+  (let [target (->bool active?)]
+    (when (not= target (g/gtk-toggle-button-get-active widget))
+      (swap! suppressing conj widget)
+      (g/gtk-toggle-button-set-active widget target)
+      (swap! suppressing disj widget))))
+
+(defn- set-switch-active!
+  "Set a switch's active state, but only when it differs from the widget's
+  current state, and while suppressing the :on-state-set handler for the
+  synchronous 'state-set' emission gtk_switch_set_active causes (verified
+  live: unlike GtkButton's activate path, GtkSwitch's own source sets
+  self->is_active THEN synchronously emits state-set — no animation
+  timeout involved). Same set-compare-suppress shape as
+  set-checkbutton-active!/set-toggle-button-active!."
+  [widget active?]
+  (let [target (->bool active?)]
+    (when (not= target (g/gtk-switch-get-active widget))
+      (swap! suppressing conj widget)
+      (g/gtk-switch-set-active widget target)
+      (swap! suppressing disj widget))))
+
+(defn- set-scale-value!
+  "Set a scale's value, but only when it differs from the widget's current
+  value, and while suppressing the :on-value-changed handler for the
+  synchronous 'value-changed' emission gtk_range_set_value causes. Same
+  set-compare-suppress shape as set-entry-text!/set-checkbutton-active! —
+  without it, feeding the reconciled :value back on every render would loop
+  set_value -> value-changed -> dispatch -> re-render -> set_value."
+  [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-range-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-range-set-value widget (double value))
+    (swap! suppressing disj widget)))
+
+(defn- set-spin-button-value!
+  "Set a spin button's value, but only when it differs from the widget's
+  current value, and while suppressing the :on-value-changed handler for
+  the synchronous 'value-changed' emission gtk_spin_button_set_value
+  causes. Same set-compare-suppress shape as set-scale-value! —
+  GtkSpinButton is a separate GTK4 class from GtkScale/GtkRange (its own
+  get/set-value pair, not inherited), but the loop-prevention concern is
+  identical."
+  [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-spin-button-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-spin-button-set-value widget (double value))
+    (swap! suppressing disj widget)))
+
+(defn- set-expander-expanded!
+  "Set an expander's expanded state, but only when it differs from the
+  widget's current state, and while suppressing the :on-expanded handler
+  for the synchronous 'notify::expanded' emission gtk_expander_set_expanded
+  causes (GObject property-change notification is always synchronous when
+  a setter actually changes the value). Same set-compare-suppress shape
+  as set-scale-value!/set-spin-button-value!/etc."
+  [widget expanded?]
+  (let [target (->bool expanded?)]
+    (when (not= target (g/gtk-expander-get-expanded widget))
+      (swap! suppressing conj widget)
+      (g/gtk-expander-set-expanded widget target)
+      (swap! suppressing disj widget))))
+
+(defn- set-paned-position!
+  "Set a paned's divider position, but only when it differs from the
+  widget's current position, and while suppressing the
+  :on-position-changed handler for the synchronous 'notify::position'
+  emission gtk_paned_set_position causes. Same set-compare-suppress shape
+  as every other value-bearing widget's programmatic setter here."
+  [widget position]
+  (when (and (some? position) (not= (int position) (g/gtk-paned-get-position widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-paned-set-position widget (int position))
+    (swap! suppressing disj widget)))
+
+(defn- calendar-date=
+  "Read `widget`'s currently selected date as [year month day], unref-ing
+  the GDateTime gtk_calendar_get_date hands back (it's a NEW ref — see
+  ffi.clj's own comment on why every call site here must unref what it
+  refs)."
+  [widget]
+  (let [d (g/gtk-calendar-get-date widget)
+        result [(g/g-date-time-get-year d) (g/g-date-time-get-month d) (g/g-date-time-get-day-of-month d)]]
+    (g/g-date-time-unref d)
+    result))
+
+(defn- set-calendar-date!
+  "Set a calendar's selected date ([year month day]), but only when it
+  differs from the widget's current date, and while suppressing the
+  :on-day-selected handler for the synchronous 'day-selected' emission
+  gtk_calendar_select_day causes. Same set-compare-suppress shape as
+  every other value-bearing widget's programmatic setter here, plus
+  GDateTime refcounting: g_date_time_new_local hands back a ref THIS
+  code owns, and gtk_calendar_select_day does not take ownership of it
+  (a plain in-param, the standard GLib convention) — so it must be
+  unref'd after the call, or every programmatic date change leaks one
+  GDateTime object."
+  [widget [year month day :as date]]
+  (when (and year month day (not= (vec date) (calendar-date= widget)))
+    (let [gdt (g/g-date-time-new-local year month day 0 0 0.0)]
+      (swap! suppressing conj widget)
+      (g/gtk-calendar-select-day widget gdt)
+      (swap! suppressing disj widget)
+      (g/g-date-time-unref gdt))))
+
+(defn- set-editable-label-editing!
+  "Toggle an editable label's edit mode, but only when it differs from
+  the widget's current state, and while suppressing the :on-change
+  handler for the synchronous 'changed' emission stopping an in-progress
+  edit with unsaved text could cause. Same set-compare-suppress shape as
+  every other value-bearing widget's programmatic setter here — commits
+  the edit (rather than discarding it) when leaving edit mode."
+  [widget editing?]
+  (let [target (->bool editing?)]
+    (when (not= target (g/gtk-editable-label-get-editing widget))
+      (swap! suppressing conj widget)
+      (if editing?
+        (g/gtk-editable-label-start-editing widget)
+        (g/gtk-editable-label-stop-editing widget 1))
+      (swap! suppressing disj widget))))
+
+(defn- set-notebook-current-page!
+  "Set a notebook's current page, but only when it differs from the
+  widget's current page, and while suppressing the :on-switch-page
+  handler for the synchronous 'switch-page' emission
+  gtk_notebook_set_current_page causes. Same set-compare-suppress shape
+  as every other value-bearing widget's programmatic setter here."
+  [widget page]
+  (when (and (some? page) (not= (int page) (g/gtk-notebook-get-current-page widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-notebook-set-current-page widget (int page))
+    (swap! suppressing disj widget)))
+
+(defn- set-scale-button-value!
+  "Set a scale button's value, but only when it differs from the
+  widget's current value, and while suppressing the :on-value-changed
+  handler for the synchronous 'value-changed' emission
+  gtk_scale_button_set_value causes. Same set-compare-suppress shape as
+  every other value-bearing widget's programmatic setter here."
+  [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-scale-button-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-scale-button-set-value widget (double value))
+    (swap! suppressing disj widget)))
+
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
-;; The two suppressing setters live further down, beside the `suppressing` atom
-;; they read; the :apply closures below call them, so declare them here. A
-;; reference to a name that isn't interned yet is a compile error, in a nested
-;; closure as much as at the top level.
-(declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!
-         set-spin-button-value! set-expander-expanded! set-paned-position! set-calendar-date!
-         set-editable-label-editing! set-notebook-current-page! set-scale-button-value!)
+;; The suppressing setters above are defined ahead of the specs so their
+;; :apply closures can call them directly — no forward declare needed.
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -736,190 +920,6 @@
   a g_idle_add source that returns FALSE) so a long-lived REPL session doesn't
   accumulate one retained closure per re-render."
   [cb] (swap! callables disj cb) cb)
-
-;; Widgets whose signal we are currently firing ourselves (via a programmatic
-;; setter — gtk_editable_set_text, gtk_check_button_set_active). connect-signals
-;; gates handlers on this set, so a programmatic prop change can't feed back into
-;; a reset!/re-render loop. GTK emits the signal synchronously during the setter,
-;; so a plain conj-around-call-disj brackets exactly the spurious emission.
-(def ^:private suppressing (atom #{}))
-
-(defn- set-entry-text!
-  "Set an entry's text, but only when it differs from the current text, and while
-  suppressing the :on-change handler for the synchronous 'changed' emission this
-  causes. Avoids the set_text -> on-change -> reset! -> re-render -> set_text loop."
-  [widget text]
-  (when (and (some? text) (not= text (g/gtk-editable-get-text widget)))
-    (swap! suppressing conj widget)
-    (g/gtk-editable-set-text widget text)
-    (swap! suppressing disj widget)))
-
-(defn- set-checkbutton-active!
-  "Set a checkbutton's active state, but only when it differs from the widget's
-  current state, and while suppressing the :on-toggled handler for the synchronous
-  'toggled' emission gtk_check_button_set_active causes. Without this, a bulk
-  update (e.g. 'complete all' flipping every task's :done) would re-render each
-  row, set_active would fire 'toggled', and the row's handler would flip the task
-  straight back."
-  [widget active?]
-  (let [target (->bool active?)]
-    (when (not= target (g/gtk-checkbutton-get-active widget))
-      (swap! suppressing conj widget)
-      (g/gtk-checkbutton-set-active widget target)
-      (swap! suppressing disj widget))))
-
-(defn- set-toggle-button-active!
-  "Set a toggle button's active state, but only when it differs from the
-  widget's current state, and while suppressing the :on-toggled handler for
-  the synchronous 'toggled' emission gtk_toggle_button_set_active causes.
-  Same set-compare-suppress shape as set-checkbutton-active! — GtkToggleButton
-  is a separate GTK4 class (not related to GtkCheckButton pre-GTK4 relation
-  removed), so it needs its own pair of FFI calls, but the loop-prevention
-  concern is identical."
-  [widget active?]
-  (let [target (->bool active?)]
-    (when (not= target (g/gtk-toggle-button-get-active widget))
-      (swap! suppressing conj widget)
-      (g/gtk-toggle-button-set-active widget target)
-      (swap! suppressing disj widget))))
-
-(defn- set-switch-active!
-  "Set a switch's active state, but only when it differs from the widget's
-  current state, and while suppressing the :on-state-set handler for the
-  synchronous 'state-set' emission gtk_switch_set_active causes (verified
-  live: unlike GtkButton's activate path, GtkSwitch's own source sets
-  self->is_active THEN synchronously emits state-set — no animation
-  timeout involved). Same set-compare-suppress shape as
-  set-checkbutton-active!/set-toggle-button-active!."
-  [widget active?]
-  (let [target (->bool active?)]
-    (when (not= target (g/gtk-switch-get-active widget))
-      (swap! suppressing conj widget)
-      (g/gtk-switch-set-active widget target)
-      (swap! suppressing disj widget))))
-
-(defn- set-scale-value!
-  "Set a scale's value, but only when it differs from the widget's current
-  value, and while suppressing the :on-value-changed handler for the
-  synchronous 'value-changed' emission gtk_range_set_value causes. Same
-  set-compare-suppress shape as set-entry-text!/set-checkbutton-active! —
-  without it, feeding the reconciled :value back on every render would loop
-  set_value -> value-changed -> dispatch -> re-render -> set_value."
-  [widget value]
-  (when (and (some? value) (not= (double value) (g/gtk-range-get-value widget)))
-    (swap! suppressing conj widget)
-    (g/gtk-range-set-value widget (double value))
-    (swap! suppressing disj widget)))
-
-(defn- set-spin-button-value!
-  "Set a spin button's value, but only when it differs from the widget's
-  current value, and while suppressing the :on-value-changed handler for
-  the synchronous 'value-changed' emission gtk_spin_button_set_value
-  causes. Same set-compare-suppress shape as set-scale-value! —
-  GtkSpinButton is a separate GTK4 class from GtkScale/GtkRange (its own
-  get/set-value pair, not inherited), but the loop-prevention concern is
-  identical."
-  [widget value]
-  (when (and (some? value) (not= (double value) (g/gtk-spin-button-get-value widget)))
-    (swap! suppressing conj widget)
-    (g/gtk-spin-button-set-value widget (double value))
-    (swap! suppressing disj widget)))
-
-(defn- set-expander-expanded!
-  "Set an expander's expanded state, but only when it differs from the
-  widget's current state, and while suppressing the :on-expanded handler
-  for the synchronous 'notify::expanded' emission gtk_expander_set_expanded
-  causes (GObject property-change notification is always synchronous when
-  a setter actually changes the value). Same set-compare-suppress shape
-  as set-scale-value!/set-spin-button-value!/etc."
-  [widget expanded?]
-  (let [target (->bool expanded?)]
-    (when (not= target (g/gtk-expander-get-expanded widget))
-      (swap! suppressing conj widget)
-      (g/gtk-expander-set-expanded widget target)
-      (swap! suppressing disj widget))))
-
-(defn- set-paned-position!
-  "Set a paned's divider position, but only when it differs from the
-  widget's current position, and while suppressing the
-  :on-position-changed handler for the synchronous 'notify::position'
-  emission gtk_paned_set_position causes. Same set-compare-suppress shape
-  as every other value-bearing widget's programmatic setter here."
-  [widget position]
-  (when (and (some? position) (not= (int position) (g/gtk-paned-get-position widget)))
-    (swap! suppressing conj widget)
-    (g/gtk-paned-set-position widget (int position))
-    (swap! suppressing disj widget)))
-
-(defn- calendar-date=
-  "Read `widget`'s currently selected date as [year month day], unref-ing
-  the GDateTime gtk_calendar_get_date hands back (it's a NEW ref — see
-  ffi.clj's own comment on why every call site here must unref what it
-  refs)."
-  [widget]
-  (let [d (g/gtk-calendar-get-date widget)
-        result [(g/g-date-time-get-year d) (g/g-date-time-get-month d) (g/g-date-time-get-day-of-month d)]]
-    (g/g-date-time-unref d)
-    result))
-
-(defn- set-calendar-date!
-  "Set a calendar's selected date ([year month day]), but only when it
-  differs from the widget's current date, and while suppressing the
-  :on-day-selected handler for the synchronous 'day-selected' emission
-  gtk_calendar_select_day causes. Same set-compare-suppress shape as
-  every other value-bearing widget's programmatic setter here, plus
-  GDateTime refcounting: g_date_time_new_local hands back a ref THIS
-  code owns, and gtk_calendar_select_day does not take ownership of it
-  (a plain in-param, the standard GLib convention) — so it must be
-  unref'd after the call, or every programmatic date change leaks one
-  GDateTime object."
-  [widget [year month day :as date]]
-  (when (and year month day (not= (vec date) (calendar-date= widget)))
-    (let [gdt (g/g-date-time-new-local year month day 0 0 0.0)]
-      (swap! suppressing conj widget)
-      (g/gtk-calendar-select-day widget gdt)
-      (swap! suppressing disj widget)
-      (g/g-date-time-unref gdt))))
-
-(defn- set-editable-label-editing!
-  "Toggle an editable label's edit mode, but only when it differs from
-  the widget's current state, and while suppressing the :on-change
-  handler for the synchronous 'changed' emission stopping an in-progress
-  edit with unsaved text could cause. Same set-compare-suppress shape as
-  every other value-bearing widget's programmatic setter here — commits
-  the edit (rather than discarding it) when leaving edit mode."
-  [widget editing?]
-  (let [target (->bool editing?)]
-    (when (not= target (g/gtk-editable-label-get-editing widget))
-      (swap! suppressing conj widget)
-      (if editing?
-        (g/gtk-editable-label-start-editing widget)
-        (g/gtk-editable-label-stop-editing widget 1))
-      (swap! suppressing disj widget))))
-
-(defn- set-notebook-current-page!
-  "Set a notebook's current page, but only when it differs from the
-  widget's current page, and while suppressing the :on-switch-page
-  handler for the synchronous 'switch-page' emission
-  gtk_notebook_set_current_page causes. Same set-compare-suppress shape
-  as every other value-bearing widget's programmatic setter here."
-  [widget page]
-  (when (and (some? page) (not= (int page) (g/gtk-notebook-get-current-page widget)))
-    (swap! suppressing conj widget)
-    (g/gtk-notebook-set-current-page widget (int page))
-    (swap! suppressing disj widget)))
-
-(defn- set-scale-button-value!
-  "Set a scale button's value, but only when it differs from the
-  widget's current value, and while suppressing the :on-value-changed
-  handler for the synchronous 'value-changed' emission
-  gtk_scale_button_set_value causes. Same set-compare-suppress shape as
-  every other value-bearing widget's programmatic setter here."
-  [widget value]
-  (when (and (some? value) (not= (double value) (g/gtk-scale-button-get-value widget)))
-    (swap! suppressing conj widget)
-    (g/gtk-scale-button-set-value widget (double value))
-    (swap! suppressing disj widget)))
 
 (defn- list-box-selected-index
   "The currently selected row's index, or nil if none — read via

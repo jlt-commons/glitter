@@ -676,7 +676,21 @@
   (and (= (hiccup/rkey headers) (vdom/rkey vdom))
        (= (hiccup/tag-name headers) (vdom/tag-name vdom))))
 
-;; reconcile* and update-children are mutually recursive
+;; reconcile* and update-children are mutually recursive — genuinely so,
+;; not just an ordering choice: reconcile* calls update-children (via
+;; move-nodes and directly) to reconcile a node's children, and
+;; update-children/move-nodes call back into reconcile* per child. No
+;; linear reordering of these top-level defns avoids the forward
+;; reference. Kept as three separate defns (rather than merged into one
+;; letfn nest) deliberately: replicant.core.cljc has this exact same
+;; `(declare reconcile*)` at the identical spot (verified against the
+;; upstream source directly, not assumed) — this file's whole point is
+;; staying diffable against upstream, and update-children is also called
+;; from the public `reconcile` entry point further down, so collapsing
+;; the three into one nested form would both diverge from upstream's
+;; structure and hide that entry point behind a letfn-local. See
+;; docs/guide/porting-and-attribution.md's Bucket 1 for the porting-parity
+;; policy this preserves.
 (declare reconcile*)
 
 (defn index-of [f xs]
