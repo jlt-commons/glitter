@@ -10,13 +10,15 @@
   lives in each consuming demo, not here — see
   examples/glitter/flights.clj.
 
-  Only adaptation from upstream: the three #?(:clj Exception :cljs
-  :default) reader-conditionals collapse to a plain Exception catch —
-  glitter targets Jolt only, no cljs, matching how
-  glitter.errors/with-error-handling already compiles for :clj. Verified
-  live under real Jolt (not just JVM Clojure) that System/nanoTime,
-  System/currentTimeMillis, java.util.Date., and random-uuid all resolve
-  and return sensible values before this port assumed any of them."
+  Only adaptation from upstream, in THIS file: the three #?(:clj
+  Exception :cljs :default) reader-conditionals collapse to a plain
+  Exception catch — glitter targets Jolt only, no cljs, matching how
+  glitter.errors/with-error-handling already compiles for :clj. (The
+  System/nanoTime/System/currentTimeMillis/java.util.Date./random-uuid
+  primitives this whole nexus port leans on elsewhere — see
+  glitter.nexus.action-log — were verified live under real Jolt, not
+  just JVM Clojure, before any of this port's files assumed any of
+  them; none of those four forms appear in this particular file.)"
   (:require [clojure.walk :as walk]))
 
 (def ^:no-doc conjv (fnil conj []))
