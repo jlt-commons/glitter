@@ -7,8 +7,9 @@
   challenge is the separation of domain and presentation logic... more
   or less forced on the implementer due to the ability to filter the
   view by a prefix' — `get-people` below is that separation: pure,
-  reused by both `view` (to render) and `execute-actions` (to resolve a
-  clicked row's INDEX back to a stable person id).
+  reused by both `view` (to render) and the `:action/select-row`
+  action-expansion below (to resolve a clicked row's INDEX back to a
+  stable person id).
 
   Ports [cjohansen/replicant-7guis](https://github.com/cjohansen/replicant-7uis)'s
   `src/guis/crud.cljc` — but that file, verified by reading it and its
@@ -17,11 +18,20 @@
   `::set-family-name-filter`); the listbox has no `:on`, the two name
   fields aren't connected to any state, and Create/Update/Delete are
   static `[:button ...]` text with no click handlers at all. This port
-  completes the full interaction the spec actually describes, adapted
-  from Replicant's nexus-effects/placeholder dispatch model (a separate
-  library layered over `replicant.core`) to glitter's own direct
-  `execute-actions` `case` dispatch (no nexus equivalent exists here —
-  see `examples/glitter/todo.clj`'s docstring for the same contrast).
+  completes the full interaction the spec actually describes.
+
+  Retrofitted onto `glitter.nexus` (see `src/glitter/nexus.clj`) in this
+  commit — dispatch previously went through a hand-written
+  `execute-actions` `case` form. `:action/set-filter`/
+  `:action/set-given-name`/`:action/set-family-name` are pure
+  passthroughs of the typed value, plain `:effect/assoc-in` + a
+  `:glitter/value` placeholder, the same shape `examples/glitter/flights.clj`
+  uses throughout. `:action/select-row`/`:action/create`/`:action/update`/
+  `:action/delete` each need to READ current state to decide what should
+  happen, so they use the ACTION-EXPANSION layer (`register-action!`) —
+  the piece `flights.clj` never needs at all, since every one of its
+  interactions is a single `:effect/assoc-in` with no read-before-write.
+  See `flights.clj`'s own docstring for that pure-effects-only contrast.
 
   DESIGN CHOICE beyond the strict spec text: selecting a row
   auto-populates the Name/Surname fields with that person's current
@@ -85,9 +95,11 @@
   Run: jolt -M:crud (the :crud task/alias) or bb crud. Needs a display;
   closes the window to exit."
   (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [glitter.app :as app]
             [glitter.core :as core]
-            [glitter.gtk :as gtk]))
+            [glitter.gtk :as gtk]
+            [glitter.nexus.registry :as nxr]))
 
 (defonce state
   (atom {:people [{:id 1 :given-name "Hans" :family-name "Emil"}
@@ -100,10 +112,11 @@
          :family-name ""}))
 
 ;; Domain logic, kept pure and reused by BOTH the view (to render) and
-;; execute-actions (to resolve a clicked row's live GTK index back to a
-;; stable :id — :list-box's "row-selected" delivers an INDEX into
-;; whatever's currently displayed, not an identity, so both sides must
-;; derive the exact same ordering or the two would silently disagree).
+;; the :action/select-row action-expansion below (to resolve a clicked
+;; row's live GTK index back to a stable :id — :list-box's "row-selected"
+;; delivers an INDEX into whatever's currently displayed, not an
+;; identity, so both sides must derive the exact same ordering or the
+;; two would silently disagree).
 ;; Prefix-matches the FAMILY name only, case-insensitive and trimmed;
 ;; sorted by (family-name, given-name) — mirrors both the reference
 ;; replicant-7guis port's own get-people and the spec screenshot's own
@@ -120,14 +133,14 @@
 ;; position, so a function-valued tag would silently render as opaque
 ;; stringified text instead of expanding — see AGENTS.md convention #10
 ;; and examples/glitter/todo.clj's stat-card for the same pattern.
-(defn- field-row [label value action]
+(defn- field-row [label value path]
   [:hbox {:spacing 8}
    ;; :xalign MUST be a float literal (0.0, not 0) — gtk_label_set_xalign
    ;; is declared :float in glitter.ffi, and Jolt's FFI does not coerce
    ;; an int argument to a float one; a bare 0 here throws "invalid
    ;; foreign-procedure argument" at set-attribute time.
    [:label {:label label :width-chars 8 :xalign 0.0}]
-   [:entry {:text value :hexpand true :on {:change [[action]]}}]])
+   [:entry {:text value :hexpand true :on {:change [[:effect/assoc-in [path] [:glitter/value]]]}}]])
 
 (defn view [{:keys [filter given-name family-name selected-id] :as state}]
   (let [people (get-people state)
@@ -149,88 +162,81 @@
         selected? (boolean (some #(= (:id %) selected-id) people))]
     [:vbox {:spacing 12 :margin 16}
      [:label {:markup "<span size='xx-large' weight='bold'>CRUD</span>" :halign :start}]
-     (field-row "Filter:" filter :action/set-filter)
+     (field-row "Filter:" filter :filter)
      [:hbox {:spacing 12 :vexpand true}
       [:scrolled {:hexpand true :vexpand true}
-       (into [:list-box {:on {:row-selected [[:action/select-row]]}}]
+       (into [:list-box {:on {:row-selected [[:action/select-row [:glitter/value]]]}}]
              (for [p people]
                [:label {:glitter/key (:id p)
                         :label (str (:family-name p) ", " (:given-name p))
                         :halign :start
                         :margin-start 6 :margin-end 6 :margin-top 4 :margin-bottom 4}]))]
       [:vbox {:spacing 8 :valign :start}
-       (field-row "Name:" given-name :action/set-given-name)
-       (field-row "Surname:" family-name :action/set-family-name)]]
+       (field-row "Name:" given-name :given-name)
+       (field-row "Surname:" family-name :family-name)]]
      [:hbox {:spacing 8}
       [:button {:label "Create" :on {:click [[:action/create]]}}]
       [:button {:label "Update" :sensitive selected? :on {:click [[:action/update]]}}]
       [:button {:label "Delete" :sensitive selected? :on {:click [[:action/delete]]}}]]]))
 
-;; :entry's live text (filter/name/surname) travels via :glitter/value on
-;; the dispatched event, not through the static action tuple — same
-;; pattern as todo.clj's :action/set-draft; see that file's docstring for
-;; the full mechanics.
-(defn execute-actions [event actions]
-  (doseq [[kind] actions]
-    (case kind
-      :action/set-filter
-      (swap! state assoc :filter (get-in event [:glitter/dom-event :glitter/value]))
+;; :action/set-filter/:action/set-given-name/:action/set-family-name are
+;; pure passthroughs of the typed value — plain :effect/assoc-in, same
+;; shape as flights.clj's date fields. :action/select-row/:action/create/
+;; :action/update/:action/delete each need to READ current state to
+;; decide what should happen — these are the glitter.nexus ACTION-
+;; EXPANSION layer flights.clj never needed at all (see that file's own
+;; docstring for the contrast): pure functions of (state & args)
+;; returning the effects to run, never a swap! themselves.
+(nxr/register-effect! :effect/assoc-in
+                      (fn [_ system path v] (swap! system assoc-in path v)))
 
-      :action/set-given-name
-      (swap! state assoc :given-name (get-in event [:glitter/dom-event :glitter/value]))
+(nxr/register-placeholder! :glitter/value
+                           (fn [event] (get-in event [:glitter/dom-event :glitter/value])))
 
-      :action/set-family-name
-      (swap! state assoc :family-name (get-in event [:glitter/dom-event :glitter/value]))
+;; :list-box's "row-selected" value-fn delivers the selected row's INDEX
+;; (gtk_list_box_get_selected_row -> row_get_index), so this resolves it
+;; against the SAME get-people ordering the view just rendered, then
+;; auto-populates the two fields from that person.
+(nxr/register-action! :action/select-row
+                      (fn [state idx]
+                        (if-let [person (nth (vec (get-people state)) idx nil)]
+                          [[:effect/assoc-in [:selected-id] (:id person)]
+                           [:effect/assoc-in [:given-name] (:given-name person)]
+                           [:effect/assoc-in [:family-name] (:family-name person)]]
+                          [])))
 
-      ;; :list-box's "row-selected" value-fn delivers the selected row's
-      ;; INDEX (gtk_list_box_get_selected_row -> row_get_index), so this
-      ;; resolves it against the SAME get-people ordering the view just
-      ;; rendered, then auto-populates the two fields from that person.
-      :action/select-row
-      (swap! state
-             (fn [s]
-               (let [idx (get-in event [:glitter/dom-event :glitter/value])
-                     person (nth (vec (get-people s)) idx nil)]
-                 (if person
-                   (assoc s
-                          :selected-id (:id person)
-                          :given-name (:given-name person)
-                          :family-name (:family-name person))
-                   s))))
+(nxr/register-action! :action/create
+                      (fn [{:keys [given-name family-name next-id people]}]
+                        (if (or (seq given-name) (seq family-name))
+                          [[:effect/assoc-in [:people] (conj people {:id next-id :given-name given-name :family-name family-name})]
+                           [:effect/assoc-in [:next-id] (inc next-id)]]
+                          [])))
 
-      :action/create
-      (swap! state
-             (fn [{:keys [given-name family-name next-id] :as s}]
-               (if (or (seq given-name) (seq family-name))
-                 (-> s
-                     (update :people conj {:id next-id :given-name given-name :family-name family-name})
-                     (update :next-id inc))
-                 s)))
+(nxr/register-action! :action/update
+                      (fn [{:keys [selected-id given-name family-name people]}]
+                        (if selected-id
+                          [[:effect/assoc-in [:people]
+                            (mapv #(if (= (:id %) selected-id)
+                                     (assoc % :given-name given-name :family-name family-name)
+                                     %)
+                                  people)]]
+                          [])))
 
-      :action/update
-      (swap! state
-             (fn [{:keys [selected-id given-name family-name] :as s}]
-               (if selected-id
-                 (update s :people
-                         (fn [people]
-                           (mapv #(if (= (:id %) selected-id)
-                                    (assoc % :given-name given-name :family-name family-name)
-                                    %)
-                                 people)))
-                 s)))
+(nxr/register-action! :action/delete
+                      (fn [{:keys [selected-id people]}]
+                        (if selected-id
+                          [[:effect/assoc-in [:people] (vec (remove #(= (:id %) selected-id) people))]
+                           [:effect/assoc-in [:selected-id] nil]
+                           [:effect/assoc-in [:given-name] ""]
+                           [:effect/assoc-in [:family-name] ""]]
+                          [])))
 
-      :action/delete
-      (swap! state
-             (fn [{:keys [selected-id] :as s}]
-               (if selected-id
-                 (-> s
-                     (update :people (fn [people] (vec (remove #(= (:id %) selected-id) people))))
-                     (assoc :selected-id nil :given-name "" :family-name ""))
-                 s)))
+(nxr/register-system->state! deref)
+(nxr/on-error (fn [_ctx {:keys [err] :as error}]
+                (log/error err "glitter.nexus dispatch error" (dissoc error :err))))
 
-      nil)))
-
-(core/set-dispatch! execute-actions)
+(core/set-dispatch!
+ (fn [event actions] (nxr/dispatch state event actions)))
 
 (defn -main [& _]
   (app/run (fn [window] (gtk/mount! window view state))
