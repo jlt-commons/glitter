@@ -88,23 +88,26 @@ on mismatch:
 | `jolt drop-down-grid-smoke` | `:drop-down`'s `GtkStringList`-backed selection round-trips through a real interaction and a suppressing-guarded sync-back; `:grid`'s `:glitter/structural-props`-driven cell placement (including a column-span cell) lands at the right coordinates | reads `gtk_drop_down_get_selected` and `gtk_grid_get_child_at` for each cell back on mount (the span cell checked for pointer-equality at BOTH coordinates it covers); a real FFI `gtk_drop_down_set_selected` call simulates a live pick, asserting the dispatched index and dispatch count before/after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#grid--the-first-child-placement-container) |
 | `jolt list-box-reorder-smoke` | `list-box-reorder-child!`/`flow-box-reorder-child!`'s `g_object_ref_sink`/`g_object_unref` fix stays fixed — a keyed `:list-box` and a keyed `:flow-box` both survive a genuine reorder (same keys, new order, no add/remove) without the use-after-dispose crash found while building `examples/glitter/crud.clj` | reads each container's live children back via `gtk_widget_get_first_child`/`get_next_sibling` (the same ground-truth technique `keyed.clj` uses for `:box`) before and after a `reset!` that reorders both containers' keys, asserting the new order landed correctly — FAIL-path verified by temporarily reverting the fix (crashes, exit 1) and restoring it (clean exit 0) — see [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box-reorder-child-flow-box-reorder-child--a-real-use-after-dispose-bug) |
 
-`jolt counter`, `jolt todo`, `jolt crud`, and `jolt flights` are the
-interactive examples — the full quick-start demo from
-`docs/guide/index.md`, a larger task-board demo (ported from glimmer's
-own `todo.clj`) exercising derived counts, a value-bearing `:change`
-handler, and checkbutton toggles, a port of the [7GUIs CRUD
+`jolt counter`, `jolt todo`, `jolt crud`, `jolt flights`, and
+`jolt temperature` are the interactive examples — the full quick-start
+demo from `docs/guide/index.md`, a larger task-board demo (ported from
+glimmer's own `todo.clj`) exercising derived counts, a value-bearing
+`:change` handler, and checkbutton toggles, a port of the [7GUIs CRUD
 task](https://eugenkiss.github.io/7guis/tasks/#crud) exercising
 `:list-box` single-selection (with an auto-populate design choice
 beyond the strict spec text), keyed reordering driven by a derived sort
-order, and `:sensitive`-gated buttons, and a port of the [7GUIs Flight
+order, and `:sensitive`-gated buttons, a port of the [7GUIs Flight
 Booker task](https://eugenkiss.github.io/7guis/tasks/#flight-booker)
 exercising constraints between and within widgets via `glitter.nexus`
-(see [`nexus.md`](nexus.md)) — meant to be run and clicked, not
-asserted on. `jolt todo` and `jolt crud` are also `glitter.nexus`
-consumers as of this arc (retrofitted from a hand-written
-`execute-actions` `case` form); `jolt counter` still dispatches the old
-way, and `jolt flights` is the first demo written against
-`glitter.nexus` from the start.
+(see [`nexus.md`](nexus.md)), and a port of the [7GUIs Temperature
+Converter task](https://eugenkiss.github.io/7guis/tasks/#temp)
+exercising two linked `:entry` fields via a single `glitter.nexus`
+action-expansion — meant to be run and clicked, not asserted on.
+`jolt todo` and `jolt crud` are also `glitter.nexus` consumers as of
+this arc (retrofitted from a hand-written `execute-actions` `case`
+form); `jolt counter` still dispatches the old way, and `jolt flights`
+is the first demo written against `glitter.nexus` from the start,
+followed by `jolt temperature`.
 
 Each smoke's `:auto-quit-ms` option (see `glitter.app/run`) quits the GTK
 loop after a fixed delay so the process exits deterministically instead of
@@ -135,6 +138,7 @@ bb counter              # interactive demo
 bb todo                 # interactive task-board demo
 bb crud                 # interactive 7GUIs CRUD demo
 bb flights               # interactive 7GUIs Flight Booker demo
+bb temperature            # interactive 7GUIs Temperature Converter demo
 bb smoke | keyed | replace-child | aliased | main-thread-smoke
 bb scale-smoke | class-smoke | leaf-widgets-smoke | toggle-level-smoke
 bb link-button-smoke | switch-smoke

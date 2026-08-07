@@ -47,10 +47,14 @@ demo — a port of the [7GUIs Flight
 Booker task](https://eugenkiss.github.io/7guis/tasks/#flight-booker):
 a date-constraint form (combobox, two date fields, a Book button)
 dispatched entirely through `glitter.nexus`, a ported data-driven
-action/effect/placeholder engine (see below).
+action/effect/placeholder engine (see below). `jolt temperature` is a
+fifth interactive demo — a port of the [7GUIs Temperature Converter
+task](https://eugenkiss.github.io/7guis/tasks/#temp): two linked
+`:entry` fields (Celsius, Fahrenheit) where editing one immediately
+updates the other, a third, minimal `glitter.nexus` consumer.
 
-As of this arc, `jolt todo`/`jolt crud`/`jolt flights` all dispatch
-through `glitter.nexus` — a port of
+As of this arc, `jolt todo`/`jolt crud`/`jolt flights`/`jolt temperature`
+all dispatch through `glitter.nexus` — a port of
 [nexus](https://github.com/cjohansen/nexus) (same author as Replicant)
 that replaces a hand-written `execute-actions` `case` form with plain
 data: actions dispatch through registered **effect** handlers (the only
@@ -58,10 +62,11 @@ functions allowed to mutate state), **placeholder** resolvers substitute
 event-derived values into that data, and **action-expansions** are pure
 `(state & args) -> more-actions` functions for interactions that need
 to read current state before deciding what should happen. `jolt flights`
-needs only effects and placeholders; `jolt crud`/`jolt todo` also use
-action-expansions. See [`docs/guide/nexus.md`](docs/guide/nexus.md) for
-the full model, including a live-verified `t/parse-date` leniency
-gotcha that `jolt flights`' date validation had to work around.
+needs only effects and placeholders; `jolt crud`/`jolt todo`/
+`jolt temperature` also use action-expansions. See
+[`docs/guide/nexus.md`](docs/guide/nexus.md) for the full model,
+including a live-verified `t/parse-date` leniency gotcha that
+`jolt flights`' date validation had to work around.
 
 `jolt test` runs the unit suite. The rest are automated live-GTK
 smokes, each of which exits non-zero on failure:
@@ -114,6 +119,7 @@ bb counter   # interactive demo
 bb todo      # interactive task-board demo
 bb crud      # interactive 7GUIs CRUD demo
 bb flights   # interactive 7GUIs Flight Booker demo
+bb temperature # interactive 7GUIs Temperature Converter demo
 bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure)
 ```
 

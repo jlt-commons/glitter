@@ -6,4 +6,28 @@
 ;; (glitter.app/run, glitter.alias/defalias, glitter.env/dev?, ...) as
 ;; "unused", which is simply wrong for a library and would make the
 ;; linter noisy rather than a useful signal.
-{:linters {:clojure-lsp/unused-public-var {:level :off}}}
+;;
+;; :source-paths is pinned explicitly to src+test. clojure-lsp's default
+;; source-path discovery only auto-includes extra-paths declared on
+;; aliases literally named :dev or :test (its built-in :source-aliases
+;; default) — every other alias here (:crud, :flights, :counter, ...)
+;; declares :extra-paths ["examples"] for `jolt -M:<alias>` purposes only
+;; and was never visible to clojure-lsp's own project analysis. Found
+;; live while wiring :temperature's test coverage: deps.edn's :test
+;; alias needed "examples" added to its OWN :extra-paths so `jolt -M:test`
+;; can require glitter.temperature from temperature_test.clj — but doing
+;; that made clojure-lsp's default discovery suddenly treat "examples" as
+;; a real source-path too (since it's now reachable via the recognized
+;; :test alias), surfacing ~27 pre-existing, unrelated formatting
+;; deviations across examples/*.clj that predate this change and are out
+;; of scope for it. Pinning :source-paths here decouples clojure-lsp's
+;; view from deps.edn's per-alias :extra-paths entirely, preserving the
+;; status quo (examples/ has never actually been covered by
+;; `bb lsp:format-check`/`bb lsp:diagnostics`, despite AGENTS.md's/
+;; README's "whole codebase is bb lsp:format-check-clean" claim — that
+;; claim is about src+test, not examples; a real gap, but a separate
+;; follow-up, not this task's to fix). `bb lint`/`clj-kondo` are
+;; unaffected — they take explicit "src test examples" directory args on
+;; the command line, not clojure-lsp's alias-based discovery.
+{:linters {:clojure-lsp/unused-public-var {:level :off}}
+ :source-paths #{"src" "test"}}
