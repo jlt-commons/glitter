@@ -10,23 +10,31 @@
  :jolt/native [{:name "glib-2.0"
                 :darwin ["/opt/homebrew/lib/libglib-2.0.0.dylib"
                          "/usr/local/lib/libglib-2.0.0.dylib"
-                         "libglib-2.0.0.dylib" "libglib-2.0.dylib"]
-                :linux  ["libglib-2.0.so.0" "libglib-2.0.so"]}
+                         "libglib-2.0.0.dylib"
+                         "libglib-2.0.dylib"]
+                :linux  ["libglib-2.0.so.0"
+                         "libglib-2.0.so"]}
                {:name "gobject-2.0"
                 :darwin ["/opt/homebrew/lib/libgobject-2.0.0.dylib"
                          "/usr/local/lib/libgobject-2.0.0.dylib"
-                         "libgobject-2.0.0.dylib" "libgobject-2.0.dylib"]
-                :linux  ["libgobject-2.0.so.0" "libgobject-2.0.so"]}
+                         "libgobject-2.0.0.dylib"
+                         "libgobject-2.0.dylib"]
+                :linux  ["libgobject-2.0.so.0"
+                         "libgobject-2.0.so"]}
                {:name "gio-2.0"
                 :darwin ["/opt/homebrew/lib/libgio-2.0.0.dylib"
                          "/usr/local/lib/libgio-2.0.0.dylib"
-                         "libgio-2.0.0.dylib" "libgio-2.0.dylib"]
-                :linux  ["libgio-2.0.so.0" "libgio-2.0.so"]}
+                         "libgio-2.0.0.dylib"
+                         "libgio-2.0.dylib"]
+                :linux  ["libgio-2.0.so.0"
+                         "libgio-2.0.so"]}
                {:name "gtk-4"
                 :darwin ["/opt/homebrew/lib/libgtk-4.1.dylib"
                          "/usr/local/lib/libgtk-4.1.dylib"
-                         "libgtk-4.1.dylib" "libgtk-4.dylib"]
-                :linux  ["libgtk-4.so.1" "libgtk-4.so"]}]
+                         "libgtk-4.1.dylib"
+                         "libgtk-4.dylib"]
+                :linux  ["libgtk-4.so.1"
+                         "libgtk-4.so"]}]
 
  :aliases {:aspect-frame-calendar-smoke {:extra-paths ["examples"]
                                          :main-opts ["-m" "glitter.aspect-frame-calendar-smoke"]}
