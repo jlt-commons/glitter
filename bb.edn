@@ -4,6 +4,7 @@
 ;;   bb counter              interactive counter demo (state atom + action dispatch)
 ;;   bb todo                 interactive task-board demo (derived counts, entry, checkbuttons)
 ;;   bb crud                 interactive 7GUIs CRUD demo (filter, list-box selection, create/update/delete)
+;;   bb flights              interactive 7GUIs Flight Booker demo (constraints between/within widgets)
 ;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke | scale-smoke | class-smoke
 ;;   | leaf-widgets-smoke | toggle-level-smoke | link-button-smoke | switch-smoke
 ;;   | revealer-center-box-smoke | spin-button-list-box-smoke
@@ -46,6 +47,7 @@
           (row "counter" "interactive demo: state atom + action dispatch")
           (row "todo" "interactive demo: derived counts, entry, checkbuttons")
           (row "crud" "interactive demo: 7GUIs CRUD — filter, list-box selection, create/update/delete")
+          (row "flights" "interactive demo: 7GUIs Flight Booker — constraints between/within widgets")
           (hdr "Smoke (live GTK, each exits non-zero on failure)")
           (row "smoke" "mount a tree and run the loop without an exception escaping")
           (row "keyed" "keyed reorder lands in the right GTK order")
@@ -105,6 +107,9 @@
 
   crud {:doc "Interactive 7GUIs CRUD demo (filter, list-box selection, create/update/delete)"
         :task (shell "jolt" "-M:crud")}
+
+  flights {:doc "Interactive 7GUIs Flight Booker demo (constraints between/within widgets)"
+           :task (shell "jolt" "-M:flights")}
 
   smoke {:doc "Live-GTK smoke: mount a tree, run the loop without an exception escaping"
          :task (shell "jolt" "-M:smoke")}

@@ -55,6 +55,7 @@
  :aliases {:list-box-reorder-smoke {:extra-paths ["examples"]
                                     :main-opts ["-m" "glitter.list-box-reorder-smoke"]}
            :crud {:extra-paths ["examples"] :main-opts ["-m" "glitter.crud"]}
+           :flights {:extra-paths ["examples"] :main-opts ["-m" "glitter.flights"]}
            :ctor-apply-regression-smoke {:extra-paths ["examples"]
                                          :main-opts ["-m" "glitter.ctor-apply-regression-smoke"]}
            :window-handle-stack-smoke {:extra-paths ["examples"]
