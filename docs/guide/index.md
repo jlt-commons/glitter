@@ -47,9 +47,28 @@ live GTK widget tree in sync.
 - [`architecture.md`](architecture.md) — the reconcile → `IRender`/
   `IMemory` flow, `mount!`'s state-atom watcher, why elements are tracking
   atoms rather than raw GTK pointers.
-- [`porting-and-attribution.md`](porting-and-attribution.md) — the three
+- [`porting-and-attribution.md`](porting-and-attribution.md) — the four
   sourcing buckets (ported from Replicant / forked from glimmer / new to
-  glitter), and every documented deviation from the pure Replicant port.
+  glitter / ported from nexus — see [`nexus.md`](nexus.md)), and every
+  documented deviation from the pure Replicant port.
+
+### Dispatch
+- [`nexus.md`](nexus.md) — `glitter.nexus`, a port of
+  [nexus](https://github.com/cjohansen/nexus)'s data-driven
+  action/effect/placeholder dispatch engine: the four concepts
+  (effects — the only place a `swap!` is allowed, placeholders —
+  resolving event data into action data, actions/expansions — pure
+  functions of state that decide what should happen, and interceptors —
+  the `before-*`/`after-*` mechanism the whole engine runs on), the two
+  glitter-specific wiring pieces every consumer registers itself
+  (`:glitter/value`, `:nexus/on-error` -> `clojure.tools.logging`) and
+  why they live in each demo rather than the ported files, the two
+  consumer shapes this project ships (`flights.clj`'s pure-effects-only
+  Flight Booker vs. `crud.clj`'s/`todo.clj`'s action-expansion
+  retrofits), the action-log's `:entries`/`:chronology` accumulation
+  tree (`(pr-str @log)`, no viewer yet), and the `t/parse-date`
+  leniency finding that makes Flight Booker's date validation actually
+  work.
 
 ### GTK integration
 - [`gtk-widget-layer.md`](gtk-widget-layer.md) — the hiccup-tag → widget

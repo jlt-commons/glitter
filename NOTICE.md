@@ -68,6 +68,39 @@ The following files are original to glitter:
 - `src/glitter/gtk.clj` — IRender/IMemory GTK4 backend and state-atom mount/render wiring. `set-event-handler` was generalized beyond the uniform `[:pointer :pointer] :void` foreign-callable shape to also support `GtkSwitch`'s `"state-set"` (`[:pointer :int :pointer] :int`) and `GtkListBox`'s `"row-selected"`/`"row-activated"` (`[:pointer :pointer :pointer] :void`, a third distinct shape, also reused for free by `:expander`'s `"notify::expanded"`, `:paned`'s `"notify::position"`, and `:flow-box`'s `"child-activated"` — all four share the identical shape) — branches explicitly on GTK signal name at separate literal `foreign-callable` call sites (jolt's `argtypes`/`rettype` must be compile-time literals, verified live; a data-driven table lookup does not work) — see `docs/guide/gtk-widget-layer.md`. Round 9 added two more branches: `GtkScaleButton`'s `"value-changed"` (`[:pointer :double :pointer] :void`, a FIFTH shape, sharing `:scale`'s/`:spin-button`'s signal NAME but not their shape — the first branch here that also checks the widget's own `:tag`, not just the signal name) and `GtkNotebook`'s `"switch-page"` (`[:pointer :pointer :uint :pointer] :void`, a SIXTH shape, and the first that reads its own raw signal argument instead of going through the shared `dispatch!`/`value-fn` path at all — see `gtk-widget-layer.md` for why the getter-based pattern is unsafe there specifically). Round 10 added no branches here at all — `:menu-button`'s `"activate"` and `:popover`'s `"closed"` both turned out to be free reuses of the default `[:pointer :pointer] :void` shape, the first round where every new widget's signal wiring needed zero changes to this file. Round 11 added `structural-child-props`/`structural-child-prop?` (a new `#{:grid-column :grid-row :grid-column-span :grid-row-span :stack-name}` set) and special-cased them in `set-attribute`/`remove-attribute` — stashing matches on the CHILD's own `el` atom under `:glitter/structural-props` instead of routing through `glitter.widget/apply-props!`, since no widget's own `:apply` closure can know what parent it's about to be attached to. `append-child`, `insert-before`'s fresh-insert branch, and `replace-child` all thread `(:glitter/structural-props @child-node)` through to `glitter.widget`'s container-management functions as a new optional trailing argument. Added `"notify::visible-child-name"`/`"notify::selected"` to the existing 3-arg-void signal-name set (`:stack`'s and `:drop-down`'s property-change signals — both free reuses, no new `foreign-callable` branch needed). This mechanism exists because a probe confirmed a NAMESPACED keyword prop (`:grid/column`) is silently dropped by `glitter.core`'s own `set-attr`/`update-attr`, upstream of `IRender` entirely — see `docs/guide/gtk-widget-layer.md`
 - `src/glitter/test_renderer.clj` — in-memory fake IRender/IMemory for headless reconciler tests (inspired by replicant's mutation_log.cljc, separately implemented)
 
+## nexus
+
+The following files under `src/glitter/` are ported from
+[nexus](https://github.com/cjohansen/nexus), commit
+`5f6c93672f25d2a5b2a91ac3b65a921ecf8826b2`, by Christian Johansen, Magnar
+Sveen, and Teodor Heggelund. MIT License — same terms as the Replicant
+bucket above (see that bucket's license block for the full text).
+
+Unlike Replicant/glimmer, nexus is a genuinely separate library (not
+glitter's own reconciler or its widget-layer fork) — glitter depends on it
+conceptually the way an application depends on a dispatch library, which
+is why this is its own bucket.
+
+- `src/glitter/nexus.clj` — `src/nexus/core.cljc`. One deliberate
+  deviation: the three `#?(:clj Exception :cljs :default)`
+  reader-conditionals collapse to a plain `Exception` catch (glitter
+  targets Jolt only, no cljs).
+- `src/glitter/nexus/registry.clj` — `src/nexus/registry.cljc`.
+  Byte-for-byte, zero deviations (verified via direct diff against
+  upstream during task review).
+- `src/glitter/nexus/action_log.clj` — a CONCEPT port, not a literal
+  file: nexus's log-accumulation logic now lives inside
+  `nexus.inspector.cljc`, entangled with `dataspex.*` rendering-protocol
+  implementations with no glitter/GTK equivalent. This file ports the
+  accumulation mechanism (the same nested `:entries`/`:chronology` tree,
+  verified byte-identical to the relevant upstream functions during task
+  review) and drops every `dp/*`/dataspex call site. Two adaptations:
+  `now` uses `tick.core/now` instead of `java.util.Date.` (jolt.time is
+  already a project dependency); `find-event` reads `:glitter/dom-event`
+  directly instead of hunting through `dispatch-data`'s values for a DOM
+  `Event` instance, since glitter's `dispatch-data` always IS the event
+  map.
+
 ## b12n-adk-clj / b12n-rljlt
 
 Same author/org as glitter (private repos, no license file, no attribution

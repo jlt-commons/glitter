@@ -1,6 +1,6 @@
 # Porting and attribution
 
-glitter's source falls into three buckets. `NOTICE.md` (repo root) is the
+glitter's source falls into four buckets. `NOTICE.md` (repo root) is the
 authoritative, maintained ledger — this page explains what the buckets mean
 and summarizes the deviations; if the two ever disagree, `NOTICE.md` wins.
 
@@ -403,6 +403,37 @@ implement `IRender` *and* `IMemory` directly in a single `reify` form —
 `reify` genuinely dispatches under Jolt where `:extend-via-metadata`
 doesn't — and use `with-meta` only for auxiliary, non-protocol data (the
 event log and memory atoms in `test-renderer`).
+
+## Bucket 4: ported from nexus
+
+The following files under `src/glitter/` are ported from
+[nexus](https://github.com/cjohansen/nexus), commit
+`5f6c93672f25d2a5b2a91ac3b65a921ecf8826b2`, by Christian Johansen,
+Magnar Sveen, and Teodor Heggelund. MIT License — same terms as the
+Replicant bucket above (see NOTICE.md for the full text).
+
+- `src/glitter/nexus.clj` — `src/nexus/core.cljc`. One deliberate
+  deviation: the three `#?(:clj Exception :cljs :default)`
+  reader-conditionals collapse to a plain `Exception` catch (glitter
+  targets Jolt only, no cljs).
+- `src/glitter/nexus/registry.clj` — `src/nexus/registry.cljc`.
+  Byte-for-byte, zero deviations.
+- `src/glitter/nexus/action_log.clj` — a CONCEPT port, not a literal
+  file: nexus's log-accumulation logic now lives inside
+  `nexus.inspector.cljc`, entangled with `dataspex.*` rendering-protocol
+  implementations with no glitter/GTK equivalent. This file ports the
+  accumulation mechanism (the same nested `:entries`/`:chronology` tree)
+  and drops every `dp/*`/dataspex call site. Two adaptations: `now` uses
+  `tick.core/now` instead of `java.util.Date.` (jolt.time is already a
+  project dependency); `find-event` reads `:glitter/dom-event` directly
+  instead of hunting through `dispatch-data`'s values for a DOM `Event`
+  instance, since glitter's `dispatch-data` always IS the event map.
+
+Unlike Replicant/glimmer, nexus is a genuinely separate library (not
+glitter's own reconciler or its widget-layer fork) — glitter depends on
+it conceptually the way an application depends on a dispatch library,
+which is why this is its own bucket rather than folded into Bucket 1 or
+3. See [`nexus.md`](nexus.md) for the architecture this enables.
 
 ## Keeping `NOTICE.md` current
 
