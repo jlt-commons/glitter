@@ -200,6 +200,58 @@ shape — apps that need "which child was activated" must correlate it
 themselves (e.g. via their own understanding of what's currently
 rendered in the flow-box) until a real fix lands.
 
+## `:notebook` has no per-child tab-label convention
+
+`notebook-append-child!`/`notebook-insert-after!` always pass `NULL` as
+`gtk_notebook_append_page`/`insert_page`'s `tab_label` argument — GTK
+auto-generates a default numbered tab in that case. There is no v1
+hiccup convention for supplying a custom tab label per page (that would
+mean a second widget per child, a shape no other container in this
+project needs), so this was deliberately deferred rather than invented
+under time pressure. Apps that need custom tabs must wait for a real
+fix, or work around it by rendering their own tab-strip alongside a
+plain `:box` instead of using `:notebook`'s built-in tabs.
+
+## `:notebook` dispatches a real action as a side effect of mounting
+
+`gtk_notebook_insert_page`'s own C body auto-selects the first page
+added to a notebook that has no current page yet (`if
+(!gtk_notebook_has_current_page (notebook)) { gtk_notebook_switch_page
+(notebook, page); }`, confirmed by reading it directly). Since
+`:notebook`'s initial children are appended via this exact path during
+mount, constructing a `[:notebook ...]` with pre-populated pages
+genuinely fires `"switch-page"` — and therefore dispatches whatever
+action the hiccup wires to it — before the app has done anything. This
+is real GTK behavior, not a glitter defect, but it means any app
+tracking a dispatch count (or assuming "no action fires until the user
+interacts") must account for this one mount-time dispatch specifically
+for `:notebook`; no other container in this project behaves this way.
+See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#notebookscale-button--a-sixth-callable-shape-a-mount-time-surprise-and-a-tag-aware-dispatch)
+for the full trace, including the empirical probe that confirmed it.
+
+## Bulk `GtkEditable` text replacement can fire `"changed"` once or twice
+
+`gtk_editable_set_text` is not a single atomic mutation — its C body
+calls `gtk_editable_delete_text` then `gtk_editable_insert_text`
+separately, and only property `notify` (not `"changed"` itself) is
+frozen around the pair. Replacing text in an already-empty buffer fires
+`"changed"` once (the delete is a no-op, confirmed via
+`gtk/gtktext.c`'s early return when `start_pos == end_pos`); replacing
+non-empty text fires it twice. This affects every widget in this
+project built on the `GtkEditable` delegate — `:entry`,
+`:password-entry`, `:search-entry`, `:editable-label` — not just one of
+them, and only matters when a caller bulk-replaces text via
+`gtk_editable_set_text` directly (this project's own "bypass the
+wrapper, trigger the real signal" smoke-testing technique, or any real
+app code doing a programmatic bulk replace); normal character-by-
+character typing never hits this path. Every `GtkEditable`-family smoke
+in this project starts its interaction target from empty text to avoid
+asserting on this incidental doubling rather than the behavior under
+test. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#pictureeditable-label--a-quick-win-a-third-gtkeditable-delegate-and-a-general-gtkeditable-finding)
+for the full trace.
+
 ## No longer a limitation: `:class` reaches real GTK CSS classes
 
 Hiccup `:class` is diffed by the reconciler (`IRender/add-class`/

@@ -161,6 +161,44 @@
               ;; gtk/gtkflowbox.c's g_signal_new call. All four reuse this
               ;; one branch for free, no new literal call site needed.
               ;;
+              ;; GtkScaleButton's "value-changed" is a FIFTH shape:
+              ;; void(GtkScaleButton*, double, gpointer) — 3 args like
+              ;; "state-set"'s, but a :double in the middle slot instead
+              ;; of :pointer/:int (confirmed against gtk/gtkscalebutton.c's
+              ;; g_signal_new call). It ALSO happens to share the exact
+              ;; GTK signal NAME ("value-changed") :scale/:spin-button
+              ;; already use with the DEFAULT 2-arg-void shape — the
+              ;; FIRST case here where signal name alone can't determine
+              ;; callable shape; this branch checks the widget's OWN tag
+              ;; too, not just `signal`. The raw double argument is
+              ;; ignored (`_value` below): verified against
+              ;; gtk/gtkscalebutton.c's cb_scale_value_changed that
+              ;; gtk_scale_button_get_value already reflects the new
+              ;; value by the time the button's own "value-changed"
+              ;; fires (it reads the same GtkAdjustment the internal
+              ;; slider already updated), so the usual re-read-via-getter
+              ;; value-fn still applies here.
+              ;;
+              ;; GtkNotebook's "switch-page" is a SIXTH shape —
+              ;; void(GtkNotebook*, GtkWidget* page, guint page_num,
+              ;; gpointer), confirmed against gtk/gtknotebook.c's
+              ;; g_signal_new call — 4 args this time. Unlike every signal
+              ;; above, it CANNOT reuse the shared dispatch!/value-fn
+              ;; path: gtk_notebook_switch_page (the fn that emits this
+              ;; signal) only READS notebook->cur_page; the actual
+              ;; cur_page = page assignment happens in
+              ;; gtk_notebook_real_switch_page — the signal's OWN DEFAULT
+              ;; CLASS HANDLER, registered G_SIGNAL_RUN_LAST, which runs
+              ;; AFTER user-connected handlers like this one. Re-reading
+              ;; gtk_notebook_get_current_page() the way every other
+              ;; signal here re-reads its property would return the
+              ;; STALE previous page — confirmed by reading the C source,
+              ;; not assumed from the pattern holding everywhere else.
+              ;; So this branch reads `page-num` directly from its OWN
+              ;; raw signal argument and builds the dispatched event map
+              ;; inline, bypassing `value-fn`/`dispatch!` entirely — the
+              ;; first (and so far only) signal here that needs this.
+              ;;
               ;; This can't be collapsed into one data-driven call: jolt's
               ;; foreign-callable/__ccallable is a compile-time special
               ;; form — verified live (twice, isolated from this codebase)
@@ -180,6 +218,18 @@
                    (jolt.ffi/foreign-callable
                     (fn [src-widget _pspec-or-row _data] (dispatch! src-widget))
                     [:pointer :pointer :pointer] :void :collect-safe)
+
+                   (and (= signal "value-changed") (= (:tag @el) :scale-button))
+                   (jolt.ffi/foreign-callable
+                    (fn [src-widget _value _data] (dispatch! src-widget))
+                    [:pointer :double :pointer] :void :collect-safe)
+
+                   (= signal "switch-page")
+                   (jolt.ffi/foreign-callable
+                    (fn [src-widget _page page-num _data]
+                      (when-not (w/suppressing? src-widget)
+                        (handler {:glitter/node el :glitter/gtk-widget src-widget :glitter/value page-num})))
+                    [:pointer :pointer :uint :pointer] :void :collect-safe)
 
                    :else
                    (jolt.ffi/foreign-callable

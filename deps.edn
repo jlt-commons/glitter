@@ -57,7 +57,11 @@
            :revealer-center-box-smoke {:extra-paths ["examples"]
                                        :main-opts ["-m" "glitter.revealer-center-box-smoke"]}
            :spin-button-list-box-smoke {:extra-paths ["examples"]
-                                        :main-opts ["-m" "glitter.spin-button-list-box-smoke"]}}
+                                        :main-opts ["-m" "glitter.spin-button-list-box-smoke"]}
+           :picture-editable-label-smoke {:extra-paths ["examples"]
+                                          :main-opts ["-m" "glitter.picture-editable-label-smoke"]}
+           :notebook-scale-button-smoke {:extra-paths ["examples"]
+                                         :main-opts ["-m" "glitter.notebook-scale-button-smoke"]}}
 
  :tasks {test    "jolt -M:test"
          counter "jolt -M:counter"

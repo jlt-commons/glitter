@@ -75,17 +75,28 @@ live GTK widget tree in sync.
   2-named-slot container with a structural gap verified to fail
   differently from `:center-box`'s, `:aspect-frame`/`:calendar` — a
   quick single-child-container win alongside this project's first
-  refcounted `GDateTime` marshalling, and `:overlay`/`:flow-box` — a
+  refcounted `GDateTime` marshalling, `:overlay`/`:flow-box` — a
   THIRD, genuinely different container shape (one queryable main slot
   plus an unenumerable overlay set) and a `:list-box` sibling verified
-  to NOT share its `gtk_list_box_remove` gotcha, not assumed to.
+  to NOT share its `gtk_list_box_remove` gotcha, not assumed to,
+  `:picture`/`:editable-label` — a quick display-only win, a THIRD
+  `GtkEditable`-delegate reuse, and a general (not glitter-specific)
+  `GtkEditable` finding that bulk text replacement fires `"changed"`
+  once or twice depending on the buffer's starting state, and
+  `:notebook`/`:scale-button` — a SIXTH callable shape
+  (`"switch-page"`, the first signal here that has to read its own raw
+  argument instead of re-reading a getter, since the getter would be
+  stale), a verified real mount-time auto-dispatch when a notebook's
+  first page is added, and a THIRD widget sharing `"value-changed"`'s
+  signal name that needed the first tag-aware (not just signal-name-
+  keyed) `set-event-handler` dispatch.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the seventeen automated live-GTK
+  headless fake-`IRender` test renderer, the nineteen automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

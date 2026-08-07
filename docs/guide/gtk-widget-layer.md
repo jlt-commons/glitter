@@ -1268,6 +1268,225 @@ fixed-slot capacity limits: `GtkFlowBoxChild`s have per-item capacity,
 not a bounded slot count, so this class of gap simply doesn't apply
 here.
 
+## `:picture`/`:editable-label` — a quick win, a third `GtkEditable` delegate, and a general GtkEditable finding
+
+`GtkPicture` has no signal at all (confirmed: no `g_signal_new` call in
+`gtk/gtkpicture.c`) — purely display-only, the same shape as
+`:spinner`/`:progress-bar`/`:image`/`:level-bar`, driven entirely by
+re-applied props (`:content-fit`/`:can-shrink`/`:alternative-text`).
+It's a modernized `:image`: `GdkPaintable`-based, with real aspect-ratio-
+aware scaling via `:content-fit` instead of `:image`'s icon-name/file
+choice. `gtk_picture_new_for_filename`/`gtk_picture_set_filename` take
+plain strings (not a `GFile*`), matching `:image`'s existing
+`gtk-image-new-from-file`/`gtk-image-set-from-file` bindings exactly —
+checked against those before writing the new ones, so no new marshalling
+convention was introduced.
+
+`GtkEditableLabel` is a THIRD widget in this project implementing
+`GtkEditable` via a delegate (after `:password-entry`/`:search-entry` —
+confirmed against `gtk/gtkeditablelabel.c`'s `gtk_editable_init_delegate`
+call), so it reuses `set-entry-text!`/`:entry`'s `"changed"` signal NAME
+for free. It still needs its own `[:editable-label "changed"]`
+`signal-value` entry, exactly like `:password-entry` did two rounds ago —
+and this round repeated that EXACT mistake once, live, despite writing a
+comment in `editable-label-spec` saying the entry would be "applied
+proactively this time." It wasn't; the entry was written into the spec's
+comment and then never actually added to the `signal-value` atom. Caught
+by the throwaway probe this section's smoke was distilled from (a typed
+value came back `nil`), not assumed safe because the comment said so —
+the same lesson as the original `:password-entry` near-miss, now missed
+*twice* by two different rounds' authors, which is why it's called out
+here explicitly rather than trusted to a comment alone.
+
+Click-to-edit itself is GTK's own built-in gesture — no signal wiring
+needed for entering edit mode by clicking. Programmatic edit-mode control
+goes through `gtk_editable_label_start_editing`/`stop_editing`, wrapped
+in the usual set-compare-suppress shape:
+
+```clojure
+(defn- set-editable-label-editing! [widget editing?]
+  (let [target (->bool editing?)]
+    (when (not= target (g/gtk-editable-label-get-editing widget))
+      (swap! suppressing conj widget)
+      (if editing?
+        (g/gtk-editable-label-start-editing widget)
+        (g/gtk-editable-label-stop-editing widget 1))
+      (swap! suppressing disj widget))))
+```
+
+`gtk_editable_label_stop_editing`'s second argument is a commit flag —
+always `1` here, so leaving edit mode programmatically commits the
+in-progress text rather than discarding it.
+
+### A general `GtkEditable` finding: bulk text replacement isn't one atomic emission
+
+Investigating this widget's `"changed"` dispatch count surfaced a real,
+general `GtkEditable` behavior that applies to **every** widget built on
+the delegate in this project — `:entry`, `:password-entry`,
+`:search-entry`, and now `:editable-label` alike — not a glitter bug and
+not specific to any one widget. `gtk_editable_set_text`'s own C body,
+read directly rather than assumed atomic:
+
+```c
+/* gtk_editable_set_text's actual C body — confirmed by reading it directly */
+void
+gtk_editable_set_text (GtkEditable *editable, const char *text)
+{
+  ...
+  gtk_editable_delete_text (editable, 0, -1);
+  gtk_editable_insert_text (editable, text, -1, &pos);
+}
+```
+
+Two separate mutations, not one — and only property `notify` is frozen/
+thawed around them (`g_object_freeze_notify`/`thaw_notify`), NOT the
+`"changed"` signal itself. Whether `"changed"` fires once or twice
+depends on the state of the buffer BEFORE the call:
+`gtk/gtktext.c`'s `gtk_text_delete_text` has an early return —
+
+```c
+/* gtk_text_delete_text's actual C body — confirmed by reading it directly */
+if (start_pos == end_pos)
+  return;
+```
+
+— so deleting from an ALREADY-EMPTY buffer is a silent no-op (no
+`"changed"` emitted), leaving only the insert's own emission: **one**
+`"changed"` total. Replacing NON-EMPTY text fires the delete's emission
+AND the insert's: **two**. This only matters when SIMULATING a bulk
+replace-all-text interaction the way this project's smokes do — calling
+`gtk_editable_set_text` directly to bypass glitter's own wrapper and
+trigger the real signal. A real user typing character-by-character never
+takes this path at all; that goes through `gtk_editable_insert_text`
+directly, once per keystroke, with no matching delete. Every
+`GtkEditable`-family smoke in this project (`password_search_entry_smoke.clj`,
+`picture_editable_label_smoke.clj`) starts its interaction target from
+EMPTY text specifically so its dispatch-count assertion tests the
+behavior under test, not this incidental doubling — round 7's
+`:password-entry` smoke happened to get this right by starting `:pw` at
+`""`, but that was accidental (discovered only while root-causing this
+round's finding), not a deliberate choice documented at the time.
+
+## `:notebook`/`:scale-button` — a sixth callable shape, a mount-time surprise, and a tag-aware dispatch
+
+`GtkNotebook` does NOT auto-wrap its children the way `:list-box`/
+`:flow-box` do — a page's child IS the real widget throughout, and
+`gtk_notebook_page_num(notebook, child)` recovers its page index
+directly (confirmed against `gtk/gtknotebook.h`), no unwrap step
+anywhere. `gtk_notebook_insert_page`'s `position` argument clamps
+out-of-range values to append (`if (position < 0 || position > nchildren)
+position = nchildren;`, confirmed by reading the C body), the same
+safe-clamping convention `:list-box`/`:flow-box` already rely on for
+their own insert helpers. `tab_label` is confirmed nullable
+(`g_return_val_if_fail (tab_label == NULL || GTK_IS_WIDGET (tab_label),
+-1)`) — GTK auto-generates a default numbered tab when it's `NULL`. v1
+always passes `NULL`: no per-child hiccup convention for custom tab
+labels yet, deferred rather than inventing a second widget-per-page
+shape for a first pass.
+
+`"switch-page"` is a SIXTH callable shape in this project — 4 args,
+`void(GtkNotebook*, GtkWidget* page, guint page_num, gpointer)`,
+confirmed against `gtk/gtknotebook.c`'s `g_signal_new` call — and the
+FIRST signal here that can't reuse the shared `dispatch!`/`value-fn`
+path every earlier signal (including `:scale-button`'s, below) uses.
+`gtk_notebook_switch_page` — the function that EMITS this signal — only
+READS `notebook->cur_page`; the actual `cur_page = page` assignment
+happens in `gtk_notebook_real_switch_page`, the signal's OWN DEFAULT
+CLASS HANDLER, registered `G_SIGNAL_RUN_LAST`, which runs AFTER
+user-connected handlers like glitter's. Re-reading
+`gtk_notebook_get_current_page()` the way every other signal here
+re-reads its property would return the STALE previous page — confirmed
+by reading the C source, then confirmed a second way, empirically, in
+the throwaway probe this section's smoke was distilled from: capturing
+the raw dispatched `page-num` side by side with a same-tick getter read
+showed the getter really would have lagged by one page. So this branch
+reads `page-num` directly from its OWN raw signal argument and builds
+the dispatched event map inline, bypassing `value-fn`/`dispatch!`
+entirely:
+
+```clojure
+(= signal "switch-page")
+(jolt.ffi/foreign-callable
+ (fn [src-widget _page page-num _data]
+   (when-not (w/suppressing? src-widget)
+     (handler {:glitter/node el :glitter/gtk-widget src-widget :glitter/value page-num})))
+ [:pointer :pointer :uint :pointer] :void :collect-safe)
+```
+
+### Mounting a notebook dispatches, before any interaction
+
+A second, genuinely surprising real GTK behavior falls out of
+`gtk_notebook_insert_page`'s own C body (also called internally by
+`gtk_notebook_append_page`), read directly while investigating why the
+throwaway probe's dispatch log had a `"switch-page"` entry BEFORE any
+simulated user interaction:
+
+```c
+/* gtk_notebook_insert_page's actual C body (tail) — confirmed by reading it directly */
+g_signal_emit (notebook, notebook_signals[PAGE_ADDED], 0, page->child, position);
+
+if (!gtk_notebook_has_current_page (notebook))
+  {
+    gtk_notebook_switch_page (notebook, page);
+  }
+```
+
+Appending the FIRST page to a notebook that has no current page yet
+auto-selects it — which is exactly what happens when `:notebook`'s
+initial children are appended during mount. So constructing a
+`[:notebook ...]` with initial children genuinely DISPATCHES a
+`"switch-page"` action as a side effect of mounting, before the app
+ever interacts with the widget. This is real GTK behavior, not a
+glitter bug — but it means a dispatch-count baseline of `0` after mount
+is WRONG for any app using `:notebook` with pre-populated pages;
+`notebook_scale_button_smoke.clj`'s own dispatch-count assertions start
+from `1`, not `0`, for exactly this reason. There is no `get-nth-page`
+GTK API to read a page's own child widget back out (only
+`gtk_notebook_page_num`, which needs a widget reference going IN), so —
+like `:overlay`'s own documented "no enumerate" gap — this smoke
+verifies `:notebook` only via `gtk_notebook_get_current_page`'s int, not
+by reading page content.
+
+### `:scale-button` — a third widget sharing `"value-changed"`, safely this time
+
+`gtk_scale_button_new` needs `min`/`max`/`step` at construction time,
+the same shape `:scale`/`:spin-button` already establish; the 4th
+argument (icon names shown at different value ranges) is always
+`jolt.ffi/null` — verified live that GTK falls back to its own default
+icon set rather than erroring on a null icon array.
+
+Its `"value-changed"` signal shares the exact GTK signal NAME
+`:scale`/`:spin-button` already use — a THIRD widget doing so — but has
+a genuinely DIFFERENT real C shape: `void(GtkScaleButton*, double,
+gpointer)`, confirmed against `gtk/gtkscalebutton.c`'s `g_signal_new`
+call. This is the FIRST case in this project where the signal NAME
+alone is insufficient to pick the right callable — `set-event-handler`'s
+`cond` has to check the widget's own `:tag` too:
+
+```clojure
+(and (= signal "value-changed") (= (:tag @el) :scale-button))
+(jolt.ffi/foreign-callable
+ (fn [src-widget _value _data] (dispatch! src-widget))
+ [:pointer :double :pointer] :void :collect-safe)
+```
+
+Unlike `:notebook`'s `"switch-page"` above, this one IS safe to re-read
+via the usual getter-based `value-fn` — verified, not assumed by
+analogy, by reading `gtk/gtkscalebutton.c`'s `cb_scale_value_changed`
+(the internal callback that emits the button's OWN `"value-changed"`):
+it reads `gtk_range_get_value` from the button's internal slider AFTER
+that slider's own `"value-changed"` has already fired, then emits the
+button's signal. `gtk_scale_button_get_value` reads that SAME shared
+`GtkAdjustment`, so it's already current by the time ANY handler sees
+the button's own signal — the getter-re-read pattern holds here even
+though the raw-argument-only pattern was required for `:notebook`.
+
+`notebook_scale_button_smoke.clj`'s dispatch-count sequence — `1` after
+mount (the notebook's own auto-select), `2` after a real page switch,
+`3` after a real scale-button drag, `3` again (unchanged) after a
+programmatic sync-back of both widgets — is what proves both findings
+end-to-end against live GTK state, not just that the code compiles.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

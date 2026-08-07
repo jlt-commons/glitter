@@ -175,7 +175,8 @@
          :on-expanded         "notify::expanded"
          :on-position-changed "notify::position"
          :on-day-selected     "day-selected"
-         :on-child-activated  "child-activated"}))
+         :on-child-activated  "child-activated"
+         :on-switch-page      "switch-page"}))
 
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
@@ -184,7 +185,8 @@
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
 (declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!
-         set-spin-button-value! set-expander-expanded! set-paned-position! set-calendar-date!)
+         set-spin-button-value! set-expander-expanded! set-paned-position! set-calendar-date!
+         set-editable-label-editing! set-notebook-current-page! set-scale-button-value!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -253,6 +255,21 @@
   {:ctor  (fn [_] (g/gtk-overlay-new))
    :apply (fn [_ _])
    :container :overlay})
+
+(defn- notebook-spec []
+  ;; A tabbed container. Unlike :list-box/:flow-box, children are NOT
+  ;; auto-wrapped in an opaque row object — see notebook-append-child!/
+  ;; notebook-remove-child!/notebook-replace-child!/notebook-insert-after!/
+  ;; notebook-reorder-child! (below, beside the other container-management
+  ;; fns) and set-notebook-current-page!/:on-switch-page's OWN dispatch in
+  ;; glitter.gtk/set-event-handler (a genuinely new callable shape, and
+  ;; the first signal here that can't use the shared value-fn/dispatch!
+  ;; path — see that fn's own comment for why). v1 always passes a NULL
+  ;; tab_label (GTK auto-generates a default numbered tab) — no per-child
+  ;; hiccup convention for custom tab labels yet.
+  {:ctor  (fn [_] (g/gtk-notebook-new))
+   :apply (fn [w p] (when (contains? p :current-page) (set-notebook-current-page! w (:current-page p))))
+   :container :notebook})
 
 (defn- button-spec []
   {:ctor    (fn [p] (if (:label p) (g/gtk-button-new-with-label (:label p)) (g/gtk-button-new)))
@@ -323,6 +340,22 @@
             (when (contains? p :placeholder)   (g/gtk-editable-set-placeholder-text w (:placeholder p)))
             (when (contains? p :search-delay)  (g/gtk-search-entry-set-search-delay w (:search-delay p)))
             (when (contains? p :sensitive)     (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :none})
+
+(defn- editable-label-spec []
+  ;; A THIRD widget implementing GtkEditable via a delegate (confirmed
+  ;; against gtk/gtkeditablelabel.c — see ffi.clj's own comment) — reuses
+  ;; set-entry-text!/:entry's "changed" signal NAME for free, but needs
+  ;; its own [:editable-label "changed"] signal-value entry (see
+  ;; signal-value's own table below — the :password-entry near-miss
+  ;; lesson, applied proactively this time). Click-to-edit is GTK's own
+  ;; built-in gesture; :editing drives it programmatically via
+  ;; set-editable-label-editing! (the usual suppressing-guard setter).
+  {:ctor  (fn [p] (g/gtk-editable-label-new (or (:text p) "")))
+   :apply (fn [w p]
+            (when (contains? p :text)     (set-entry-text! w (:text p)))
+            (when (contains? p :editing)  (set-editable-label-editing! w (:editing p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
 
 (defn- checkbutton-spec []
@@ -490,6 +523,27 @@
             (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
 
+(defn- scale-button-spec []
+  ;; gtk_scale_button_new needs min/max/step at construction time, same
+  ;; shape as :scale/:spin-button — the 4th arg (icon names shown at
+  ;; different value ranges) is always jolt.ffi/null, verified live that
+  ;; GTK falls back to its own default icon set. Its "value-changed"
+  ;; signal is ANOTHER value-bearing signal sharing :scale's/
+  ;; :spin-button's exact GTK signal NAME — see signal-value's
+  ;; [:scale-button "value-changed"] entry below, added from the start
+  ;; this round rather than discovered live a third time. Unlike
+  ;; :scale/:spin-button, though, this signal's value-fn does NOT
+  ;; re-read via a getter after the fact — see
+  ;; glitter.gtk/set-event-handler's own comment for the genuinely new
+  ;; 3-arg-double callable shape this needs.
+  {:ctor  (fn [p]
+            (g/gtk-scale-button-new
+             (double (or (:min p) 0)) (double (or (:max p) 100)) (double (or (:step p) 1)) ffi/null))
+   :apply (fn [w p]
+            (when (contains? p :value)     (set-scale-button-value! w (:value p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :none})
+
 (defn- spinner-spec []
   ;; Display-only — driven entirely by :spinning, no signal to wire.
   {:ctor  (fn [_] (g/gtk-spinner-new))
@@ -519,6 +573,21 @@
             (when (contains? p :icon-name)  (g/gtk-image-set-from-icon-name w (:icon-name p)))
             (when (contains? p :file)       (g/gtk-image-set-from-file w (:file p)))
             (when (contains? p :pixel-size) (g/gtk-image-set-pixel-size w (:pixel-size p))))
+   :container :none})
+
+(defn- picture-spec []
+  ;; Display-only — driven by :file/:content-fit/:can-shrink/
+  ;; :alternative-text, no signal to wire (confirmed: no g_signal_new in
+  ;; gtk/gtkpicture.c). A modernized :image (GdkPaintable-based, better
+  ;; scaling via :content-fit) — same "construct from :file if present,
+  ;; else empty" shape as image-spec, just one prop instead of a
+  ;; two-way icon-name/file choice.
+  {:ctor  (fn [p] (if (:file p) (g/gtk-picture-new-for-filename (:file p)) (g/gtk-picture-new)))
+   :apply (fn [w p]
+            (when (contains? p :file)             (g/gtk-picture-set-filename w (:file p)))
+            (when (contains? p :content-fit)      (g/gtk-picture-set-content-fit w (->enum "GtkContentFit" (:content-fit p))))
+            (when (contains? p :can-shrink)       (g/gtk-picture-set-can-shrink w (->bool (:can-shrink p))))
+            (when (contains? p :alternative-text) (g/gtk-picture-set-alternative-text w (:alternative-text p))))
    :container :none})
 
 (defn- level-bar-spec []
@@ -585,12 +654,14 @@
          :center-box     (center-box-spec)
          :paned          (paned-spec)
          :overlay        (overlay-spec)
+         :notebook       (notebook-spec)
          :button         (button-spec)
          :link-button    (link-button-spec)
          :label          (label-spec)
          :entry          (entry-spec)
          :password-entry (password-entry-spec)
          :search-entry   (search-entry-spec)
+         :editable-label (editable-label-spec)
          :checkbutton    (checkbutton-spec)
          :toggle-button  (toggle-button-spec)
          :switch         (switch-spec)
@@ -602,9 +673,11 @@
          :expander       (expander-spec)
          :scale          (scale-spec)
          :spin-button    (spin-button-spec)
+         :scale-button   (scale-button-spec)
          :spinner        (spinner-spec)
          :progress-bar   (progress-bar-spec)
          :image          (image-spec)
+         :picture        (picture-spec)
          :level-bar      (level-bar-spec)
          :calendar       (calendar-spec)
          :list-box       (list-box-spec)
@@ -808,6 +881,46 @@
       (swap! suppressing disj widget)
       (g/g-date-time-unref gdt))))
 
+(defn- set-editable-label-editing!
+  "Toggle an editable label's edit mode, but only when it differs from
+  the widget's current state, and while suppressing the :on-change
+  handler for the synchronous 'changed' emission stopping an in-progress
+  edit with unsaved text could cause. Same set-compare-suppress shape as
+  every other value-bearing widget's programmatic setter here — commits
+  the edit (rather than discarding it) when leaving edit mode."
+  [widget editing?]
+  (let [target (->bool editing?)]
+    (when (not= target (g/gtk-editable-label-get-editing widget))
+      (swap! suppressing conj widget)
+      (if editing?
+        (g/gtk-editable-label-start-editing widget)
+        (g/gtk-editable-label-stop-editing widget 1))
+      (swap! suppressing disj widget))))
+
+(defn- set-notebook-current-page!
+  "Set a notebook's current page, but only when it differs from the
+  widget's current page, and while suppressing the :on-switch-page
+  handler for the synchronous 'switch-page' emission
+  gtk_notebook_set_current_page causes. Same set-compare-suppress shape
+  as every other value-bearing widget's programmatic setter here."
+  [widget page]
+  (when (and (some? page) (not= (int page) (g/gtk-notebook-get-current-page widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-notebook-set-current-page widget (int page))
+    (swap! suppressing disj widget)))
+
+(defn- set-scale-button-value!
+  "Set a scale button's value, but only when it differs from the
+  widget's current value, and while suppressing the :on-value-changed
+  handler for the synchronous 'value-changed' emission
+  gtk_scale_button_set_value causes. Same set-compare-suppress shape as
+  every other value-bearing widget's programmatic setter here."
+  [widget value]
+  (when (and (some? value) (not= (double value) (g/gtk-scale-button-get-value widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-scale-button-set-value widget (double value))
+    (swap! suppressing disj widget)))
+
 (defn- list-box-selected-index
   "The currently selected row's index, or nil if none — read via
   gtk_list_box_get_selected_row -> gtk_list_box_row_get_index AFTER the
@@ -846,6 +959,22 @@
 ;; the signal, the getter already reflects the new value. A plain
 ;; (fn [widget]) value-fn works here exactly like every other signal's,
 ;; with no need to read the raw signal argument the callable receives.
+;; :scale-button's "value-changed" is a THIRD widget sharing that exact
+;; GTK signal NAME with :scale/:spin-button — but verified SAFE to
+;; re-read via gtk_scale_button_get_value the same way, NOT assumed:
+;; gtk/gtkscalebutton.c's cb_scale_value_changed (which emits the
+;; button's OWN "value-changed") reads gtk_range_get_value from the
+;; internal slider AFTER that slider's own "value-changed" already fired,
+;; and gtk_scale_button_get_value reads the SAME shared GtkAdjustment —
+;; so it's already current by the time ANY handler sees the button's
+;; signal, unlike :notebook's "switch-page" below, where the analogous
+;; getter would be STALE. Because :scale-button's "value-changed" has a
+;; genuinely different REAL C shape from :scale's/:spin-button's (3-arg
+;; with a raw double, not the default 2-arg-void — see
+;; glitter.gtk/set-event-handler's own comment), this is the FIRST case
+;; where dispatching the right `foreign-callable` needs to know the
+;; WIDGET TAG in addition to the signal name — signal name alone is no
+;; longer sufficient to determine callable shape.
 ;; "row-selected"/"row-activated" (:list-box) share list-box-selected-index
 ;; above, for the same reason.
 (def ^:private signal-value
@@ -853,6 +982,7 @@
          [:password-entry "changed"]        (fn [widget] (g/gtk-editable-get-text widget))
          [:search-entry "changed"]          (fn [widget] (g/gtk-editable-get-text widget))
          [:search-entry "search-changed"]   (fn [widget] (g/gtk-editable-get-text widget))
+         [:editable-label "changed"]        (fn [widget] (g/gtk-editable-get-text widget))
          [:scale "value-changed"]           (fn [widget] (g/gtk-range-get-value widget))
          [:spin-button "value-changed"]     (fn [widget] (g/gtk-spin-button-get-value widget))
          [:switch "state-set"]              (fn [widget] (g/gtk-switch-get-active widget))
@@ -860,7 +990,8 @@
          [:list-box "row-activated"]        list-box-selected-index
          [:expander "notify::expanded"]     (fn [widget] (g/gtk-expander-get-expanded widget))
          [:paned "notify::position"]        (fn [widget] (g/gtk-paned-get-position widget))
-         [:calendar "day-selected"]         calendar-date=}))
+         [:calendar "day-selected"]         calendar-date=
+         [:scale-button "value-changed"]    (fn [widget] (g/gtk-scale-button-get-value widget))}))
 
 ;; Almost every GTK signal glitter connects has the uniform
 ;; void(widget, user_data) shape glitter.gtk's set-event-handler builds by
@@ -1398,6 +1529,54 @@
   (g/gtk-flow-box-remove parent child)
   (flow-box-insert-after! parent child sibling))
 
+;; :notebook helpers. Unlike :list-box/:flow-box, GtkNotebook does NOT
+;; auto-wrap children — `child` IS the real widget throughout, and
+;; gtk_notebook_page_num(notebook, child) recovers its page index
+;; directly (confirmed against gtk/gtknotebook.h), no
+;; gtk_widget_get_parent unwrap step needed anywhere here. v1 always
+;; passes a NULL tab_label (see notebook-spec's own docstring).
+(defn- notebook-append-child! [parent child]
+  (g/gtk-notebook-append-page parent child ffi/null))
+
+(defn- notebook-remove-child! [parent child]
+  (let [idx (g/gtk-notebook-page-num parent child)]
+    (when (>= idx 0) (g/gtk-notebook-remove-page parent idx))))
+
+(defn- notebook-replace-child!
+  "Swap `old-child` for `new-child` at the SAME page position. Captures
+  old-child's page index via gtk_notebook_page_num BEFORE removing it —
+  removal invalidates it afterward, same 'capture before you mutate'
+  concern every other replace-child! helper here has."
+  [parent old-child new-child]
+  (let [idx (g/gtk-notebook-page-num parent old-child)]
+    (when (>= idx 0)
+      (g/gtk-notebook-remove-page parent idx)
+      (g/gtk-notebook-insert-page parent new-child ffi/null idx))))
+
+(defn- notebook-index-after
+  "Convert `sibling` (nil, or the tracked PREVIOUS sibling's own GTK
+  WIDGET pointer) into the page index gtk_notebook_insert_page wants:
+  one past sibling's live page index, or 0 (front) if sibling is nil.
+  Always re-reads at CALL time, same freshness concern
+  list-box-index-after/flow-box-index-after have."
+  [parent sibling]
+  (if (ptr-null? sibling)
+    0
+    (inc (g/gtk-notebook-page-num parent sibling))))
+
+(defn- notebook-insert-after! [parent child sibling]
+  (g/gtk-notebook-insert-page parent child ffi/null (notebook-index-after parent sibling)))
+
+(defn- notebook-reorder-child!
+  "Move an ALREADY-parented `child` to sit immediately after `sibling`.
+  Removes child first, then computes the target index — same
+  post-removal-freshness reasoning as list-box-reorder-child!/
+  flow-box-reorder-child!."
+  [parent child sibling]
+  (let [idx (g/gtk-notebook-page-num parent child)]
+    (when (>= idx 0) (g/gtk-notebook-remove-page parent idx)))
+  (notebook-insert-after! parent child sibling))
+
 (defn append-child!
   "Add `child` to the end of `parent`. Dispatches on the parent's container kind."
   [parent-tag parent child]
@@ -1412,6 +1591,7 @@
     :center-box   (center-box-append-child! parent child)
     :paned        (paned-append-child! parent child)
     :overlay      (overlay-append-child! parent child)
+    :notebook     (notebook-append-child! parent child)
     :list-box     (g/gtk-list-box-append parent child)
     :flow-box     (g/gtk-flow-box-append parent child)
     nil))
@@ -1430,6 +1610,7 @@
     :center-box   (center-box-remove-child! parent child)
     :paned        (paned-remove-child! parent child)
     :overlay      (overlay-remove-child! parent child)
+    :notebook     (notebook-remove-child! parent child)
     :list-box     (list-box-remove-child! parent child)
     :flow-box     (g/gtk-flow-box-remove parent child)
     nil))
@@ -1457,59 +1638,61 @@
     :center-box   (center-box-replace-child! parent old-child new-child)
     :paned        (paned-replace-child! parent old-child new-child)
     :overlay      (overlay-replace-child! parent old-child new-child)
+    :notebook     (notebook-replace-child! parent old-child new-child)
     :list-box     (list-box-replace-child! parent old-child new-child)
     :flow-box     (flow-box-replace-child! parent old-child new-child)
     nil))
 
 (defn reorder-child!
   "Move `child` to sit immediately after `sibling` (nil = move to first position)
-  within `parent`. GtkBox, GtkListBox, and GtkFlowBox all support real
-  positional reordering (list-box/flow-box each via their own
-  *-reorder-child! above, computing a fresh live index rather than the
-  sibling-pointer approach GtkBox's own API uses). The single-child
-  containers (window/frame/aspect-frame/scrolled/revealer/expander) no-op
-  because they only ever have one child. :center-box/:paned no-op too,
-  but as a genuinely STRUCTURAL limit, not an avoided one: their slots
-  are fixed NAMED identities (start/center/end, or start/end), not
-  positions — 'move this widget to sit after that one' has no
-  well-defined meaning when every slot already has a name. :overlay
-  no-ops for the same structural reason applied to its OWN shape: GTK has
-  no 'move this overlay to position N' API at all. Used by the keyed
-  reconciler to fix widget order after reuse/create when survivors were
-  reordered or a new item must precede an existing one."
+  within `parent`. GtkBox, GtkListBox, GtkFlowBox, and GtkNotebook all
+  support real positional reordering (list-box/flow-box/notebook each via
+  their own *-reorder-child! above, computing a fresh live index rather
+  than the sibling-pointer approach GtkBox's own API uses). The
+  single-child containers (window/frame/aspect-frame/scrolled/revealer/
+  expander) no-op because they only ever have one child. :center-box/
+  :paned no-op too, but as a genuinely STRUCTURAL limit, not an avoided
+  one: their slots are fixed NAMED identities (start/center/end, or
+  start/end), not positions — 'move this widget to sit after that one'
+  has no well-defined meaning when every slot already has a name.
+  :overlay no-ops for the same structural reason applied to its OWN
+  shape: GTK has no 'move this overlay to position N' API at all. Used
+  by the keyed reconciler to fix widget order after reuse/create when
+  survivors were reordered or a new item must precede an existing one."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box      (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))
     :list-box (list-box-reorder-child! parent child sibling)
     :flow-box (flow-box-reorder-child! parent child sibling)
+    :notebook (notebook-reorder-child! parent child sibling)
     nil))
 
 (defn insert-child-after!
   "Insert `child` into `parent` immediately after `sibling` (nil = insert as the
   first child). GtkBox, GtkCenterBox (via center-box-insert-after! above),
   GtkPaned (via paned-insert-after! above), GtkOverlay (via
-  overlay-insert-after! above), GtkListBox, and GtkFlowBox (via their own
-  *-insert-after! above) all support this; the single-child containers
-  (window/frame/aspect-frame/scrolled/revealer/expander) no-op because
-  they only ever have one child. This is NOT an optional nicety for
-  :center-box/:paned/:overlay/:list-box/:flow-box — found live that
-  glitter.core's reconciler calls THIS fn (not replace-child!) even for a
-  plain, non-keyed, same-position TAG SWAP (e.g. a :label becoming a
-  :button at some fixed child index): it inserts the new node first, then
-  removes the old one as a separate step. Leaving this a no-op for a
-  container (this project's ORIGINAL v1 scope call for
-  :center-box/:list-box, since reverted) desyncs glitter.gtk's own
-  :children bookkeeping — updated unconditionally by IRender/insert-before
-  regardless of whether the underlying GTK call did anything — from live
-  GTK state, and the reconciler's subsequent removal step (which removes
-  'whatever is tracked at position N') ends up removing the WRONG child.
-  Caught only by a live re-render smoke, not by a plain append-only one —
-  see gtk-widget-layer.md. New relative to the glimmer original: glimmer's
-  own reconciler only ever appends (reorder-child! moves an EXISTING
-  child), but glitter.gtk's IRender/insert-before needs a genuine
-  positional insertion of a NEW child (glimmer never needed this because
-  Reagent-style positional reconciliation never inserts into the middle
-  of a live child list)."
+  overlay-insert-after! above), GtkListBox, GtkFlowBox, and GtkNotebook
+  (via their own *-insert-after! above) all support this; the
+  single-child containers (window/frame/aspect-frame/scrolled/revealer/
+  expander) no-op because they only ever have one child. This is NOT an
+  optional nicety for :center-box/:paned/:overlay/:list-box/:flow-box/
+  :notebook — found live that glitter.core's reconciler calls THIS fn
+  (not replace-child!) even for a plain, non-keyed, same-position TAG
+  SWAP (e.g. a :label becoming a :button at some fixed child index): it
+  inserts the new node first, then removes the old one as a separate
+  step. Leaving this a no-op for a container (this project's ORIGINAL v1
+  scope call for :center-box/:list-box, since reverted) desyncs
+  glitter.gtk's own :children bookkeeping — updated unconditionally by
+  IRender/insert-before regardless of whether the underlying GTK call did
+  anything — from live GTK state, and the reconciler's subsequent removal
+  step (which removes 'whatever is tracked at position N') ends up
+  removing the WRONG child. Caught only by a live re-render smoke, not by
+  a plain append-only one — see gtk-widget-layer.md. New relative to the
+  glimmer original: glimmer's own reconciler only ever appends
+  (reorder-child! moves an EXISTING child), but glitter.gtk's
+  IRender/insert-before needs a genuine positional insertion of a NEW
+  child (glimmer never needed this because Reagent-style positional
+  reconciliation never inserts into the middle of a live child list)."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box        (g/gtk-box-insert-child-after parent child (or sibling ffi/null))
@@ -1518,4 +1701,5 @@
     :overlay    (overlay-insert-after! parent child sibling)
     :list-box   (list-box-insert-after! parent child sibling)
     :flow-box   (flow-box-insert-after! parent child sibling)
+    :notebook   (notebook-insert-after! parent child sibling)
     nil))

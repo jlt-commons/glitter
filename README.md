@@ -60,6 +60,8 @@ failure:
 | `jolt expander-paned-smoke` | `:expander`'s `notify::expanded` and `:paned`'s `notify::position` deliver correctly — free reuse of the 3-arg-void callable shape `:list-box` generalized — and `:paned`'s 2 named slots survive a safe tag swap |
 | `jolt aspect-frame-calendar-smoke` | `:aspect-frame`'s single-child container reuse; `:calendar`'s `GDateTime`-refcounted date round-trips through a real interaction and a programmatic sync with no leaks or spurious dispatch |
 | `jolt overlay-flow-box-smoke` | `:overlay`'s 1-main+N-overlay shape survives a real removal, verified via a generic widget-tree walk since GTK exposes no overlay-enumeration API; `:flow-box`'s tag-swapped middle child lands correctly without corrupting siblings |
+| `jolt picture-editable-label-smoke` | `:picture`'s display-only `GdkPaintable` props land on real GTK state; `:editable-label` (a third `GtkEditable`-delegate reuse) dispatches its typed value, no spurious dispatch on a programmatic `:editing` toggle |
+| `jolt notebook-scale-button-smoke` | `:notebook`'s `switch-page` (a sixth callable shape, reading `page-num` from its own raw signal argument, not a stale getter) delivers correctly, including its real mount-time auto-select-page-0 dispatch; `:scale-button`'s `value-changed` (sharing `:scale`'s/`:spin-button`'s signal name but needing tag-aware dispatch) delivers the right double |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -147,7 +149,8 @@ frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
 `:progress-bar`/`:image`/`:toggle-button`/`:level-bar`/`:link-button`/
 `:switch`/`:revealer`/`:center-box`/`:spin-button`/`:list-box`/
 `:password-entry`/`:search-entry`/`:expander`/`:paned`/`:aspect-frame`/
-`:calendar`/`:overlay`/`:flow-box`
+`:calendar`/`:overlay`/`:flow-box`/`:picture`/`:editable-label`/
+`:notebook`/`:scale-button`
 (first-party, added directly to glitter; see
 `docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
 `:level-bar`/`:revealer` are display-only props with no signal to wire
@@ -260,6 +263,43 @@ widget, confirmed by reading it directly rather than assuming the
 lesson transfers between sibling widgets. See
 `docs/guide/gtk-widget-layer.md` for both write-ups.
 
+**`:picture` (quick win) and `:editable-label` (a third `GtkEditable`
+delegate, and a general finding).** `:picture` is display-only — no
+`g_signal_new` in `gtk/gtkpicture.c` — a modernized `:image` with real
+aspect-ratio-aware scaling via `:content-fit`. `:editable-label`
+implements `GtkEditable` via a delegate, like `:password-entry`/
+`:search-entry` before it, reusing `"changed"` for free — but repeated
+the exact `[:password-entry "changed"]` near-miss from two rounds ago:
+a comment said its own `signal-value` entry would be "applied
+proactively this time," and it was still missed on the first pass,
+caught only by live probe testing. Investigating it surfaced a real,
+general `GtkEditable` finding, not specific to this widget:
+`gtk_editable_set_text` is delete-then-insert, two separate mutations —
+replacing already-empty text fires `"changed"` once, replacing
+non-empty text fires it twice. Affects `:entry`/`:password-entry`/
+`:search-entry`/`:editable-label` alike.
+
+**`:notebook` — a sixth callable shape, a real mount-time dispatch, and
+`:scale-button` — the first tag-aware signal dispatch.** `:notebook`'s
+`"switch-page"` is `void(GtkNotebook*, GtkWidget*, guint, gpointer)` — 4
+args — and the FIRST signal here that can't reuse the shared
+re-read-via-getter path: the getter's own update happens in the
+signal's default class handler, which runs AFTER glitter's, so the
+value-fn reads `page-num` straight from its own raw signal argument
+instead — verified both by reading the C source and by an empirical
+probe comparing the raw value against a same-tick (stale) getter read.
+Separately, GTK auto-selects the first page added to an empty
+notebook — confirmed by reading `gtk_notebook_insert_page`'s C body —
+so mounting a `:notebook` with initial children genuinely dispatches a
+`"switch-page"` action as a mount-time side effect, before any real
+interaction. `:scale-button` is a THIRD widget sharing `:scale`'s/
+`:spin-button`'s exact `"value-changed"` signal name, with a genuinely
+different C shape (`void(GtkScaleButton*, double, gpointer)`) — the
+first case where `set-event-handler` has to check the widget's own tag,
+not just the signal name, to pick the right callable. Verified SAFE to
+still re-read via the usual getter, unlike `:notebook`'s signal. See
+`docs/guide/gtk-widget-layer.md` for both write-ups.
+
 Known v1 limitations:
 
 - **Removing an attribute entirely is a no-op.** Setting one to a new value
@@ -291,3 +331,16 @@ Known v1 limitations:
   Reading back "which child" would need `GList` marshalling via
   `gtk_flow_box_get_selected_children` — a new FFI complexity class
   deliberately deferred.
+- **`:notebook` always passes a `NULL` tab label.** GTK auto-generates
+  a default numbered tab; there's no v1 hiccup convention for a custom
+  tab label per page yet.
+- **Mounting a `:notebook` with pre-populated pages dispatches once,
+  before any real interaction.** GTK auto-selects the first page added
+  to an empty notebook, firing `"switch-page"` as a side effect of
+  construction — real GTK behavior, but a dispatch-count baseline of 0
+  right after mount is wrong for `:notebook`.
+- **Bulk `GtkEditable` text replacement can fire `"changed"` once or
+  twice**, depending on whether the buffer started empty — affects
+  `:entry`/`:password-entry`/`:search-entry`/`:editable-label` alike;
+  only matters for a programmatic bulk replace via
+  `gtk_editable_set_text`, not normal typing.

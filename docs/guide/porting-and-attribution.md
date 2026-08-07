@@ -113,7 +113,20 @@ listed here for provenance, not legal requirement:
   `gtk-overlay-get-child`, `gtk-overlay-add-overlay`,
   `gtk-overlay-remove-overlay`, `gtk-flow-box-new`,
   `gtk-flow-box-append`, `gtk-flow-box-remove`, `gtk-flow-box-insert`,
-  `gtk-flow-box-child-get-index`).
+  `gtk-flow-box-child-get-index`), and twenty-three more for
+  `:picture`/`:editable-label`/`:notebook`/`:scale-button`
+  (`gtk-picture-new`, `gtk-picture-new-for-filename`,
+  `gtk-picture-set-filename`, `gtk-picture-set-content-fit`,
+  `gtk-picture-get-content-fit`, `gtk-picture-set-can-shrink`,
+  `gtk-picture-get-can-shrink`, `gtk-picture-set-alternative-text`,
+  `gtk-picture-get-alternative-text`, `gtk-editable-label-new`,
+  `gtk-editable-label-get-editing`, `gtk-editable-label-start-editing`,
+  `gtk-editable-label-stop-editing`, `gtk-notebook-new`,
+  `gtk-notebook-append-page`, `gtk-notebook-insert-page`,
+  `gtk-notebook-remove-page`, `gtk-notebook-page-num`,
+  `gtk-notebook-set-current-page`, `gtk-notebook-get-current-page`,
+  `gtk-scale-button-new`, `gtk-scale-button-set-value`,
+  `gtk-scale-button-get-value`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -200,6 +213,30 @@ listed here for provenance, not legal requirement:
   `flow-box-reorder-child!` + the new `:on-child-activated` signal (a
   `:list-box` sibling verified to NOT share `gtk_list_box_remove`'s
   gotcha — same anchor as `:overlay` above).
+
+  Round 9 adds `editable-label-spec`/`:editable-label` +
+  `set-editable-label-editing!` (a THIRD `GtkEditable`-delegate reuse,
+  after `:password-entry`/`:search-entry` — repeated the exact
+  `signal-value`-miss near-miss from round 7 despite a comment saying
+  it would be avoided, caught only by live probe testing; investigating
+  it surfaced a general `GtkEditable` finding, not specific to this
+  widget — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#pictureeditable-label--a-quick-win-a-third-gtkeditable-delegate-and-a-general-gtkeditable-finding)),
+  `picture-spec`/`:picture` (display-only, no signal — same anchor as
+  `:editable-label` above), `notebook-spec`/`:notebook` +
+  `notebook-append-child!`/`notebook-remove-child!`/
+  `notebook-replace-child!`/`notebook-index-after`/
+  `notebook-insert-after!`/`notebook-reorder-child!` +
+  `set-notebook-current-page!` + the new `:on-switch-page` signal (a
+  SIXTH generalized `set-event-handler` callable shape, the first that
+  reads its own raw signal argument instead of a getter, and a verified
+  real mount-time auto-dispatch — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#notebookscale-button--a-sixth-callable-shape-a-mount-time-surprise-and-a-tag-aware-dispatch)),
+  and `scale-button-spec`/`:scale-button` + `set-scale-button-value!` (a
+  THIRD widget sharing `:scale`'s/`:spin-button`'s `"value-changed"`
+  signal name, the first case needing a TAG-aware, not just signal-
+  name-keyed, `set-event-handler` dispatch — same anchor as `:notebook`
+  above).
   See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`

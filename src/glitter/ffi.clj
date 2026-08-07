@@ -494,6 +494,96 @@
 (ffi/defcfn gtk-flow-box-insert              "gtk_flow_box_insert"              [:pointer :pointer :int] :void)
 (ffi/defcfn gtk-flow-box-child-get-index     "gtk_flow_box_child_get_index"     [:pointer] :int)
 
+;; --- picture (a modernized :image, GdkPaintable-based) ------------------------
+;; No signal (confirmed: no g_signal_new in gtk/gtkpicture.c) — display-only,
+;; same shape as :image/:spinner. new-for-filename/set-filename take a plain
+;; string, not a GFile* — the same convention :image's own
+;; gtk-image-new-from-file/gtk-image-set-from-file already use, kept for
+;; consistency. :content-fit resolves a GtkContentFit nick (:fill/:contain/
+;; :cover/:scale-down) via glitter.genum, the same runtime lookup :halign/
+;; :transition-type already use — no hardcoded nick table here either.
+(ffi/defcfn gtk-picture-new                  "gtk_picture_new"                  [] :pointer)
+(ffi/defcfn gtk-picture-new-for-filename     "gtk_picture_new_for_filename"     [:string] :pointer)
+(ffi/defcfn gtk-picture-set-filename         "gtk_picture_set_filename"         [:pointer :string] :void)
+(ffi/defcfn gtk-picture-set-content-fit      "gtk_picture_set_content_fit"      [:pointer :int] :void)
+(ffi/defcfn gtk-picture-get-content-fit      "gtk_picture_get_content_fit"      [:pointer] :int)
+(ffi/defcfn gtk-picture-set-can-shrink       "gtk_picture_set_can_shrink"       [:pointer :int] :void)
+(ffi/defcfn gtk-picture-get-can-shrink       "gtk_picture_get_can_shrink"       [:pointer] :int)
+(ffi/defcfn gtk-picture-set-alternative-text "gtk_picture_set_alternative_text" [:pointer :string] :void)
+(ffi/defcfn gtk-picture-get-alternative-text "gtk_picture_get_alternative_text" [:pointer] :string)
+
+;; --- editable label (click-to-edit label, GtkEditable delegate) --------------
+;; A THIRD widget implementing GtkEditable via the same delegate pattern
+;; :password-entry/:search-entry use (confirmed: gtk/gtkeditablelabel.c
+;; calls gtk_editable_init_delegate) — reuses set-entry-text!/:entry's
+;; "changed" signal name for free, needing its own [tag "changed"]
+;; signal-value entry (the lesson from :password-entry's near-miss,
+;; applied proactively this time). No signal of its own — click-to-edit
+;; is GTK's own built-in gesture, nothing glitter needs to wire.
+;; get-editing exists so set-editable-label-editing! can compare
+;; current-vs-desired before calling start/stop, the usual
+;; set-compare-suppress shape.
+(ffi/defcfn gtk-editable-label-new           "gtk_editable_label_new"           [:string] :pointer)
+(ffi/defcfn gtk-editable-label-get-editing   "gtk_editable_label_get_editing"   [:pointer] :int)
+(ffi/defcfn gtk-editable-label-start-editing "gtk_editable_label_start_editing" [:pointer] :void)
+(ffi/defcfn gtk-editable-label-stop-editing  "gtk_editable_label_stop_editing"  [:pointer :int] :void)
+
+;; --- notebook (tabbed container) ----------------------------------------------
+;; Unlike :list-box/:flow-box, GtkNotebook does NOT auto-wrap children in an
+;; opaque row/child object — `child` IS the real widget throughout, and
+;; gtk_notebook_page_num(notebook, child) recovers its page index directly,
+;; no gtk_widget_get_parent unwrap step needed (confirmed against
+;; gtk/gtknotebook.h). insert_page's `position` clamps out-of-range to
+;; append (confirmed via its C body: `if (position < 0 || position >
+;; nchildren) position = nchildren`), same safe-clamping convention
+;; :list-box/:flow-box already rely on. tab_label is nullable (confirmed:
+;; `g_return_val_if_fail (tab_label == NULL || GTK_IS_WIDGET (tab_label),
+;; -1)`) — GTK auto-generates a default numbered tab when NULL; v1 always
+;; passes NULL, deferring custom tab labels to a future round rather than
+;; inventing a new per-child hiccup convention for a second widget-per-page.
+;;
+;; "switch-page" needs its OWN dispatch, not the shared value-fn/dispatch!
+;; path every other value-bearing signal here uses — see
+;; glitter.gtk/set-event-handler's own comment for why: confirmed against
+;; gtk/gtknotebook.c that gtk_notebook_switch_page (the function that
+;; EMITS "switch-page") only READS notebook->cur_page, and the actual
+;; `cur_page = page` assignment happens in gtk_notebook_real_switch_page
+;; — the signal's OWN DEFAULT CLASS HANDLER, confirmed registered
+;; G_SIGNAL_RUN_LAST, meaning it runs AFTER user-connected handlers like
+;; glitter's. Re-reading gtk_notebook_get_current_page() the way every
+;; other signal here re-reads its property AFTER the signal fires would
+;; read the STALE previous page, not the new one — the opposite of every
+;; other value-bearing signal in this project. get-current-page/
+;; set-current-page exist only for the suppressing-guard setter
+;; (set-notebook-current-page!) and smoke verification.
+(ffi/defcfn gtk-notebook-new              "gtk_notebook_new"              [] :pointer)
+(ffi/defcfn gtk-notebook-append-page      "gtk_notebook_append_page"      [:pointer :pointer :pointer] :int)
+(ffi/defcfn gtk-notebook-insert-page      "gtk_notebook_insert_page"      [:pointer :pointer :pointer :int] :int)
+(ffi/defcfn gtk-notebook-remove-page      "gtk_notebook_remove_page"      [:pointer :int] :void)
+(ffi/defcfn gtk-notebook-page-num         "gtk_notebook_page_num"         [:pointer :pointer] :int)
+(ffi/defcfn gtk-notebook-set-current-page "gtk_notebook_set_current_page" [:pointer :int] :void)
+(ffi/defcfn gtk-notebook-get-current-page "gtk_notebook_get_current_page" [:pointer] :int)
+
+;; --- scale button (a popup slider button, e.g. a volume control) -------------
+;; gtk_scale_button_new's 4th arg is a NULL-terminated array of icon names
+;; shown at different value ranges — passing jolt.ffi/null lets GTK fall
+;; back to its own default icon set, verified live rather than assumed.
+;; "value-changed" is confirmed via gtk/gtkscalebutton.c's g_signal_new to
+;; be G_TYPE_NONE, 1, G_TYPE_DOUBLE — the value travels as the signal's
+;; OWN raw double argument, not something re-read via a getter afterward.
+;; This is a genuinely new callable shape: 3 args like "state-set"'s, but
+;; a :double in the middle slot instead of :int — needs its own literal
+;; foreign-callable branch, same "every distinct shape needs its own
+;; literal call site" rule as every other non-default signal here.
+;; "value-changed" is also the exact same GTK signal NAME :scale/
+;; :spin-button already use — signal-value's [:scale-button
+;; "value-changed"] entry is added from the start this round (the
+;; :password-entry near-miss lesson, applied proactively rather than
+;; discovered live a third time).
+(ffi/defcfn gtk-scale-button-new       "gtk_scale_button_new"       [:double :double :double :pointer] :pointer)
+(ffi/defcfn gtk-scale-button-set-value "gtk_scale_button_set_value" [:pointer :double] :void)
+(ffi/defcfn gtk-scale-button-get-value "gtk_scale_button_get_value" [:pointer] :double)
+
 ;; --- signals & reference counting (libgobject) -------------------------------
 ;; g_signal_connect_data(instance, detailed_signal, c_handler, data, destroy_data, flags)
 ;; Returns the handler id (a gulong). destroy_data is a GClosureNotify fn ptr —
