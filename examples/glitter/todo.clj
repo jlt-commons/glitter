@@ -16,13 +16,21 @@
   top-level atom; the view is a pure function of it; and every handler is
   DATA — an action tuple carrying whatever the closure used to
   close over (the row index, the new entry text) — dispatched through one
-  global handler, never a closure.
+  global handler, never a closure. That global handler is
+  glitter.nexus (see src/glitter/nexus.clj), not a hand-written `case`
+  form: :action/toggle/:action/add-task are ACTION-EXPANSIONS (they read
+  current state to decide what should happen), the same layer
+  examples/glitter/crud.clj's select-row/create/update/delete use;
+  examples/glitter/flights.clj is the pure-effects-only sibling, needing
+  no action-expansion layer at all.
 
   Run: jolt -M:todo (the :todo task/alias) or bb todo. Needs a display;
   closes the window to exit."
-  (:require [glitter.app :as app]
+  (:require [clojure.tools.logging :as log]
+            [glitter.app :as app]
             [glitter.core :as core]
-            [glitter.gtk :as gtk]))
+            [glitter.gtk :as gtk]
+            [glitter.nexus.registry :as nxr]))
 
 (defonce state
   (atom {:tasks [{:text "Try the glitter counter demo" :done true}
@@ -81,36 +89,39 @@
      [:hbox {:spacing 8}
       [:entry {:text draft :placeholder "Add a task…"
                :hexpand true :valign :center
-               :on {:change   [[:action/set-draft]]
+               :on {:change   [[:effect/assoc-in [:draft] [:glitter/value]]]
                     :activate [[:action/add-task]]}}]
       [:button {:label "Add" :valign :center :on {:click [[:action/add-task]]}}]]]))
 
-;; The entry's live text does NOT travel through the action tuple — hiccup
-;; :on data is static, fixed at render time, so an action can't carry a
-;; value that only exists once the user types. glitter.gtk's
-;; set-event-handler stuffs a value-bearing signal's current value onto the
-;; constructed event object as :glitter/value (see glitter.widget's
-;; signal-value table — "changed" resolves to gtk_editable_get_text); by the
-;; time it reaches *dispatch*, glitter.core's build-event-map has wrapped
-;; that object under :glitter/dom-event. So :action/set-draft reads the
-;; typed text from `event`, not from its own action data. Verified live:
-;; typing "hello" into the entry produces
-;; (get-in event [:glitter/dom-event :glitter/value]) => "hello".
-(defn execute-actions [event actions]
-  (doseq [[kind idx] actions]
-    (case kind
-      :action/toggle    (swap! state update-in [:tasks idx :done] not)
-      :action/set-draft (swap! state assoc :draft
-                               (get-in event [:glitter/dom-event :glitter/value]))
-      :action/add-task  (swap! state (fn [{:keys [draft] :as s}]
-                                       (if (seq draft)
-                                         (-> s
-                                             (update :tasks conj {:text draft :done false})
-                                             (assoc :draft ""))
-                                         s)))
-      nil)))
+;; :action/set-draft is a pure passthrough. :action/toggle/:action/add-task
+;; need to READ current state (the row's CURRENT :done value to `not`;
+;; :draft's current value to decide whether to add anything and to know
+;; what to conj) — glitter.nexus ACTION-EXPANSIONS, same layer crud.clj's
+;; select-row/create/update/delete use, see that file for the contrast
+;; with flights.clj's pure-effects-only shape.
+(nxr/register-effect! :effect/assoc-in
+                      (fn [_ system path v] (swap! system assoc-in path v)))
 
-(core/set-dispatch! execute-actions)
+(nxr/register-placeholder! :glitter/value
+                           (fn [event] (get-in event [:glitter/dom-event :glitter/value])))
+
+(nxr/register-action! :action/toggle
+                      (fn [state idx]
+                        [[:effect/assoc-in [:tasks idx :done] (not (get-in state [:tasks idx :done]))]]))
+
+(nxr/register-action! :action/add-task
+                      (fn [{:keys [draft tasks]}]
+                        (if (seq draft)
+                          [[:effect/assoc-in [:tasks] (conj tasks {:text draft :done false})]
+                           [:effect/assoc-in [:draft] ""]]
+                          [])))
+
+(nxr/register-system->state! deref)
+(nxr/on-error (fn [_ctx {:keys [err] :as error}]
+                (log/error err "glitter.nexus dispatch error" (dissoc error :err))))
+
+(core/set-dispatch!
+ (fn [event actions] (nxr/dispatch state event actions)))
 
 (defn -main [& _]
   (app/run (fn [window] (gtk/mount! window view state))
