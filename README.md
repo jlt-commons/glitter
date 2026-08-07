@@ -37,7 +37,12 @@ interactive task-board demo — derived counts, an entry with placeholder
 text, checkbutton toggles, list rendering (ported from
 [glimmer's `examples/glimmer/todo.clj`](https://github.com/jolt-lang/glimmer/blob/main/examples/glimmer/todo.clj),
 contrasting glimmer's component-local ratom closures with glitter's one
-state atom + data-driven action dispatch). `jolt test` runs the unit suite.
+state atom + data-driven action dispatch). `jolt crud` is a third
+interactive demo — a port of the [7GUIs CRUD
+task](https://eugenkiss.github.io/7guis/tasks/#crud): a live prefix
+filter, `:list-box` single-selection (auto-populating two entry fields,
+a design choice beyond the strict spec text), and `:sensitive`-gated
+Create/Update/Delete buttons. `jolt test` runs the unit suite.
 The rest are automated live-GTK smokes, each of which exits non-zero on
 failure:
 
@@ -68,6 +73,7 @@ failure:
 | `jolt ctor-apply-regression-smoke` | four real, previously-shipped bugs stay fixed: `:checkbutton`'s `label`, and `:scale`/`:scale-button`/`:spin-button`'s `min`/`max`/`step` no longer clobber each other across separate single-key re-renders |
 | `jolt window-handle-stack-smoke` | `:window-handle`'s single-child wrap lands correctly; `:stack`'s mount-time auto-select-first-page dispatch, a real page switch, and a programmatic sync-back all work |
 | `jolt drop-down-grid-smoke` | `:drop-down`'s `GtkStringList`-backed selection round-trips through a real interaction and a programmatic sync-back; `:grid`'s child-props-driven cell placement (including a column-span cell) lands at the right coordinates |
+| `jolt list-box-reorder-smoke` | `list-box-reorder-child!`/`flow-box-reorder-child!`'s `g_object_ref_sink`/`g_object_unref` fix stays fixed — a keyed `:list-box` and a keyed `:flow-box` both survive a genuine reorder without the use-after-dispose crash found while building the CRUD demo |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -86,6 +92,7 @@ bb info      # start here — grouped task list
 bb test      # jolt -M:test
 bb counter   # interactive demo
 bb todo      # interactive task-board demo
+bb crud      # interactive 7GUIs CRUD demo
 bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure)
 ```
 
@@ -373,6 +380,24 @@ container-management functions as a new optional argument. **Known
 v1 constraint**: structural props are read only at first attach, not
 reactive to later re-renders. See `docs/guide/gtk-widget-layer.md`
 for the full write-up.
+
+**A `GtkViewport` auto-wrap finding, and a real use-after-dispose bug —
+both found building `examples/glitter/crud.clj`.** `:scrolled`, forked
+in round 1, had never been given real content before this port — its
+child, if it doesn't implement `GtkScrollable` (`:list-box` doesn't),
+gets silently wrapped by GTK itself in a hidden `GtkViewport`
+(confirmed via `gtk_scrolled_window_set_child`'s own doc comment and
+body). Separately, a genuine bug: `list-box-reorder-child!`/
+`flow-box-reorder-child!` were reusing a widget pointer GTK had
+already disposed — `gtk_list_box_remove`/`gtk_flow_box_remove` dispose
+the now-unreferenced wrapping row/child, whose own `dispose` handler
+unparents (and finalizes) ITS child too (confirmed by reading
+`gtk_list_box_row_dispose`'s/`gtk_flow_box_child_dispose`'s C bodies
+directly) — the exact keyed-reorder path `docs/guide/limitations.md`
+had flagged as implemented but not previously live-verified. Fixed via
+a `g_object_ref_sink`/`g_object_unref` bracket around the
+remove-then-reinsert in both functions. See
+`docs/guide/gtk-widget-layer.md` for both write-ups.
 
 Known v1 limitations:
 

@@ -3,6 +3,7 @@
 ;;   bb test                run the unit suite (jolt -M:test)
 ;;   bb counter              interactive counter demo (state atom + action dispatch)
 ;;   bb todo                 interactive task-board demo (derived counts, entry, checkbuttons)
+;;   bb crud                 interactive 7GUIs CRUD demo (filter, list-box selection, create/update/delete)
 ;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke | scale-smoke | class-smoke
 ;;   | leaf-widgets-smoke | toggle-level-smoke | link-button-smoke | switch-smoke
 ;;   | revealer-center-box-smoke | spin-button-list-box-smoke
@@ -11,6 +12,7 @@
 ;;   | picture-editable-label-smoke | notebook-scale-button-smoke
 ;;   | inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popover-smoke
 ;;   | ctor-apply-regression-smoke | window-handle-stack-smoke | drop-down-grid-smoke
+;;   | list-box-reorder-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
@@ -43,6 +45,7 @@
           (hdr "Run")
           (row "counter" "interactive demo: state atom + action dispatch")
           (row "todo" "interactive demo: derived counts, entry, checkbuttons")
+          (row "crud" "interactive demo: 7GUIs CRUD — filter, list-box selection, create/update/delete")
           (hdr "Smoke (live GTK, each exits non-zero on failure)")
           (row "smoke" "mount a tree and run the loop without an exception escaping")
           (row "keyed" "keyed reorder lands in the right GTK order")
@@ -69,6 +72,7 @@
           (row "ctor-apply-regression-smoke" "pins 4 real pre-existing bugs found in round 11's ctor/apply audit (:checkbutton/:scale/:spin-button/:scale-button)")
           (row "window-handle-stack-smoke" ":window-handle's single-child reuse; :stack's name-addressed pages + mount-time auto-select dispatch")
           (row "drop-down-grid-smoke" ":drop-down's GtkStringList-backed selection; :grid's child-props-driven 2D placement")
+          (row "list-box-reorder-smoke" "pins the g-object-ref-sink fix for list-box/flow-box's keyed-reorder use-after-dispose bug")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -98,6 +102,9 @@
 
   todo {:doc "Interactive task-board demo (derived counts, entry, checkbuttons)"
         :task (shell "jolt" "-M:todo")}
+
+  crud {:doc "Interactive 7GUIs CRUD demo (filter, list-box selection, create/update/delete)"
+        :task (shell "jolt" "-M:crud")}
 
   smoke {:doc "Live-GTK smoke: mount a tree, run the loop without an exception escaping"
          :task (shell "jolt" "-M:smoke")}
@@ -174,6 +181,9 @@
   drop-down-grid-smoke {:doc "Live-GTK smoke: :drop-down's GtkStringList-backed selection + free-reuse signals; :grid's child-props-driven 2D placement via glitter.gtk's set-attribute structural-prop interception"
                         :task (shell "jolt" "-M:drop-down-grid-smoke")}
 
+  list-box-reorder-smoke {:doc "Live-GTK smoke: pins the g-object-ref-sink/g-object-unref fix for list-box-reorder-child!/flow-box-reorder-child!'s keyed-reorder use-after-dispose bug (found while prototyping crud.clj)"
+                          :task (shell "jolt" "-M:list-box-reorder-smoke")}
+
   smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
           :task (do (shell "jolt" "-M:smoke")
                     (shell "jolt" "-M:keyed")
@@ -199,7 +209,8 @@
                     (shell "jolt" "-M:menu-button-popover-smoke")
                     (shell "jolt" "-M:ctor-apply-regression-smoke")
                     (shell "jolt" "-M:window-handle-stack-smoke")
-                    (shell "jolt" "-M:drop-down-grid-smoke"))}
+                    (shell "jolt" "-M:drop-down-grid-smoke")
+                    (shell "jolt" "-M:list-box-reorder-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings

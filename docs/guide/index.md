@@ -114,15 +114,22 @@ live GTK widget tree in sync.
   in this round's OWN new code, `:stack` — a THIRD mount-time-auto-
   dispatch instance plus a real `:apply`-timing gap, `:drop-down` —
   the first "choose from options" widget, built on an incrementally-
-  constructed `GtkStringList`, and `:grid` — the first container whose
-  child placement is driven entirely by the child's own hiccup props.
+  constructed `GtkStringList`, `:grid` — the first container whose
+  child placement is driven entirely by the child's own hiccup props,
+  `:scrolled`'s hidden `GtkViewport` auto-wrap around a non-
+  `GtkScrollable` child (found the first time `:scrolled` was ever
+  given real content), and a real use-after-dispose bug in
+  `list-box-reorder-child!`/`flow-box-reorder-child!` — both were
+  reusing a widget pointer GTK had already disposed as a side effect
+  of removing its old wrapping row, fixed via a `g_object_ref_sink`/
+  `g_object_unref` bracket.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the twenty-five automated live-GTK
+  headless fake-`IRender` test renderer, the twenty-six automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

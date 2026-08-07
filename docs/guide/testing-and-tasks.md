@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and twenty-five automated smokes that drive a *real* GTK4 window
+fake renderer, and twenty-six automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter — several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Twenty-five examples under `examples/glitter/` each open a real GTK window,
+Twenty-six examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -86,11 +86,16 @@ on mismatch:
 | `jolt ctor-apply-regression-smoke` | four real, previously-shipped bugs stay fixed: `:checkbutton`'s `:label`, and `:scale`/`:scale-button`/`:spin-button`'s `:min`/`:max`/`:step` no longer clobber each other across separate single-key re-renders | reads each widget's live adjustment (`gtk_range_get_adjustment`/`gtk_scale_button_get_adjustment`) back on mount, then changes `:min`-only then `:max`-only (and `:step`-only for scale-button) on SEPARATE re-renders — the exact one-key-at-a-time shape that caused the original clobbering — asserting the untouched key survives each change — see [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs) |
 | `jolt window-handle-stack-smoke` | `:window-handle`'s single-child wrap lands correctly (catching this round's own missing-case-branch bug); `:stack`'s mount-time auto-select-first-page dispatch, real page switch, and suppressing-guard sync-back all work | reads `gtk_window_handle_get_child`/`gtk_stack_get_visible_child_name` back on mount (dispatch count starts at `1`, the stack's own mount-time auto-select); a real FFI `gtk_stack_set_visible_child_name` call simulates a live switch, asserting the dispatched name and dispatch count before/after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#window-handle--a-quick-win-and-a-bug-in-this-rounds-own-code) |
 | `jolt drop-down-grid-smoke` | `:drop-down`'s `GtkStringList`-backed selection round-trips through a real interaction and a suppressing-guarded sync-back; `:grid`'s `:glitter/structural-props`-driven cell placement (including a column-span cell) lands at the right coordinates | reads `gtk_drop_down_get_selected` and `gtk_grid_get_child_at` for each cell back on mount (the span cell checked for pointer-equality at BOTH coordinates it covers); a real FFI `gtk_drop_down_set_selected` call simulates a live pick, asserting the dispatched index and dispatch count before/after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#grid--the-first-child-placement-container) |
+| `jolt list-box-reorder-smoke` | `list-box-reorder-child!`/`flow-box-reorder-child!`'s `g_object_ref_sink`/`g_object_unref` fix stays fixed — a keyed `:list-box` and a keyed `:flow-box` both survive a genuine reorder (same keys, new order, no add/remove) without the use-after-dispose crash found while building `examples/glitter/crud.clj` | reads each container's live children back via `gtk_widget_get_first_child`/`get_next_sibling` (the same ground-truth technique `keyed.clj` uses for `:box`) before and after a `reset!` that reorders both containers' keys, asserting the new order landed correctly — FAIL-path verified by temporarily reverting the fix (crashes, exit 1) and restoring it (clean exit 0) — see [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box-reorder-child-flow-box-reorder-child--a-real-use-after-dispose-bug) |
 
-`jolt counter` and `jolt todo` are the interactive examples — the full
-quick-start demo from `docs/guide/index.md`, and a larger task-board demo
+`jolt counter`, `jolt todo`, and `jolt crud` are the interactive examples — the full
+quick-start demo from `docs/guide/index.md`, a larger task-board demo
 (ported from glimmer's own `todo.clj`) exercising derived counts, a
-value-bearing `:change` handler, and checkbutton toggles — meant to be run
+value-bearing `:change` handler, and checkbutton toggles, and a port of
+the [7GUIs CRUD task](https://eugenkiss.github.io/7guis/tasks/#crud)
+exercising `:list-box` single-selection (with an auto-populate design
+choice beyond the strict spec text), keyed reordering driven by a
+derived sort order, and `:sensitive`-gated buttons — meant to be run
 and clicked, not asserted on.
 
 Each smoke's `:auto-quit-ms` option (see `glitter.app/run`) quits the GTK
@@ -120,6 +125,7 @@ bb info               # grouped task list — start here
 bb test                # jolt -M:test
 bb counter              # interactive demo
 bb todo                 # interactive task-board demo
+bb crud                 # interactive 7GUIs CRUD demo
 bb smoke | keyed | replace-child | aliased | main-thread-smoke
 bb scale-smoke | class-smoke | leaf-widgets-smoke | toggle-level-smoke
 bb link-button-smoke | switch-smoke
@@ -129,13 +135,14 @@ bb aspect-frame-calendar-smoke | overlay-flow-box-smoke
 bb picture-editable-label-smoke | notebook-scale-button-smoke
 bb inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popover-smoke
 bb ctor-apply-regression-smoke | window-handle-stack-smoke | drop-down-grid-smoke
+bb list-box-reorder-smoke
                         # individual live-GTK smokes
-bb smokes               # all twenty-five smokes in sequence; stops at first failure
+bb smokes               # all twenty-six smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly — never the
 `jolt <task>` shorthand — so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all twenty-five smokes with a plain
+CI gate on their own. `bb smokes` chains all twenty-six smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

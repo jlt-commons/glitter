@@ -168,7 +168,10 @@ listed here for provenance, not legal requirement:
   `gtk-adjustment-get-lower`, `gtk-adjustment-get-upper`,
   `gtk-adjustment-get-step-increment`, `gtk-range-get-adjustment`,
   `gtk-spin-button-get-adjustment`) — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs).
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs),
+  and one more binding added while verifying `examples/glitter/crud.clj`
+  (`gtk-widget-get-sensitive` — every prior use of `:sensitive` only
+  ever set it; this is the first live check of its own read-back).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -338,6 +341,21 @@ listed here for provenance, not legal requirement:
   the first three of those four functions gained an optional trailing
   `structural-props` argument threaded from `glitter.gtk` (see Bucket 3
   below).
+
+  A post-round-11 fix, found while building `examples/glitter/crud.clj`:
+  `list-box-reorder-child!`/`flow-box-reorder-child!` were reusing a
+  widget pointer GTK had already disposed — `gtk_list_box_remove`/
+  `gtk_flow_box_remove` dispose the now-unreferenced wrapping row/
+  child, and BOTH wrappers' own `dispose` handlers unparent (and,
+  with nothing else referencing it, finalize) their own child in turn
+  (confirmed by reading `gtk_list_box_row_dispose`'s and
+  `gtk_flow_box_child_dispose`'s C bodies directly). Fixed by
+  bracketing the remove-then-reinsert in both functions with
+  `g-object-ref-sink`/`g-object-unref` — the first actual call site
+  for either binding in this codebase (both were already bound,
+  inherited from glimmer's fork, but never previously used). See
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box-reorder-child-flow-box-reorder-child--a-real-use-after-dispose-bug).
+
   See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`

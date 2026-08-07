@@ -318,6 +318,12 @@
 ;; earlier widget here needed to READ its own visibility back.
 (ffi/defcfn gtk-widget-get-visible    "gtk_widget_get_visible"    [:pointer] :int)
 (ffi/defcfn gtk-widget-set-sensitive  "gtk_widget_set_sensitive"  [:pointer :int] :void)
+;; get-sensitive added while verifying crud.clj — the first live check of
+;; :sensitive's own read-back (every prior use only ever set it). Reads
+;; the WIDGET'S OWN sensitive property, not ancestor-aware effective
+;; sensitivity (that's gtk_widget_is_sensitive, not bound here — nothing
+;; in this project needs it yet).
+(ffi/defcfn gtk-widget-get-sensitive  "gtk_widget_get_sensitive"  [:pointer] :int)
 (ffi/defcfn gtk-widget-set-tooltip-text "gtk_widget_set_tooltip_text" [:pointer :string] :void)
 (ffi/defcfn gtk-widget-set-margin-start   "gtk_widget_set_margin_start"   [:pointer :int] :void)
 (ffi/defcfn gtk-widget-set-margin-end     "gtk_widget_set_margin_end"     [:pointer :int] :void)

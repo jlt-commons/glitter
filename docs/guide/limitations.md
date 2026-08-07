@@ -174,19 +174,30 @@ overlays" function in `gtk/gtkoverlay.h`), so anything beyond
 overlay" is unverifiable by a live smoke, not merely untested. See
 [`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption).
 
-## `:list-box`'s and `:flow-box`'s `reorder-child!` are implemented but not live-verified
+## No longer a limitation: `:list-box`'s and `:flow-box`'s `reorder-child!`
 
-`list-box-reorder-child!`/`flow-box-reorder-child!` (moving an
-already-parented row/child to a new position) are real, reasoned-through
-code — not documented no-ops like `:center-box`'s/`:paned`'s/`:overlay`'s
-equivalents — but no smoke in this project currently exercises a genuine
-reorder for either (only a same-position tag-swap, which goes through
-`insert-child-after!`, and a pure append/remove, were live-tested for
-both). Treat both as implemented, not verified-under-fire, until a
-keyed-list reordering smoke covers them. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs)
-and
-[`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption).
+This section used to read: *"implemented but not live-verified... no
+smoke in this project currently exercises a genuine reorder for
+either... treat both as implemented, not verified-under-fire, until a
+keyed-list reordering smoke covers them."* That caveat was correct to
+have — the live-verification it called for found a REAL bug.
+`examples/glitter/crud.clj` (a port of the 7GUIs CRUD task) was the
+first thing in this project to actually trigger a genuine keyed
+reorder (renaming a selected person to a family name that sorts
+differently), and it crashed: `list-box-reorder-child!`/
+`flow-box-reorder-child!` were reusing a widget pointer that GTK had
+already disposed as a side effect of removing its old wrapping row —
+confirmed by reading `gtk_list_box_row_dispose`'s and
+`gtk_flow_box_child_dispose`'s C bodies directly. Fixed via a
+`g_object_ref_sink`/`g_object_unref` bracket around the remove-then-
+reinsert in both functions, keeping the child alive across the gap.
+`examples/glitter/list_box_reorder_smoke.clj` now pins this
+permanently — reorders a keyed `:list-box` and a keyed `:flow-box` by
+the same keys and reads the new order back via the live GTK tree, not
+glitter's own bookkeeping, FAIL-path verified by temporarily reverting
+the fix. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#list-box-reorder-child-flow-box-reorder-child--a-real-use-after-dispose-bug)
+for the full trace.
 
 ## `:flow-box`'s `:on-child-activated` dispatches with no value
 

@@ -2052,6 +2052,128 @@ argument, not just the base column/row, reached GTK correctly.
 child's cell position is fixed at first attach, not reactive to a
 later re-render's `:grid-column`/etc changes.
 
+## `:scrolled` wraps a non-`GtkScrollable` child in a hidden `GtkViewport`
+
+`:scrolled` shipped in round 1, forked verbatim from glimmer, but
+`examples/glitter/crud.clj` (a port of the 7GUIs CRUD task) is the
+first time any example or smoke in this project has actually given it
+real content to wrap. Reading a live GTK widget tree back afterward via
+the usual `gtk_widget_get_first_child` walk (every smoke's ground-truth
+technique) initially found `:scrolled`'s child to be some OTHER widget
+entirely, not the `:list-box` that was actually mounted inside it.
+
+Root cause, confirmed by reading `gtk_scrolled_window_set_child`'s own
+doc comment and C body directly: *"If `child` does not implement the
+`GtkScrollable` interface, the scrolled window will add `child` to a
+`GtkViewport` instance and then add the viewport as its child widget."*
+`GtkListBox` does not implement `GtkScrollable` — confirmed against
+`gtk/gtklistbox.c`'s `G_DEFINE_TYPE_WITH_CODE`, which lists no
+`GTK_TYPE_SCROLLABLE` interface — so `:scrolled`'s REAL first GTK child
+is a `GtkViewport`, and the `:list-box` is one level further down, as
+the viewport's own first child:
+
+```clojure
+;; scrolled's :list-box child, read back from live GTK:
+(-> scrolled g/gtk-widget-get-first-child   ; the auto-inserted GtkViewport
+    g/gtk-widget-get-first-child)           ; the actual :list-box
+```
+
+This is pure GTK behavior, not a glitter concern for ordinary hiccup
+authors — `glitter.gtk`'s own `:children` bookkeeping for the
+`:scrolled` element never sees the viewport at all (it only ever calls
+`gtk_scrolled_window_set_child` once, with the `:list-box` pointer; GTK
+manages the viewport-wrapping internally and transparently). It only
+matters to code that reads the LIVE tree back via raw FFI walks — every
+live-GTK smoke in this project — which now needs to know to descend one
+extra level whenever the wrapped child is something non-scrollable like
+`:list-box`/`:flow-box`/`:grid`. A child that DOES implement
+`GtkScrollable` (nothing in this project's widget set does yet) would
+not get this extra wrapper.
+
+## `list-box-reorder-child!`/`flow-box-reorder-child!` — a real use-after-dispose bug
+
+Also found while building `examples/glitter/crud.clj`: renaming a
+selected person's family name to something that sorts to a DIFFERENT
+position in the filtered/sorted list triggers a KEYED REORDER —
+`glitter.core`'s reconciler recognizes the row's `:glitter/key` as the
+SAME logical child, just needing a new position, and dispatches to
+`IRender/insert-before` → (since the child is already tracked)
+`list-box-reorder-child!`. `docs/guide/limitations.md` had already
+flagged this exact path — a same-key reposition, not a tag-swap or a
+plain append/remove — as *"implemented but not previously
+live-verified"*. It wasn't safe: the live GTK tree crashed with
+`gtk_list_box_insert: assertion 'GTK_IS_WIDGET (child)' failed` plus
+cascading assertion failures on other widgets still touching the same
+now-invalid pointer.
+
+Root cause, confirmed by reading GTK source directly rather than
+assumed: `list-box-reorder-child!` removes the child's OLD row first
+(`gtk_list_box_remove parent row`), then tries to reuse the SAME
+`child` pointer for the reinsert. `gtk_list_box_remove`, once nothing
+else references the row, disposes it immediately — and
+`GtkListBoxRow`'s own `dispose` handler unparents *its own child*:
+
+```c
+/* gtk_list_box_row_dispose's actual C body — confirmed by reading it
+   directly */
+static void
+gtk_list_box_row_dispose (GObject *object)
+{
+  GtkListBoxRowPrivate *priv = ROW_PRIV (GTK_LIST_BOX_ROW (object));
+  ...
+  g_clear_pointer (&priv->child, gtk_widget_unparent);
+  ...
+}
+```
+
+With nothing else in glitter holding an independent reference to that
+child, `gtk_widget_unparent` here doesn't just detach it — it drops the
+child's refcount to zero and finalizes it too. `child` is a genuinely
+DANGLING pointer by the time `list-box-insert-after!` tries to reuse
+it. `flow-box-reorder-child!` has the byte-for-byte identical shape,
+confirmed independently rather than assumed to carry over just because
+the widgets are siblings: `gtk_flow_box_child_dispose` has the same
+`g_clear_pointer (&priv->child, gtk_widget_unparent)` call.
+
+The fix brackets the remove-then-reinsert with `g_object_ref_sink` /
+`g_object_unref` — the standard GTK C idiom for surviving a reparent
+gap where the widget would otherwise be briefly, unintentionally
+ownerless:
+
+```clojure
+(defn- list-box-reorder-child! [parent child sibling]
+  (let [row (list-box-row-of child)]
+    (when row
+      (g/g-object-ref-sink child)     ; extra ref — survives the row's disposal
+      (swap! suppressing conj parent)
+      (g/gtk-list-box-remove parent row)
+      (swap! suppressing disj parent))
+    (list-box-insert-after! parent child sibling)
+    (when row
+      (g/g-object-unref child))))     ; release it — child is now owned by its NEW row
+```
+
+`g_object_ref_sink` is safe to call on an ALREADY-sunk, parented widget
+too (its own semantics: a normal `+1` ref if the object isn't floating)
+— it isn't a floating-ref-specific trick, which is why it's the right
+primitive here even though `child` was never floating at this call
+site (it was sunk into its OLD row long ago). Both
+`g-object-ref-sink`/`g-object-unref` were already bound in
+`glitter.ffi` (inherited from glimmer's own fork, describing GTK's
+general floating-ref convention in the ns docstring) but had never
+actually been called from glitter's own code until this fix — the
+first real use of either.
+
+`examples/glitter/list_box_reorder_smoke.clj` pins this permanently:
+reorders a keyed `:list-box` and a keyed `:flow-box` by the SAME keys
+(no add/remove), and reads the new order back via the usual
+`gtk_widget_get_first_child`/`get_next_sibling` ground-truth walk, not
+glitter's own bookkeeping — the same discipline
+`examples/glitter/keyed.clj` established for `:box`'s own keyed
+reorder. FAIL-path verified by temporarily reverting the fix: the
+smoke crashes with the exact assertion failures above and exits 1;
+restoring the fix returns it to a clean exit 0.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's

@@ -1822,13 +1822,32 @@
   sibling's row index AFTER child's removal has potentially shifted it,
   so the target is always correct post-removal, never stale. Suppresses on
   `parent` around the remove call — same incidental
-  deselect-fires-row-selected reason list-box-remove-child! does."
+  deselect-fires-row-selected reason list-box-remove-child! does.
+
+  g-object-ref-sink/g-object-unref bracket the remove+reinsert: found live
+  (a CRUD-style demo whose sort order changes on rename) that
+  gtk_list_box_remove disposes the now-unreferenced GtkListBoxRow
+  immediately, and GtkListBoxRow's own dispose unparents (confirmed by
+  reading gtk_list_box_row_dispose directly: `g_clear_pointer
+  (&priv->child, gtk_widget_unparent)`) — and, since nothing else in
+  glitter holds an independent ref, FINALIZES — its own child the instant
+  the row itself is disposed. Without the extra ref, `child` is a
+  dangling pointer by the time list-box-insert-after! tries to reuse it,
+  surfacing as `gtk_list_box_insert: assertion 'GTK_IS_WIDGET (child)'
+  failed` plus cascading assertion failures on whatever else still held
+  that pointer. g-object-ref-sink is safe to call on an already-sunk,
+  parented widget too (per its own semantics: normal +1 ref if not
+  floating) — it isn't specific to the floating-ref case."
   [parent child sibling]
-  (when-let [row (list-box-row-of child)]
-    (swap! suppressing conj parent)
-    (g/gtk-list-box-remove parent row)
-    (swap! suppressing disj parent))
-  (list-box-insert-after! parent child sibling))
+  (let [row (list-box-row-of child)]
+    (when row
+      (g/g-object-ref-sink child)
+      (swap! suppressing conj parent)
+      (g/gtk-list-box-remove parent row)
+      (swap! suppressing disj parent))
+    (list-box-insert-after! parent child sibling)
+    (when row
+      (g/g-object-unref child))))
 
 ;; :flow-box helpers — a flowing/wrapping sibling to :list-box.
 ;; append/insert auto-wrap a plain child in a GtkFlowBoxChild (same shape
@@ -1884,10 +1903,20 @@
 (defn- flow-box-reorder-child!
   "Move an ALREADY-parented `child` to sit immediately after `sibling`.
   Removes child first, then computes the target index — same
-  post-removal-freshness reasoning as list-box-reorder-child!."
+  post-removal-freshness reasoning as list-box-reorder-child!.
+
+  g-object-ref-sink/g-object-unref bracket the remove+reinsert for the
+  SAME reason list-box-reorder-child! needs it: gtk_flow_box_child_dispose
+  unparents (confirmed by reading it directly) its own child the instant
+  the wrapping GtkFlowBoxChild is disposed, which gtk_flow_box_remove
+  triggers immediately once nothing else references the wrapper. Without
+  the extra ref, `child` is a dangling pointer by the time
+  flow-box-insert-after! tries to reuse it."
   [parent child sibling]
+  (g/g-object-ref-sink child)
   (g/gtk-flow-box-remove parent child)
-  (flow-box-insert-after! parent child sibling))
+  (flow-box-insert-after! parent child sibling)
+  (g/g-object-unref child))
 
 ;; :notebook helpers. Unlike :list-box/:flow-box, GtkNotebook does NOT
 ;; auto-wrap children — `child` IS the real widget throughout, and
