@@ -131,6 +131,68 @@ return the widget pointer directly — they return a Clojure atom:
 - `:handlers` tracks each connected GTK signal's connection id *and* its
   retained `foreign-callable`, so `set-event-handler`/`remove-event-handler`
   can cleanly disconnect and release exactly the right one later.
+- `:glitter/structural-props` (round 11) holds a handful of props a CHILD
+  carries for its PARENT to consume — `:grid-column`/`:grid-row`/
+  `:grid-column-span`/`:grid-row-span` (`:grid`) and `:stack-name`
+  (`:stack`) — stashed here by `set-attribute` instead of being routed to
+  the child's own `:apply` closure, since no widget's `:apply` has any
+  idea what "which grid cell am I in" would mean for itself. See
+  [`gtk-widget-layer.md`](gtk-widget-layer.md) for the full mechanism and
+  why these props must be plain, non-namespaced keywords.
+
+## `:ctor`'s `props` argument is always empty — verified live, round 11
+
+A fact easy to assume wrong by reading `glitter.widget`'s widget specs in
+isolation: **`:ctor` never actually receives the real hiccup props at the
+real call site.** `glitter.core`'s `create-node` calls
+`IRender/create-element` with only an optional XML-namespace hint —
+
+```clojure
+;; glitter.core.clj — create-node's actual call, confirmed by reading it
+(r/create-element renderer tag-name (when ns {:ns ns}))
+```
+
+— so `glitter.gtk`'s `create-element` always invokes a spec's `:ctor` with
+`{}` or `{:ns "..."}`, never `{:label "..."}` or anything resembling a
+real prop. Confirmed live, not assumed: a throwaway probe mounting
+`[:button {:label "x"}]` printed `options` as `nil` at the real call
+site, and the button's own label — read back immediately after
+`w/create!` ran — was still empty.
+
+The REAL prop values arrive afterward, through a completely different
+path: `glitter.core`'s `set-attributes` calls `IRender/set-attribute`
+once **per key**, not as one batched map:
+
+```clojure
+;; glitter.gtk.clj — set-attribute's actual body
+(set-attribute [_ el a v _opt]
+  (w/apply-props! (:tag @el) (ptr el) {(keyword a) v})
+  nil)
+```
+
+Two consequences every widget-spec author needs to know:
+
+1. A `:ctor` closure that branches on a prop (`(if (:label p) ...)`) is
+   harmless *only if* `:apply` also independently re-applies that same
+   prop — the `:ctor` branch never actually fires through the real
+   reconciler flow, so the observable end state depends entirely on
+   `:apply`. If `:apply` doesn't cover it, the prop silently never takes
+   effect, ever. This shipped as a real bug in `:checkbutton-spec`'s
+   `:label` and `:scale-button-spec`'s `:min`/`:max`/`:step` for 10
+   rounds before being caught and fixed in round 11 — see
+   [`gtk-widget-layer.md`](gtk-widget-layer.md) for the full trace.
+
+2. An `:apply` closure that combines **multiple keys** into one native
+   call, using a hardcoded fallback for whichever key is absent (`(or
+   (:min p) 0)`), silently clobbers that key's real value whenever a
+   render changes only ONE of the group — because `set-attribute`
+   delivers exactly one changed key per call, a lone `:max` change
+   genuinely arrives as `{:max 80}` alone, with no `:min` present to
+   read. The fix is reading the widget's OWN current value as the
+   fallback (via a GTK getter) instead of a hardcoded default — also
+   shipped as a real bug in `:scale-spec`'s and `:spin-button-spec`'s
+   `:min`/`:max` handling, masked for 10 rounds because every existing
+   smoke's chosen test values happened to match the broken fallback.
 
 `IMemory` (`remember`/`recall`, glitter's equivalent of Replicant's
 per-element scratch storage — used for e.g. stashing a value on mount and

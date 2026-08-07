@@ -150,7 +150,25 @@ listed here for provenance, not legal requirement:
   `gtk-popover-set-child`, `gtk-popover-get-child`,
   `gtk-popover-set-has-arrow`, `gtk-popover-get-has-arrow`,
   `gtk-popover-set-autohide`, `gtk-popover-get-autohide`,
-  `gtk-popover-popup`, `gtk-popover-popdown`).
+  `gtk-popover-popup`, `gtk-popover-popdown`), and round 11 adds
+  twenty-four for `:window-handle`/`:stack`/`:drop-down`/`:grid`
+  (`gtk-window-handle-new`, `gtk-window-handle-set-child`,
+  `gtk-window-handle-get-child`, `gtk-stack-new`, `gtk-stack-add-child`,
+  `gtk-stack-add-named`, `gtk-stack-remove`,
+  `gtk-stack-get-child-by-name`, `gtk-stack-set-visible-child-name`,
+  `gtk-stack-get-visible-child-name`, `gtk-string-list-new`,
+  `gtk-string-list-append`, `gtk-drop-down-new`, `gtk-drop-down-set-model`,
+  `gtk-drop-down-set-selected`, `gtk-drop-down-get-selected`,
+  `gtk-grid-new`, `gtk-grid-attach`, `gtk-grid-remove`,
+  `gtk-grid-get-child-at`, `gtk-grid-set-row-spacing`,
+  `gtk-grid-get-row-spacing`, `gtk-grid-set-column-spacing`,
+  `gtk-grid-get-column-spacing`), plus eight bug-fix bindings for the
+  ctor/apply audit (`gtk-checkbutton-set-label`,
+  `gtk-scale-button-get-adjustment`, `gtk-adjustment-configure`,
+  `gtk-adjustment-get-lower`, `gtk-adjustment-get-upper`,
+  `gtk-adjustment-get-step-increment`, `gtk-range-get-adjustment`,
+  `gtk-spin-button-get-adjustment`) — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -289,6 +307,37 @@ listed here for provenance, not legal requirement:
   `:on-closed` turned out to be free reuses of the default 2-arg-void
   callable shape, needing zero `glitter.gtk` changes — see
   [`gtk-widget-layer.md`](gtk-widget-layer.md#menu-buttonpopover--a-popup-surface-not-a-normal-tree-child)).
+
+  Round 11 adds a ctor/apply audit that found and fixed four real,
+  previously-shipped bugs — `checkbutton-spec`'s never-applied
+  `:label`, and `scale-spec`/`spin-button-spec`/`scale-button-spec`'s
+  `:min`/`:max`/`:step` silently clobbering each other across
+  single-key re-renders — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs);
+  `window-handle-spec`/`:window-handle` (single-child, no signal —
+  quick win that also caught a missing-case-branch bug in this
+  round's own new code — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#window-handle--a-quick-win-and-a-bug-in-this-rounds-own-code));
+  `set-stack-visible-child-name!`/`stack-spec`/`:stack` + the new
+  `:on-visible-child-changed` signal entry (a THIRD mount-time-auto-
+  dispatch instance, plus a real `:apply`-timing gap fixed at the
+  warning level only — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#stack--a-third-mount-time-auto-dispatch-instance-and-a-real-apply-timing-gap));
+  `set-drop-down-selected!`/`drop-down-build-model!`/`drop-down-spec`/
+  `:drop-down` + the new `:on-selected-changed` signal entry (the first
+  "choose from options" widget, built on an incrementally-constructed
+  `GtkStringList` — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#drop-down--the-first-choose-from-options-widget));
+  and `grid-attach!`/`stack-append-child!`/`grid-spec`/`:grid` (the
+  first container whose child placement is driven entirely by the
+  child's own hiccup props, via the new `:glitter/structural-props`
+  mechanism — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#glitterstructural-props--a-childs-props-read-by-its-parent)).
+  `append-child!`/`remove-child!`/`replace-child!`/`insert-child-after!`
+  each gained new `:grid`/`:stack`/`:window-handle` `case` branches, and
+  the first three of those four functions gained an optional trailing
+  `structural-props` argument threaded from `glitter.gtk` (see Bucket 3
+  below).
   See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`
@@ -306,7 +355,19 @@ listed here for provenance, not legal requirement:
   state-atom wiring. This is the file that makes glitter *glitter* rather
   than a Replicant-with-the-serial-numbers-filed-off; see
   [`architecture.md`](architecture.md) and
-  [`gtk-widget-layer.md`](gtk-widget-layer.md).
+  [`gtk-widget-layer.md`](gtk-widget-layer.md). Round 11 adds
+  `structural-child-props`/`structural-child-prop?` and special-cases
+  them in `set-attribute`/`remove-attribute` — a namespaced-prop
+  finding (`:grid/column`-style keys are silently dropped by
+  `glitter.core`'s own `set-attr`/`update-attr` guard, upstream of
+  `IRender` entirely) forced these onto plain, hyphenated keys instead
+  — stashing matches on the CHILD's own `el` atom under
+  `:glitter/structural-props` rather than routing them through
+  `glitter.widget/apply-props!`. `append-child`, `insert-before`'s
+  fresh-insert branch, and `replace-child` all thread that stashed map
+  through to `glitter.widget`'s container-management functions as a new
+  optional trailing argument — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#glitterstructural-props--a-childs-props-read-by-its-parent).
 - `glitter.test-renderer` — an in-memory fake `IRender`/`IMemory`, inspired
   by Replicant's `mutation_log.cljc` but separately implemented (a
   different protocol-composition mechanism — `reify`, not

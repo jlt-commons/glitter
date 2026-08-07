@@ -10,6 +10,7 @@
 ;;   | aspect-frame-calendar-smoke | overlay-flow-box-smoke
 ;;   | picture-editable-label-smoke | notebook-scale-button-smoke
 ;;   | inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popover-smoke
+;;   | ctor-apply-regression-smoke | window-handle-stack-smoke | drop-down-grid-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
@@ -65,6 +66,9 @@
           (row "inscription-search-bar-smoke" ":inscription's no-signal display props; :search-bar's single-child :search-mode props")
           (row "header-bar-action-bar-smoke" ":header-bar/:action-bar's hybrid title+pack-start shape, incl. the show-title-buttons prepend finding")
           (row "menu-button-popover-smoke" ":menu-button's popover-as-child relationship; :popover's suppressing-guarded :visible + free-reuse signals")
+          (row "ctor-apply-regression-smoke" "pins 4 real pre-existing bugs found in round 11's ctor/apply audit (:checkbutton/:scale/:spin-button/:scale-button)")
+          (row "window-handle-stack-smoke" ":window-handle's single-child reuse; :stack's name-addressed pages + mount-time auto-select dispatch")
+          (row "drop-down-grid-smoke" ":drop-down's GtkStringList-backed selection; :grid's child-props-driven 2D placement")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -161,6 +165,15 @@
   menu-button-popover-smoke {:doc "Live-GTK smoke: :menu-button's popover-as-child relationship (gtk_menu_button_set_popover); :popover's suppressing-guarded :visible + free-reuse :on-activate/:on-closed signals"
                              :task (shell "jolt" "-M:menu-button-popover-smoke")}
 
+  ctor-apply-regression-smoke {:doc "Live-GTK smoke: pins 4 real pre-existing bugs found in round 11's ctor/apply audit (:checkbutton's :label, :scale's/:spin-button's/:scale-button's :min/:max/:step clobbering)"
+                               :task (shell "jolt" "-M:ctor-apply-regression-smoke")}
+
+  window-handle-stack-smoke {:doc "Live-GTK smoke: :window-handle's single-child reuse (caught its own missing container-management case branch live); :stack's name-addressed pages + mount-time auto-select-page dispatch"
+                             :task (shell "jolt" "-M:window-handle-stack-smoke")}
+
+  drop-down-grid-smoke {:doc "Live-GTK smoke: :drop-down's GtkStringList-backed selection + free-reuse signals; :grid's child-props-driven 2D placement via glitter.gtk's set-attribute structural-prop interception"
+                        :task (shell "jolt" "-M:drop-down-grid-smoke")}
+
   smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
           :task (do (shell "jolt" "-M:smoke")
                     (shell "jolt" "-M:keyed")
@@ -183,7 +196,10 @@
                     (shell "jolt" "-M:notebook-scale-button-smoke")
                     (shell "jolt" "-M:inscription-search-bar-smoke")
                     (shell "jolt" "-M:header-bar-action-bar-smoke")
-                    (shell "jolt" "-M:menu-button-popover-smoke"))}
+                    (shell "jolt" "-M:menu-button-popover-smoke")
+                    (shell "jolt" "-M:ctor-apply-regression-smoke")
+                    (shell "jolt" "-M:window-handle-stack-smoke")
+                    (shell "jolt" "-M:drop-down-grid-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings

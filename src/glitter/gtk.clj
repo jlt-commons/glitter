@@ -27,6 +27,15 @@
 
 (defonce ^:private memory (atom {}))
 
+;; Structural props a CHILD carries for its PARENT :grid/:stack to consume
+;; (grid cell placement, stack page name) — see set-attribute's own comment
+;; for why these need special handling instead of the normal :apply path,
+;; and why they must be plain, non-namespaced keywords.
+(def ^:private structural-child-props
+  #{:grid-column :grid-row :grid-column-span :grid-row-span :stack-name})
+
+(defn- structural-child-prop? [k] (contains? structural-child-props k))
+
 (defn renderer
   "A fresh IRender/IMemory implementation over glitter.widget. One instance
   is enough for the life of an app; `mount!` builds one per mounted window."
@@ -74,8 +83,33 @@
     (add-class [_ el cn] (g/gtk-widget-add-css-class (ptr el) cn) nil)
     (remove-class [_ el cn] (g/gtk-widget-remove-css-class (ptr el) cn) nil)
 
+    ;; :grid-column/:grid-row/:grid-column-span/:grid-row-span/:stack-name
+    ;; are structural props a CHILD carries for its PARENT :grid/:stack to
+    ;; read — glitter.core's set-attr/update-attr route every OTHER prop to
+    ;; the widget's OWN :apply closure via w/apply-props!, but these five
+    ;; are stashed directly on the child's own tracking atom instead, since
+    ;; no widget's :apply closure has any idea what "which grid cell am I
+    ;; in" or "what's my stack page name" would even mean for ITSELF — that
+    ;; question belongs to the PARENT. append-child/insert-before/
+    ;; replace-child (below) read this back off child-node's atom and
+    ;; thread it through to glitter.widget's *-attach!/*-append-child!/etc,
+    ;; the only place with access to BOTH the parent's tag and this
+    ;; bookkeeping (w/append-child!'s own case-dispatch only ever sees raw
+    ;; widget pointers, confirmed empirically — see the ns docstring).
+    ;;
+    ;; MUST be plain (non-namespaced) keywords: glitter.core's set-attr/
+    ;; update-attr both guard on `(when-not (namespace attr) ...)` —
+    ;; confirmed live via a throwaway probe that a namespaced key like
+    ;; :grid/column never reaches set-attribute AT ALL (silently dropped
+    ;; at the reconciler level, inherited from Replicant's own convention
+    ;; that a namespaced attr is reserved/special) — a plain hyphenated key
+    ;; like :grid-column is a completely ordinary prop as far as the
+    ;; reconciler is concerned.
     (set-attribute [_ el a v _opt]
-      (w/apply-props! (:tag @el) (ptr el) {(keyword a) v})
+      (let [k (keyword a)]
+        (if (structural-child-prop? k)
+          (swap! el assoc-in [:glitter/structural-props k] v)
+          (w/apply-props! (:tag @el) (ptr el) {k v})))
       nil)
     ;; KNOWN V1 LIMITATION, found live-verified during review: this is a
     ;; no-op. w/apply-props! (glitter.widget) filters out any key whose
@@ -94,7 +128,10 @@
     ;; NEW value always works correctly; removing it entirely so it
     ;; reverts to a type default does not.
     (remove-attribute [_ el a]
-      (w/apply-props! (:tag @el) (ptr el) {(keyword a) nil})
+      (let [k (keyword a)]
+        (if (structural-child-prop? k)
+          (swap! el update :glitter/structural-props dissoc k)
+          (w/apply-props! (:tag @el) (ptr el) {k nil})))
       nil)
 
     (set-event-handler [_ el event handler _opt]
@@ -207,6 +244,13 @@
               ;; inline, bypassing `value-fn`/`dispatch!` entirely — the
               ;; first (and so far only) signal here that needs this.
               ;;
+              ;; Round 11 adds two more free reuses of the SAME notify::*
+              ;; 3-arg-void shape: "notify::visible-child-name" (:stack)
+              ;; and "notify::selected" (:drop-down) — both real GObject
+              ;; properties (g_param_spec_string/g_param_spec_uint,
+              ;; confirmed via each widget's own class_init), so no new
+              ;; literal call site was needed for either.
+              ;;
               ;; This can't be collapsed into one data-driven call: jolt's
               ;; foreign-callable/__ccallable is a compile-time special
               ;; form — verified live (twice, isolated from this codebase)
@@ -222,7 +266,8 @@
                     (fn [src-widget _state _data] (dispatch! src-widget) 0)
                     [:pointer :int :pointer] :int :collect-safe)
 
-                   (#{"row-selected" "row-activated" "notify::expanded" "notify::position" "child-activated"} signal)
+                   (#{"row-selected" "row-activated" "notify::expanded" "notify::position" "child-activated"
+                      "notify::visible-child-name" "notify::selected"} signal)
                    (jolt.ffi/foreign-callable
                     (fn [src-widget _pspec-or-row _data] (dispatch! src-widget))
                     [:pointer :pointer :pointer] :void :collect-safe)
@@ -277,7 +322,8 @@
             prev-sibling (when (pos? idx) (ptr (nth cs (dec idx))))]
         (if (some #(= % child-node) cs)
           (w/reorder-child! (:tag @el) (ptr el) (ptr child-node) prev-sibling)
-          (w/insert-child-after! (:tag @el) (ptr el) (ptr child-node) prev-sibling)))
+          (w/insert-child-after! (:tag @el) (ptr el) (ptr child-node) prev-sibling
+                                 (:glitter/structural-props @child-node))))
       ;; Bookkeeping: remove child-node from wherever it currently sits
       ;; (a no-op if it wasn't tracked yet — the fresh-insert case), then
       ;; re-splice it immediately before reference-node. This single
@@ -294,7 +340,7 @@
       nil)
 
     (append-child [_ el child-node]
-      (w/append-child! (:tag @el) (ptr el) (ptr child-node))
+      (w/append-child! (:tag @el) (ptr el) (ptr child-node) (:glitter/structural-props @child-node))
       (swap! el update :children conj child-node)
       nil)
 
@@ -307,7 +353,8 @@
     (on-transition-end [_ _el f] (f) nil)
 
     (replace-child [_ el insert-child replace-child]
-      (w/replace-child! (:tag @el) (ptr el) (ptr replace-child) (ptr insert-child))
+      (w/replace-child! (:tag @el) (ptr el) (ptr replace-child) (ptr insert-child)
+                        (:glitter/structural-props @insert-child))
       (swap! el update :children
              (fn [cs] (mapv #(if (= % replace-child) insert-child %) cs)))
       nil)

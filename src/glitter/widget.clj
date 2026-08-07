@@ -192,7 +192,9 @@
          :on-day-selected     "day-selected"
          :on-child-activated  "child-activated"
          :on-switch-page      "switch-page"
-         :on-closed           "closed"}))
+         :on-closed           "closed"
+         :on-visible-child-changed "notify::visible-child-name"
+         :on-selected-changed "notify::selected"}))
 
 ;; Widgets whose signal we are currently firing ourselves (via a programmatic
 ;; setter — gtk_editable_set_text, gtk_check_button_set_active). connect-signals
@@ -400,11 +402,115 @@
       (if visible? (g/gtk-popover-popup widget) (g/gtk-popover-popdown widget))
       (swap! suppressing disj widget))))
 
+(defn- set-stack-visible-child-name!
+  "Set a stack's visible child by name, but only when it differs from the
+  widget's current visible-child-name, and while suppressing the
+  :on-visible-child-changed handler for the synchronous
+  'notify::visible-child-name' emission gtk_stack_set_visible_child_name
+  causes. Same set-compare-suppress shape as every other value-bearing
+  widget's programmatic setter here.
+
+  Also guards on the named page actually existing yet (via
+  gtk_stack_get_child_by_name) — found live-verified that :apply runs at
+  create! time, BEFORE the reconciler has appended any children, so an
+  initial :visible-child-name always lands on a completely empty stack.
+  Without this guard, gtk_stack_set_visible_child_name warns 'Child name
+  not found in GtkStack' on every fresh mount and silently falls back to
+  GTK's own auto-select-first-page behavior regardless of what was
+  requested — see docs/guide/limitations.md for the resulting KNOWN V1
+  GAP this still leaves: a non-default initial page may not take effect
+  at mount (this guard only silences the warning; it does not change
+  which page ends up visible when the requested name isn't the first
+  one added). Works correctly on every subsequent re-render, once real
+  pages exist."
+  [widget name]
+  (when (and (some? name)
+             (not= name (g/gtk-stack-get-visible-child-name widget))
+             (not (ptr-null? (g/gtk-stack-get-child-by-name widget name))))
+    (swap! suppressing conj widget)
+    (g/gtk-stack-set-visible-child-name widget name)
+    (swap! suppressing disj widget)))
+
+(defn- set-drop-down-selected!
+  "Set a drop-down's selected index, but only when it differs from the
+  widget's current selection, and while suppressing the
+  :on-selected-changed handler for the synchronous 'notify::selected'
+  emission gtk_drop_down_set_selected causes. Same set-compare-suppress
+  shape as every other value-bearing widget's programmatic setter here."
+  [widget selected]
+  (when (and (some? selected) (not= (int selected) (g/gtk-drop-down-get-selected widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-drop-down-set-selected widget (int selected))
+    (swap! suppressing disj widget)))
+
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
 ;; The suppressing setters above are defined ahead of the specs so their
 ;; :apply closures can call them directly — no forward declare needed.
+;;
+;; CTOR/APPLY PROP-FLOW — verified live, round 11, not assumed: `:ctor`'s
+;; `props` argument is EMPTY at the real call site every single time.
+;; glitter.gtk/create-element only ever receives `(when ns {:ns ns})` from
+;; glitter.core (confirmed via a throwaway println probe: mounting
+;; `[:button {:label "x"}]` printed `:PROBE-create-element "button" nil`,
+;; and the button's OWN label right after `w/create!` ran was still empty).
+;; The REAL prop values only ever arrive afterward, via glitter.core's
+;; set-attributes -> IRender/set-attribute -> w/apply-props!, called ONCE
+;; PER KEY (not as one batched map). This means:
+;;
+;; (1) A `:ctor` closure that branches on a prop (`(if (:label p) ...)`) is
+;;     NOT WRONG, but its conditional branch NEVER actually fires through
+;;     the real reconciler flow — it always takes the "no prop" branch.
+;;     This is HARMLESS as long as `:apply` ALSO independently re-applies
+;;     that same prop (every existing spec below does this correctly for
+;;     :label/:file/:text/etc. — the ctor branch is genuinely redundant but
+;;     not a bug, since the observable end state is the same either way).
+;;
+;; (2) It IS A REAL BUG for any prop `:ctor` uses that has NO corresponding
+;;     `:apply`-time setter. Found two live, shipped instances of exactly
+;;     this on an audit prompted by writing this note: checkbutton-spec's
+;;     `:label` (fixed — see its own comment) and scale-button-spec's
+;;     `:min`/`:max`/`:step` (fixed — see its own comment, uses
+;;     gtk_scale_button_get_adjustment + gtk_adjustment_configure since
+;;     GtkScaleButton has no direct set-range call the way :scale/
+;;     :spin-button do). Neither bug was ever exercised: checkbutton's
+;;     :label has exactly one call site in this whole project (todo.clj),
+;;     which never passes :label; scale-button's default range (0-100)
+;;     happened to match every existing smoke's chosen values.
+;;
+;; (3) A SUBTLER trap sits inside `:apply` itself for any MULTI-KEY prop
+;;     group (like a range's min+max+step): because set-attribute calls
+;;     apply-props! with exactly ONE key at a time, an `:apply` closure
+;;     that reads `(or (:min p) 0)` as a "no value yet" fallback WHEN
+;;     RECONFIGURING THE WHOLE RANGE will silently clobber whichever of
+;;     min/max/step ISN'T present in THAT PARTICULAR call — found live
+;;     while testing the scale-button fix above (an early attempt used
+;;     hardcoded 0/100 fallbacks inside the reconfigure call and the range
+;;     never actually changed). :scale-spec's/:spin-button-spec's own
+;;     :apply closures avoid this because gtk_range_set_range/
+;;     gtk_spin_button_set_range each take ONLY min+max (not step), so a
+;;     single-key call for :min OR :max still supplies a complete,
+;;     correct pair — this trap is specific to any FUTURE :apply closure
+;;     that needs 3+ keys read together in one native call.
+;;
+;; New specs added after this note (round 11 onward): design for props
+;; flowing entirely through :apply, never rely on :ctor seeing anything.
 
+  ;; KNOWN V1 GAP, found live during the round-11 ctor/apply audit (see the
+  ;; note above :checkbutton-spec) but deliberately left unfixed: :width/
+  ;; :height share the same multi-key-clobbering shape :scale's/
+  ;; :spin-button's :min/:max had — since set-attribute delivers one
+  ;; changed key per call, changing ONLY :width on some later re-render
+  ;; (with :height unchanged, so excluded from that call) would fall back
+  ;; to -1 for :height, which GTK treats as "use natural size" rather than
+  ;; "keep the current explicit size." Not fixed like the others because
+  ;; gtk_window_get_default_size uses OUT-PARAMETERS (int*, int*), not a
+  ;; return value — a genuinely new FFI complexity class (allocating and
+  ;; reading raw out-param memory) this project hasn't needed anywhere
+  ;; else, and the practical impact is much narrower than :min/:max ever
+  ;; was: set_default_size only affects the window's INITIAL size before
+  ;; it's first shown, and most apps set :width/:height once at mount and
+  ;; never change just one of them independently afterward.
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
    :apply   (fn [w p]
@@ -510,6 +616,37 @@
    :apply (fn [w p]
             (when (contains? p :revealed) (g/gtk-action-bar-set-revealed w (->bool (:revealed p)))))
    :container :action-bar})
+
+(defn- stack-spec []
+  ;; A :notebook sibling with no tabs of its own — see stack-append-child!
+  ;; (below, beside the other container-management fns) for how each
+  ;; child's OPTIONAL :stack/name prop reaches the container (the same
+  ;; set-attribute interception :grid uses). GTK auto-selects the first
+  ;; added VISIBLE child as visible-child (confirmed via
+  ;; gtk_stack_add_page's C body) — a THIRD instance of :notebook's
+  ;; round-9 mount-time-dispatch finding, so mounting a :stack with
+  ;; initial children genuinely dispatches once before any real
+  ;; interaction. :visible-child-name is a real GObject property, so
+  ;; "notify::visible-child-name" is a free reuse of the 3-arg-void
+  ;; shape — no new set-event-handler branch needed.
+  {:ctor  (fn [_] (g/gtk-stack-new))
+   :apply (fn [w p]
+            (when (contains? p :visible-child-name)
+              (set-stack-visible-child-name! w (:visible-child-name p))))
+   :container :stack})
+
+(defn- grid-spec []
+  ;; The first container here whose child placement data lives on the
+  ;; CHILD's own hiccup props (:grid/column/:grid/row/:grid/column-span/
+  ;; :grid/row-span), not a fixed slot or append order — see
+  ;; grid-attach! (below, beside the other container-management fns) and
+  ;; glitter.gtk's set-attribute for the full threading story. No signal
+  ;; of its own.
+  {:ctor  (fn [_] (g/gtk-grid-new))
+   :apply (fn [w p]
+            (when (contains? p :row-spacing) (g/gtk-grid-set-row-spacing w (int (:row-spacing p))))
+            (when (contains? p :column-spacing) (g/gtk-grid-set-column-spacing w (int (:column-spacing p)))))
+   :container :grid})
 
 (defn- button-spec []
   {:ctor    (fn [p] (if (:label p) (g/gtk-button-new-with-label (:label p)) (g/gtk-button-new)))
@@ -631,11 +768,20 @@
    :container :none})
 
 (defn- checkbutton-spec []
+  ;; :ctor's (:label p) branch is effectively decorative — see the
+  ;; ctor/apply prop-flow note near the top of this file's widget-specs
+  ;; section: :ctor always runs with EMPTY props at the real
+  ;; create-element call site, confirmed live. Fixed round 11: :apply now
+  ;; re-applies :label via gtk_check_button_set_label, same "construct
+  ;; bare, apply for real afterward" shape as :button/:toggle-button/
+  ;; :frame/:expander already use correctly. Was a real, shipped bug
+  ;; before this fix — see NOTICE.md/gtk-widget-layer.md for the trace.
   {:ctor  (fn [p] (if (:label p)
                     (g/gtk-checkbutton-new-with-label (:label p))
                     (g/gtk-checkbutton-new)))
    :apply (fn [w p]
-            (when (contains? p :active) (set-checkbutton-active! w (:active p))))
+            (when (contains? p :active) (set-checkbutton-active! w (:active p)))
+            (when (contains? p :label)  (g/gtk-checkbutton-set-label w (:label p))))
    :container :none})
 
 (defn- toggle-button-spec []
@@ -725,6 +871,15 @@
               (g/gtk-search-bar-set-show-close-button w (->bool (:show-close-button p)))))
    :container :search-bar})
 
+(defn- window-handle-spec []
+  ;; Single-child container (gtk_window_handle_set_child), same strategy
+  ;; as :frame/:revealer/:search-bar. No signal (confirmed: no
+  ;; g_signal_new in gtk/gtkwindowhandle.c). A CSD drag-handle wrapper —
+  ;; rounds out the simple single-child wrapper family.
+  {:ctor  (fn [_] (g/gtk-window-handle-new))
+   :apply (fn [_w _p] nil)
+   :container :window-handle})
+
 (defn- aspect-frame-spec []
   ;; Single-child container (gtk_aspect_frame_set_child) — same strategy
   ;; as :frame/:scrolled/:revealer/:expander. Unlike :scale's/:paned's
@@ -775,8 +930,19 @@
    :apply (fn [w p]
             (when (contains? p :orientation)
               (g/gtk-orientable-set-orientation w (->orientation (:orientation p))))
+            ;; Fall back to the adjustment's OWN current lower/upper — NOT
+            ;; hardcoded 0/100 — same real bug and same fix shape as
+            ;; :scale-button-spec's (see the ctor/apply prop-flow note
+            ;; above :checkbutton-spec): a lone :max change must not reset
+            ;; :min to 0 just because THIS call's `p` doesn't carry :min
+            ;; too. Was a real, shipped bug before this fix — masked since
+            ;; round 1 because scale_smoke.clj's own :min 0 :max 100
+            ;; happened to match the broken fallback exactly.
             (when (or (contains? p :min) (contains? p :max))
-              (g/gtk-range-set-range w (double (or (:min p) 0)) (double (or (:max p) 100))))
+              (let [adj (g/gtk-range-get-adjustment w)]
+                (g/gtk-range-set-range w
+                                       (double (or (:min p) (g/gtk-adjustment-get-lower adj)))
+                                       (double (or (:max p) (g/gtk-adjustment-get-upper adj))))))
             (when (contains? p :step)
               (g/gtk-range-set-increments w (double (:step p)) (double (:step p))))
             (when (contains? p :value)       (set-scale-value! w (:value p)))
@@ -802,8 +968,15 @@
              (double (or (:max p) 100))
              (double (or (:step p) 1))))
    :apply (fn [w p]
+            ;; Fall back to the adjustment's OWN current lower/upper — same
+            ;; real bug and same fix shape as :scale-spec's own :min/:max
+            ;; handling (see the ctor/apply prop-flow note above
+            ;; :checkbutton-spec).
             (when (or (contains? p :min) (contains? p :max))
-              (g/gtk-spin-button-set-range w (double (or (:min p) 0)) (double (or (:max p) 100))))
+              (let [adj (g/gtk-spin-button-get-adjustment w)]
+                (g/gtk-spin-button-set-range w
+                                             (double (or (:min p) (g/gtk-adjustment-get-lower adj)))
+                                             (double (or (:max p) (g/gtk-adjustment-get-upper adj))))))
             (when (contains? p :step)
               (g/gtk-spin-button-set-increments w (double (:step p)) (double (:step p))))
             (when (contains? p :value)     (set-spin-button-value! w (:value p)))
@@ -824,10 +997,34 @@
   ;; re-read via a getter after the fact — see
   ;; glitter.gtk/set-event-handler's own comment for the genuinely new
   ;; 3-arg-double callable shape this needs.
+  ;; :ctor's (:min p)/(:max p)/(:step p) branch is effectively decorative —
+  ;; see the ctor/apply prop-flow note near the top of this file's
+  ;; widget-specs section: :ctor always runs with EMPTY props at the real
+  ;; create-element call site, confirmed live. Fixed round 11: :apply now
+  ;; re-applies the range via gtk_scale_button_get_adjustment +
+  ;; gtk_adjustment_configure (GtkScaleButton has no direct set-range call
+  ;; the way :scale/:spin-button do — its own GtkAdjustment is the only
+  ;; re-range path). Reads the CURRENT value first so reconfiguring the
+  ;; range doesn't reset the button's live position. Was a real, shipped
+  ;; bug before this fix (range silently stuck at the ctor fallback
+  ;; 0-100-step-1) — see NOTICE.md/gtk-widget-layer.md for the trace.
   {:ctor  (fn [p]
             (g/gtk-scale-button-new
              (double (or (:min p) 0)) (double (or (:max p) 100)) (double (or (:step p) 1)) ffi/null))
    :apply (fn [w p]
+            ;; Fall back to the adjustment's OWN current lower/upper/step —
+            ;; NOT hardcoded 0/100/1 — because set-attribute delivers
+            ;; exactly one changed key per call (see the ctor/apply
+            ;; prop-flow note above :checkbutton-spec): a lone :min change
+            ;; must not reset :max/:step to arbitrary defaults just because
+            ;; THIS call's `p` doesn't happen to carry them too.
+            (when (or (contains? p :min) (contains? p :max) (contains? p :step))
+              (let [adj (g/gtk-scale-button-get-adjustment w)
+                    step (double (or (:step p) (g/gtk-adjustment-get-step-increment adj)))]
+                (g/gtk-adjustment-configure adj (g/gtk-scale-button-get-value w)
+                                            (double (or (:min p) (g/gtk-adjustment-get-lower adj)))
+                                            (double (or (:max p) (g/gtk-adjustment-get-upper adj)))
+                                            step step 0.0)))
             (when (contains? p :value)     (set-scale-button-value! w (:value p)))
             (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
@@ -950,6 +1147,36 @@
    :apply (fn [w p] (when (contains? p :active) (set-switch-active! w (:active p))))
    :container :none})
 
+(defn- drop-down-build-model!
+  "A fresh GtkStringList built from `items` (a vector of strings), one
+  gtk_string_list_append call per item — same one-call-per-item shape as
+  every other collection here, deliberately sidestepping
+  gtk_drop_down_new_from_strings' raw C-string-array argument (an FFI
+  marshalling class this project has never needed and doesn't need to
+  start now)."
+  [items]
+  (let [model (g/gtk-string-list-new ffi/null)]
+    (doseq [item items] (g/gtk-string-list-append model item))
+    model))
+
+(defn- drop-down-spec []
+  ;; The first \"choose from options\" widget. Entirely :apply-driven by
+  ;; design, not just by the ctor/apply prop-flow finding above (though
+  ;; that finding is WHY): gtk_drop_down_set_model exists, so :items
+  ;; rebuilds a fresh GtkStringList and swaps it in on every render where
+  ;; it's present, rather than trying to be clever about diffing the
+  ;; item list in place. :selected (an index) reuses the suppressing-guard
+  ;; pattern via set-drop-down-selected!. Both :on-activate (\"activate\")
+  ;; and \"notify::selected\" are free reuses of shapes already
+  ;; generalized elsewhere — see ffi.clj's own comment.
+  {:ctor  (fn [_] (g/gtk-drop-down-new (drop-down-build-model! nil) ffi/null))
+   :apply (fn [w p]
+            (when (contains? p :items)
+              (g/gtk-drop-down-set-model w (drop-down-build-model! (:items p))))
+            (when (contains? p :selected)  (set-drop-down-selected! w (:selected p)))
+            (when (contains? p :sensitive) (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :none})
+
 ;; hiccup tag -> widget spec. An atom so extensions register new widget types
 ;; via register-widget! without editing this ns.
 (def specs
@@ -991,7 +1218,11 @@
          :menu-button    (menu-button-spec)
          :popover        (popover-spec)
          :search-bar     (search-bar-spec)
-         :inscription    (inscription-spec)}))
+         :inscription    (inscription-spec)
+         :window-handle  (window-handle-spec)
+         :stack          (stack-spec)
+         :grid           (grid-spec)
+         :drop-down      (drop-down-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -1118,7 +1349,9 @@
          [:expander "notify::expanded"]     (fn [widget] (g/gtk-expander-get-expanded widget))
          [:paned "notify::position"]        (fn [widget] (g/gtk-paned-get-position widget))
          [:calendar "day-selected"]         calendar-date=
-         [:scale-button "value-changed"]    (fn [widget] (g/gtk-scale-button-get-value widget))}))
+         [:scale-button "value-changed"]    (fn [widget] (g/gtk-scale-button-get-value widget))
+         [:stack "notify::visible-child-name"] (fn [widget] (g/gtk-stack-get-visible-child-name widget))
+         [:drop-down "notify::selected"]       (fn [widget] (g/gtk-drop-down-get-selected widget))}))
 
 ;; Almost every GTK signal glitter connects has the uniform
 ;; void(widget, user_data) shape glitter.gtk's set-event-handler builds by
@@ -1798,9 +2031,43 @@
     (action-bar-append-child! parent child)
     (g/gtk-action-bar-pack-start parent child)))
 
+;; :grid helper. `structural-props` is whatever glitter.gtk stashed off the
+;; CHILD's own :grid-column/:grid-row/:grid-column-span/:grid-row-span props
+;; (see glitter.gtk/set-attribute's own comment) — read once, at the moment
+;; this child is first attached. KNOWN V1 CONSTRAINT: this is NOT reactive —
+;; changing an already-attached child's :grid-column/etc on a LATER
+;; re-render does not move it (glitter.gtk's set-attribute still stashes the
+;; new value on the child's atom, but nothing re-triggers gtk_grid_attach
+;; for an already-parented child). Fine for the common case of a static
+;; layout with fixed positions; a documented gap for a dynamically
+;; repositioning grid — see docs/guide/limitations.md.
+(defn- grid-attach!
+  [parent child structural-props]
+  (let [{:keys [grid-column grid-row grid-column-span grid-row-span]} structural-props]
+    (g/gtk-grid-attach parent child
+                       (int (or grid-column 0)) (int (or grid-row 0))
+                       (int (or grid-column-span 1)) (int (or grid-row-span 1)))))
+
+;; :stack helpers. `structural-props`'s :stack-name (if present) names the
+;; page via gtk_stack_add_named — gtk_stack_remove takes the child widget
+;; directly, no name needed, so stack-remove-child! doesn't exist; :stack
+;; uses the generic g/gtk-stack-remove call straight from remove-child!'s
+;; case branch below. Same non-reactive v1 constraint as :grid: a child's
+;; :stack-name is read once, at first attach.
+(defn- stack-append-child!
+  [parent child structural-props]
+  (if-let [name (:stack-name structural-props)]
+    (g/gtk-stack-add-named parent child name)
+    (g/gtk-stack-add-child parent child)))
+
 (defn append-child!
-  "Add `child` to the end of `parent`. Dispatches on the parent's container kind."
-  [parent-tag parent child]
+  "Add `child` to the end of `parent`. Dispatches on the parent's container
+  kind. `structural-props` (optional) is a CHILD's own :grid-column/etc or
+  :stack-name bookkeeping — see grid-attach!'s/stack-append-child!'s own
+  docstrings above for why :grid/:stack need this threaded through
+  explicitly instead of reading it themselves; every other case branch
+  ignores it."
+  [parent-tag parent child & [structural-props]]
   (case (container-kind parent-tag)
     :box          (g/gtk-box-append parent child)
     :window       (g/gtk-window-set-child parent child)
@@ -1816,10 +2083,13 @@
     :list-box     (g/gtk-list-box-append parent child)
     :flow-box     (g/gtk-flow-box-append parent child)
     :search-bar   (g/gtk-search-bar-set-child parent child)
+    :window-handle (g/gtk-window-handle-set-child parent child)
     :menu-button  (g/gtk-menu-button-set-popover parent child)
     :popover      (g/gtk-popover-set-child parent child)
     :header-bar   (header-bar-append-child! parent child)
     :action-bar   (action-bar-append-child! parent child)
+    :grid         (grid-attach! parent child structural-props)
+    :stack        (stack-append-child! parent child structural-props)
     nil))
 
 (defn remove-child!
@@ -1840,10 +2110,13 @@
     :list-box     (list-box-remove-child! parent child)
     :flow-box     (g/gtk-flow-box-remove parent child)
     :search-bar   (g/gtk-search-bar-set-child parent ffi/null)
+    :window-handle (g/gtk-window-handle-set-child parent ffi/null)
     :menu-button  (g/gtk-menu-button-set-popover parent ffi/null)
     :popover      (g/gtk-popover-set-child parent ffi/null)
     :header-bar   (header-bar-remove-child! parent child)
     :action-bar   (action-bar-remove-child! parent child)
+    :grid         (g/gtk-grid-remove parent child)
+    :stack        (g/gtk-stack-remove parent child)
     nil))
 
 (defn replace-child!
@@ -1853,8 +2126,10 @@
   silently relocated it there, desyncing every consumer's positional
   tracking. Capture old-child's current previous sibling BEFORE removing
   it (removal loses that information), then insert new-child at that same
-  anchor via gtk_box_insert_child_after."
-  [parent-tag parent old-child new-child]
+  anchor via gtk_box_insert_child_after. `structural-props` (optional) is
+  the NEW child's own :grid-column/etc or :stack-name bookkeeping — see
+  append-child!'s own docstring."
+  [parent-tag parent old-child new-child & [structural-props]]
   (case (container-kind parent-tag)
     :box        (let [prev (g/gtk-widget-get-prev-sibling old-child)
                       prev (when-not (or (nil? prev) (zero? prev)) prev)]
@@ -1873,10 +2148,13 @@
     :list-box     (list-box-replace-child! parent old-child new-child)
     :flow-box     (flow-box-replace-child! parent old-child new-child)
     :search-bar   (g/gtk-search-bar-set-child parent new-child)
+    :window-handle (g/gtk-window-handle-set-child parent new-child)
     :menu-button  (g/gtk-menu-button-set-popover parent new-child)
     :popover      (g/gtk-popover-set-child parent new-child)
     :header-bar   (header-bar-replace-child! parent old-child new-child)
     :action-bar   (action-bar-replace-child! parent old-child new-child)
+    :grid         (do (g/gtk-grid-remove parent old-child) (grid-attach! parent new-child structural-props))
+    :stack        (do (g/gtk-stack-remove parent old-child) (stack-append-child! parent new-child structural-props))
     nil))
 
 (defn reorder-child!
@@ -1897,9 +2175,14 @@
   structural reason: their pack-start region IS a real ordered list
   internally, but it's a PRIVATE GtkBox glitter has no pointer to —
   only gtk_header_bar_pack_start/gtk_action_bar_pack_start (append-only)
-  are public API, no reorder call exists to reach it. Used by the keyed
-  reconciler to fix widget order after reuse/create when survivors were
-  reordered or a new item must precede an existing one."
+  are public API, no reorder call exists to reach it. :grid no-ops for a
+  FOURTH reason, different in kind from the other three: a grid child's
+  position is entirely DATA-driven (its own :grid-column/:grid-row
+  props), not order-driven, so 'move this widget after that sibling' has
+  no meaning to translate. :stack no-ops too — pages are name-addressed,
+  not order-addressed. Used by the keyed reconciler to fix widget order
+  after reuse/create when survivors were reordered or a new item must
+  precede an existing one."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box      (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))
@@ -1933,8 +2216,14 @@
   (reorder-child! moves an EXISTING child), but glitter.gtk's
   IRender/insert-before needs a genuine positional insertion of a NEW
   child (glimmer never needed this because Reagent-style positional
-  reconciliation never inserts into the middle of a live child list)."
-  [parent-tag parent child sibling]
+  reconciliation never inserts into the middle of a live child list).
+  `structural-props` (optional) is the child's own :grid-column/etc or
+  :stack-name bookkeeping — see append-child!'s own docstring. :grid/
+  :stack both ignore `sibling` entirely: grid placement comes from the
+  child's OWN props, not from a sibling relationship, and stack pages
+  are name-addressed, not order-addressed — so both route straight to
+  the same attach helper append-child! uses."
+  [parent-tag parent child sibling & [structural-props]]
   (case (container-kind parent-tag)
     :box        (g/gtk-box-insert-child-after parent child (or sibling ffi/null))
     :center-box (center-box-insert-after! parent child sibling)
@@ -1945,4 +2234,6 @@
     :notebook   (notebook-insert-after! parent child sibling)
     :header-bar (header-bar-insert-after! parent child sibling)
     :action-bar (action-bar-insert-after! parent child sibling)
+    :grid       (grid-attach! parent child structural-props)
+    :stack      (stack-append-child! parent child structural-props)
     nil))

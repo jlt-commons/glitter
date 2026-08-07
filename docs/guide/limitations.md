@@ -321,6 +321,72 @@ for the mechanics and `examples/glitter/class_smoke.clj` for the live
 verification (add, coexist, and — the part that actually proves the diff
 path works, not just `add-class` — remove on a re-render).
 
+## `:grid`/`:stack`: a child's structural props are read only at first attach
+
+`:grid-column`/`:grid-row`/`:grid-column-span`/`:grid-row-span` (read by
+`:grid`) and `:stack-name` (read by `:stack`) are stashed on a CHILD's
+own tracking atom via `:glitter/structural-props`, but only consumed at
+the moment that child is FRESHLY attached — a fresh mount, or a keyed
+insert. Changing an already-attached child's `:grid-column`/`:stack-name`
+on a LATER re-render does not move it in the grid or rename its stack
+page; there is no code path that re-reads `:glitter/structural-props`
+for a child already in the tree.
+
+**Why left as-is:** every other container in this project keys position
+either by GTK's own live-queryable occupancy (`:center-box`/`:paned`) or
+by plain append order (`:box`/`:list-box`) — `:grid`/`:stack` are the
+first containers where position is data the CHILD carries, and making
+that data reactive to later changes would mean detecting a
+structural-prop diff INSIDE `set-attribute` and re-invoking
+`gtk_grid_attach`/`gtk_stack_add_named` on an already-parented widget
+(gtk_grid_attach's own behavior on an already-attached child at a new
+position isn't something this round verified live). Fine for the common
+case of a static layout with fixed positions. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#glitterstructural-props--a-childs-props-read-by-its-parent).
+
+## `:stack` doesn't honor a non-default initial `:visible-child-name` at mount
+
+`:apply` runs at `create!` time, BEFORE the reconciler has appended any
+children to the newly-created widget (see the ctor/apply prop-flow
+finding in [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs)) —
+so an initial `[:stack {:visible-child-name "b"} ...]` always applies
+`:visible-child-name` to a completely empty stack. `gtk_stack_get_child_by_name`
+guards `set-stack-visible-child-name!` to avoid the resulting GTK
+warning, but the requested page still doesn't take effect: GTK's own
+`gtk_stack_add_page` auto-selects the FIRST added visible child instead,
+same as `:notebook`'s mount-time auto-select above. A subsequent
+re-render's `:visible-child-name` DOES work correctly (`:apply` runs
+after the stack already has children by then) — only the very first,
+initial page selection is affected.
+
+**Why left as-is:** a real fix needs `:apply` to defer the
+`:visible-child-name` call until after the reconciler has appended this
+render's children — a change to the create!/apply-props! sequencing
+shared by every widget spec, not a `:stack`-local patch. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#stack--a-third-mount-time-auto-dispatch-instance-and-a-real-apply-timing-gap).
+
+## `:window`'s `:width`/`:height` can clobber each other across single-key re-renders
+
+The same multi-key-clobbering shape the ctor/apply audit found and
+fixed in `:scale`/`:spin-button`/`:scale-button` (above) also exists in
+`window-spec`: `gtk_window_set_default_size(window, width, height)`
+takes both dimensions in one call, and a render changing only `:width`
+(or only `:height`) risks resetting the other back to a hardcoded `-1`
+fallback rather than preserving its last-applied value.
+
+**Why NOT fixed alongside the other three this round:** the fix pattern
+used elsewhere — read the widget's CURRENT value as the fallback instead
+of a hardcoded default — needs `gtk_window_get_default_size`, whose real
+signature returns via OUT-PARAMETERS (`void gtk_window_get_default_size
+(GtkWindow*, int *width, int *height)`), a genuinely new FFI marshalling
+class this project hasn't taken on anywhere else. The practical severity
+is also much lower than the other three: `:width`/`:height` are
+initial-sizing-only concerns (GTK's own `-1` fallback means "natural
+size," not garbage), and no live smoke or app in this project currently
+sets them across separate single-key re-renders. Documented as a comment
+above `window-spec` rather than fixed. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs).
+
 ## Still a limitation: `:style`, and no animations
 
 `:style` is still diffed (`IRender/set-style`/`remove-style` are called)

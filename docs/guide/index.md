@@ -102,14 +102,27 @@ live GTK widget tree in sync.
   `:menu-button`/`:popover` — the FIRST popup surface in this project
   and the first hiccup relationship that isn't a normal
   append-child!-managed tree child, with both signals turning out to
-  be free reuses of the default 2-arg-void shape.
+  be free reuses of the default 2-arg-void shape, a ctor/apply prop-flow
+  audit that found and fixed four real, previously-shipped bugs
+  (`:checkbutton`'s never-applied `:label`, and three widgets'
+  `:min`/`:max`/`:step` silently clobbering each other across
+  single-key re-renders), a namespaced-keyword-props-are-silently-
+  dropped finding that shaped the whole design that followed, the new
+  `:glitter/structural-props` mechanism (a CHILD's props read by its
+  PARENT at attach time) that `:grid` and `:stack` both need,
+  `:window-handle` — a quick single-child win that also caught a bug
+  in this round's OWN new code, `:stack` — a THIRD mount-time-auto-
+  dispatch instance plus a real `:apply`-timing gap, `:drop-down` —
+  the first "choose from options" widget, built on an incrementally-
+  constructed `GtkStringList`, and `:grid` — the first container whose
+  child placement is driven entirely by the child's own hiccup props.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the twenty-two automated live-GTK
+  headless fake-`IRender` test renderer, the twenty-five automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

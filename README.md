@@ -65,6 +65,9 @@ failure:
 | `jolt inscription-search-bar-smoke` | `:inscription`'s display-only text/overflow props and `:search-bar`'s single-child `search-mode`/`show-close-button` props land on real GTK state, on mount and after a re-render |
 | `jolt header-bar-action-bar-smoke` | `:header-bar`/`:action-bar`'s hybrid title/center-widget-plus-pack-start shape lands children in the right roles and order; the real `show-title-buttons` native-window-controls-prepend finding is asserted explicitly |
 | `jolt menu-button-popover-smoke` | `:menu-button`'s popover-as-child relationship and `:popover`'s suppressing-guarded `visible` prop plus free-reuse `activate`/`closed` signals round-trip through a real click, a real close, and a programmatic sync in both directions with no spurious dispatch |
+| `jolt ctor-apply-regression-smoke` | four real, previously-shipped bugs stay fixed: `:checkbutton`'s `label`, and `:scale`/`:scale-button`/`:spin-button`'s `min`/`max`/`step` no longer clobber each other across separate single-key re-renders |
+| `jolt window-handle-stack-smoke` | `:window-handle`'s single-child wrap lands correctly; `:stack`'s mount-time auto-select-first-page dispatch, a real page switch, and a programmatic sync-back all work |
+| `jolt drop-down-grid-smoke` | `:drop-down`'s `GtkStringList`-backed selection round-trips through a real interaction and a programmatic sync-back; `:grid`'s child-props-driven cell placement (including a column-span cell) lands at the right coordinates |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -156,7 +159,8 @@ frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
 `:password-entry`/`:search-entry`/`:expander`/`:paned`/`:aspect-frame`/
 `:calendar`/`:overlay`/`:flow-box`/`:picture`/`:editable-label`/
 `:notebook`/`:scale-button`/`:inscription`/`:search-bar`/`:header-bar`/
-`:action-bar`/`:menu-button`/`:popover`
+`:action-bar`/`:menu-button`/`:popover`/`:window-handle`/`:stack`/
+`:drop-down`/`:grid`
 (first-party, added directly to glitter; see
 `docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
 `:level-bar`/`:revealer` are display-only props with no signal to wire
@@ -332,6 +336,44 @@ independently of glitter, so an app syncs its own state via
 `:on-activate`/`:on-closed`. See `docs/guide/gtk-widget-layer.md` for
 all three write-ups.
 
+**A ctor/apply audit that found four real bugs, a namespaced-props
+finding, and the new `:glitter/structural-props` mechanism `:grid`/
+`:stack` need.** A probe confirmed `:ctor`'s `props` argument is
+ALWAYS empty at the real call site — `glitter.core` only ever passes
+an optional namespace hint, never the hiccup attrs; real props arrive
+afterward, one key per `IRender/set-attribute` call. Auditing all 42
+pre-round-11 widget specs against this found four real, previously-
+shipped bugs, invisible to every existing smoke: `:checkbutton`'s
+`:label` was never applied at all; `:scale-button`'s `:min`/`:max`/
+`:step` had the same gap; and `:scale`/`:spin-button`'s `:min`/`:max`
+silently clobbered each other across separate single-key re-renders
+(confirmed live that this fires even at initial mount). All three
+fixed by reading the widget's OWN current value as the fallback
+instead of a hardcoded default. A fourth instance, `:window`'s
+`:width`/`:height`, was found but left unfixed (its getter needs
+OUT-PARAMETER FFI marshalling, a new complexity class). Designing
+`:grid` also surfaced that a NAMESPACED keyword prop (`:grid/column`)
+is silently dropped by `glitter.core` itself, upstream of every
+backend — so `:grid`/`:stack`'s own structural props use plain,
+hyphenated keys instead. `:window-handle` is a quick single-child win
+whose first live run caught a bug in this round's own new code (a
+missing case branch, silently no-child). `:stack` is a `:notebook`
+sibling with NAME-addressed pages — a THIRD instance of the
+mount-time-auto-dispatch finding, plus a real `:apply`-timing gap
+(an initial non-default page doesn't take effect at mount).
+`:drop-down` is the first "choose from options" widget, built on an
+incrementally-constructed `GtkStringList`, with both signals free
+reuses of shapes already generalized elsewhere. `:grid` needed real
+architecture: `gtk_grid_attach`'s cell position is data the CHILD's
+hiccup props carry, not something the child's own `:apply` could ever
+know — `glitter.gtk/set-attribute`/`remove-attribute` now stash
+matching props on the CHILD's own tracking atom under
+`:glitter/structural-props`, threaded through to `glitter.widget`'s
+container-management functions as a new optional argument. **Known
+v1 constraint**: structural props are read only at first attach, not
+reactive to later re-renders. See `docs/guide/gtk-widget-layer.md`
+for the full write-up.
+
 Known v1 limitations:
 
 - **Removing an attribute entirely is a no-op.** Setting one to a new value
@@ -392,3 +434,15 @@ Known v1 limitations:
   raw widget pointer glitter has no hiccup-level convention for passing
   sideways yet; `:search-mode` remains fully controllable
   programmatically.
+- **`:grid`/`:stack`'s structural child props are read only at first
+  attach.** A later re-render's changed `:grid-column`/`:grid-row`/
+  `:stack-name` doesn't move a grid cell or rename a stack page.
+- **`:stack` doesn't honor a non-default initial `:visible-child-name`
+  at mount** — `:apply` runs before the reconciler appends children, so
+  GTK's own auto-select-first-page wins instead; later re-renders work
+  correctly.
+- **`:window`'s `:width`/`:height` can clobber each other across
+  separate single-key re-renders** — the same shape `:scale`'s/
+  `:spin-button`'s `:min`/`:max` had, not fixed the same way because
+  the getter needs OUT-PARAMETER FFI marshalling; practical impact is
+  narrow (initial-sizing-only).

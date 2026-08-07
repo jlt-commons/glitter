@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and twenty-two automated smokes that drive a *real* GTK4 window
+fake renderer, and twenty-five automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter — several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Seventeen examples under `examples/glitter/` each open a real GTK window,
+Twenty-five examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -83,6 +83,9 @@ on mismatch:
 | `jolt inscription-search-bar-smoke` | `:inscription`'s display-only text/overflow props land on real GTK state; `:search-bar`'s single-child container reuse and `:search-mode`/`:show-close-button` props re-apply correctly on a re-render | reads `gtk_inscription_get_text`/`get_text_overflow` and `gtk_search_bar_get_search_mode`/`get_show_close_button` back on mount and after a re-render — see [`gtk-widget-layer.md`](gtk-widget-layer.md#inscriptionsearch-bar--two-more-quick-no-signal-wins) |
 | `jolt header-bar-action-bar-smoke` | `:header-bar`/`:action-bar`'s hybrid title/center-widget-plus-pack-start shape lands children in the right roles and right order; the real `:show-title-buttons` native-window-controls-prepend finding is asserted explicitly, not avoided | walks each widget's real internal tree (identified by the `"start"` CSS class GTK itself adds) to read back pack-start button order on mount, then toggles `:show-title-buttons` on a re-render and confirms the pack-start count grows by one while glitter's own buttons keep their relative order — see [`gtk-widget-layer.md`](gtk-widget-layer.md#header-baraction-bar--a-genuinely-new-hybrid-container-shape) |
 | `jolt menu-button-popover-smoke` | `:menu-button`'s popover-as-child relationship (`gtk_menu_button_set_popover`, not a normal tree child) delivers correctly; `:popover`'s `:visible` suppressing-guarded setter and free-reuse `:on-activate`/`:on-closed` signals round-trip through a real click, a real close, and a programmatic sync in both directions with no spurious dispatch | a real `gtk_widget_activate` click and a real `gtk_popover_popdown` call simulate live interactions, asserting dispatch counts before/after each and before/after a subsequent programmatic open-then-close of the popover — see [`gtk-widget-layer.md`](gtk-widget-layer.md#menu-buttonpopover--a-popup-surface-not-a-normal-tree-child) |
+| `jolt ctor-apply-regression-smoke` | four real, previously-shipped bugs stay fixed: `:checkbutton`'s `:label`, and `:scale`/`:scale-button`/`:spin-button`'s `:min`/`:max`/`:step` no longer clobber each other across separate single-key re-renders | reads each widget's live adjustment (`gtk_range_get_adjustment`/`gtk_scale_button_get_adjustment`) back on mount, then changes `:min`-only then `:max`-only (and `:step`-only for scale-button) on SEPARATE re-renders — the exact one-key-at-a-time shape that caused the original clobbering — asserting the untouched key survives each change — see [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs) |
+| `jolt window-handle-stack-smoke` | `:window-handle`'s single-child wrap lands correctly (catching this round's own missing-case-branch bug); `:stack`'s mount-time auto-select-first-page dispatch, real page switch, and suppressing-guard sync-back all work | reads `gtk_window_handle_get_child`/`gtk_stack_get_visible_child_name` back on mount (dispatch count starts at `1`, the stack's own mount-time auto-select); a real FFI `gtk_stack_set_visible_child_name` call simulates a live switch, asserting the dispatched name and dispatch count before/after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#window-handle--a-quick-win-and-a-bug-in-this-rounds-own-code) |
+| `jolt drop-down-grid-smoke` | `:drop-down`'s `GtkStringList`-backed selection round-trips through a real interaction and a suppressing-guarded sync-back; `:grid`'s `:glitter/structural-props`-driven cell placement (including a column-span cell) lands at the right coordinates | reads `gtk_drop_down_get_selected` and `gtk_grid_get_child_at` for each cell back on mount (the span cell checked for pointer-equality at BOTH coordinates it covers); a real FFI `gtk_drop_down_set_selected` call simulates a live pick, asserting the dispatched index and dispatch count before/after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#grid--the-first-child-placement-container) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo
@@ -125,13 +128,14 @@ bb password-search-entry-smoke | expander-paned-smoke
 bb aspect-frame-calendar-smoke | overlay-flow-box-smoke
 bb picture-editable-label-smoke | notebook-scale-button-smoke
 bb inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popover-smoke
+bb ctor-apply-regression-smoke | window-handle-stack-smoke | drop-down-grid-smoke
                         # individual live-GTK smokes
-bb smokes               # all twenty-two smokes in sequence; stops at first failure
+bb smokes               # all twenty-five smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly — never the
 `jolt <task>` shorthand — so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all twenty-two smokes with a plain
+CI gate on their own. `bb smokes` chains all twenty-five smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

@@ -142,6 +142,14 @@
 (ffi/defcfn gtk-checkbutton-new-with-label    "gtk_check_button_new_with_label"    [:string] :pointer)
 (ffi/defcfn gtk-checkbutton-set-active        "gtk_check_button_set_active"        [:pointer :int] :void)
 (ffi/defcfn gtk-checkbutton-get-active        "gtk_check_button_get_active"        [:pointer] :int)
+;; set-label added round 11, fixing a real pre-existing bug: :ctor branched on
+;; (:label p) to pick new-with-label vs. new, but :apply never re-applied
+;; :label afterward — and :ctor's props are ALWAYS empty at the real
+;; create-element call site (confirmed live, see glitter.gtk's set-attribute
+;; comment), so [:checkbutton {:label "x"}] silently rendered with NO label
+;; text, ever. Only usage in this project (todo.clj) never passed :label, so
+;; it shipped unnoticed across 10 rounds.
+(ffi/defcfn gtk-checkbutton-set-label         "gtk_check_button_set_label"         [:pointer :string] :void)
 
 ;; GtkToggleButton — a *separate* GTK4 class from GtkCheckButton (they were
 ;; related pre-GTK4; not anymore), but its "toggled" signal has the exact
@@ -260,6 +268,14 @@
 (ffi/defcfn gtk-spin-button-get-value      "gtk_spin_button_get_value"      [:pointer] :double)
 (ffi/defcfn gtk-spin-button-set-digits     "gtk_spin_button_set_digits"     [:pointer :int] :void)
 (ffi/defcfn gtk-spin-button-set-increments "gtk_spin_button_set_increments" [:pointer :double :double] :void)
+;; get-adjustment added round 11, fixing the SAME real pre-existing bug as
+;; :scale-spec's own gtk-range-get-adjustment (see its comment) — the
+;; identical :min/:max hardcoded-fallback clobbering shape, masked since
+;; round 1 because spin_button_list_box_smoke.clj's own :min 0 happened to
+;; match the broken fallback (its :max 10, however, WAS at risk — the bug's
+;; actual manifestation was order-dependent on which key set-attribute
+;; happened to deliver last).
+(ffi/defcfn gtk-spin-button-get-adjustment "gtk_spin_button_get_adjustment" [:pointer] :pointer)
 
 ;; --- list box (a selectable-row list container) --------------------------------
 ;; append/remove/insert take the CHILD widget directly (gtk_list_box_append
@@ -348,6 +364,16 @@
 (ffi/defcfn gtk-range-get-value      "gtk_range_get_value"      [:pointer] :double)
 (ffi/defcfn gtk-range-set-range      "gtk_range_set_range"      [:pointer :double :double] :void)
 (ffi/defcfn gtk-range-set-increments "gtk_range_set_increments" [:pointer :double :double] :void)
+;; get-adjustment added round 11, fixing a real pre-existing bug in :apply's
+;; :min/:max handling — see gtk-adjustment-get-lower's own comment (near
+;; gtk-scale-button-get-adjustment) for the full mechanism: set-attribute
+;; delivers exactly one changed key per call, so a hardcoded 0/100 fallback
+;; for whichever of :min/:max ISN'T in that particular call silently
+;; clobbers the other. gtk_range_get_adjustment (GtkScale inherits it from
+;; GtkRange) is the read side needed to fall back to the CURRENT bound
+;; instead. Confirmed live: scale_smoke.clj's own :min 0 :max 100 happened
+;; to match the broken fallback exactly, masking the bug since round 1.
+(ffi/defcfn gtk-range-get-adjustment "gtk_range_get_adjustment" [:pointer] :pointer)
 
 ;; --- password entry (obscured-text GtkEditable) -------------------------------
 ;; Implements GtkEditable via a delegate (confirmed against
@@ -586,6 +612,31 @@
 (ffi/defcfn gtk-scale-button-new       "gtk_scale_button_new"       [:double :double :double :pointer] :pointer)
 (ffi/defcfn gtk-scale-button-set-value "gtk_scale_button_set_value" [:pointer :double] :void)
 (ffi/defcfn gtk-scale-button-get-value "gtk_scale_button_get_value" [:pointer] :double)
+;; get-adjustment + adjustment-configure added round 11, fixing a real
+;; pre-existing bug: :ctor used (:min p)/(:max p)/(:step p) to build the
+;; initial range, but :apply never re-applied them on a later render (or,
+;; per the ctor/apply prop-flow finding above, even on the FIRST render —
+;; :ctor's props are always empty at the real call site), so a
+;; scale-button's range silently stayed the ctor fallback (0-100 step 1)
+;; regardless of what hiccup specified. Unlike :scale/:spin-button (which
+;; have their own direct set-range/set-increments calls), GtkScaleButton's
+;; only re-range path is through its own GtkAdjustment object directly —
+;; confirmed via gtk_scale_button_get_adjustment existing and
+;; gtk_adjustment_configure(adj, value, lower, upper, step_increment,
+;; page_increment, page_size) being the one-call way to reconfigure it.
+(ffi/defcfn gtk-scale-button-get-adjustment "gtk_scale_button_get_adjustment" [:pointer] :pointer)
+(ffi/defcfn gtk-adjustment-configure "gtk_adjustment_configure"
+  [:pointer :double :double :double :double :double :double] :void)
+;; get-lower/get-upper/get-step-increment read the adjustment's CURRENT
+;; values as fallbacks when reconfiguring — required because set-attribute
+;; delivers exactly one changed key per call (see the ctor/apply prop-flow
+;; note above :checkbutton-spec): reconfiguring on a lone :min change with
+;; hardcoded 0/100/1 fallbacks for :max/:step would silently clobber
+;; whichever dimension isn't present in THAT call, found live while fixing
+;; this exact bug.
+(ffi/defcfn gtk-adjustment-get-lower "gtk_adjustment_get_lower" [:pointer] :double)
+(ffi/defcfn gtk-adjustment-get-upper "gtk_adjustment_get_upper" [:pointer] :double)
+(ffi/defcfn gtk-adjustment-get-step-increment "gtk_adjustment_get_step_increment" [:pointer] :double)
 
 ;; --- inscription (a lighter-weight, no-markup text display than :label) ------
 ;; No signal at all (confirmed: no g_signal_new in gtk/gtkinscription.c) —
@@ -693,6 +744,97 @@
 (ffi/defcfn gtk-popover-get-autohide      "gtk_popover_get_autohide"      [:pointer] :int)
 (ffi/defcfn gtk-popover-popup             "gtk_popover_popup"             [:pointer] :void)
 (ffi/defcfn gtk-popover-popdown           "gtk_popover_popdown"           [:pointer] :void)
+
+;; --- window handle (a CSD drag-handle single-child container) ----------------
+;; No signal (confirmed: no g_signal_new in gtk/gtkwindowhandle.c) — rounds out
+;; the simple single-child wrapper family (:frame/:revealer/:expander/...).
+(ffi/defcfn gtk-window-handle-new       "gtk_window_handle_new"       [] :pointer)
+(ffi/defcfn gtk-window-handle-set-child "gtk_window_handle_set_child" [:pointer :pointer] :void)
+(ffi/defcfn gtk-window-handle-get-child "gtk_window_handle_get_child" [:pointer] :pointer)
+
+;; --- stack (a :notebook sibling with no tabs of its own) ----------------------
+;; gtk_stack_add_child (unnamed) / gtk_stack_add_named both delegate to the
+;; same internal gtk_stack_add_internal — confirmed via its C body that GTK
+;; auto-selects the first added VISIBLE child as visible-child (a THIRD
+;; instance of the exact :notebook round-9 finding: `if (priv->visible_child
+;; == NULL && gtk_widget_get_visible (child_info->widget)) set_visible_child
+;; (...)`), so mounting a :stack with initial children genuinely dispatches a
+;; mount-time "notify::visible-child-name". gtk_stack_remove takes the child
+;; widget directly, no name needed, so :stack fits the existing generic
+;; remove-child! dispatch with no glitter.gtk-level special-casing.
+;; visible-child-name is a real GObject property (g_param_spec_string), so
+;; "notify::visible-child-name" is a free reuse of the 3-arg-void shape
+;; already generalized for :expander/:paned/:list-box — no new
+;; set-event-handler branch needed, same as :menu-button's/:popover's round-10
+;; signals.
+(ffi/defcfn gtk-stack-new                   "gtk_stack_new"                   [] :pointer)
+(ffi/defcfn gtk-stack-add-child             "gtk_stack_add_child"             [:pointer :pointer] :pointer)
+(ffi/defcfn gtk-stack-add-named             "gtk_stack_add_named"             [:pointer :pointer :string] :pointer)
+(ffi/defcfn gtk-stack-remove                "gtk_stack_remove"                [:pointer :pointer] :void)
+;; get-child-by-name guards set-stack-visible-child-name! against a real,
+;; found-live GTK warning: :apply runs at create! time, BEFORE the
+;; reconciler has appended any children (see the ctor/apply prop-flow
+;; note in glitter.widget) — so an initial :visible-child-name landed on
+;; a completely empty stack, and gtk_stack_set_visible_child_name warned
+;; "Child name '<name>' not found in GtkStack" every time, silently
+;; falling back to GTK's own auto-select-first-page behavior regardless
+;; of what name was requested. Checking the page exists FIRST (this
+;; getter returns NULL until the reconciler's later append-child calls
+;; have actually added it) skips the doomed initial attempt cleanly; the
+;; identical call on a LATER re-render, once real pages exist, finds the
+;; page and proceeds normally.
+(ffi/defcfn gtk-stack-get-child-by-name     "gtk_stack_get_child_by_name"     [:pointer :string] :pointer)
+(ffi/defcfn gtk-stack-set-visible-child-name "gtk_stack_set_visible_child_name" [:pointer :string] :void)
+(ffi/defcfn gtk-stack-get-visible-child-name "gtk_stack_get_visible_child_name" [:pointer] :string)
+
+;; --- drop down (the first "choose from options" widget) ----------------------
+;; gtk_drop_down_new_from_strings takes a raw C string array — this project's
+;; FFI layer has never needed to marshal an array argument, so v1 sidesteps
+;; it entirely: build a GtkStringList incrementally (gtk_string_list_new(NULL)
+;; + gtk_string_list_append per item, same one-call-per-item shape as every
+;; other collection here), then pass it as gtk_drop_down_new's `model`
+;; (GListModel*) — a GtkStringList* is usable directly as a GListModel*
+;; pointer, no cast needed at the raw-pointer FFI level. `expression`
+;; (confirmed nullable via gtk_drop_down_new's own g_return_if_fail) is
+;; jolt.ffi/null — GtkStringList items already display as plain strings with
+;; no custom expression needed. "selected" is a real GObject property
+;; (guint), so "notify::selected" is another free reuse of the 3-arg-void
+;; shape. "activate" is confirmed via gtk/gtkdropdown.c's own g_signal_new
+;; call to be the exact G_TYPE_NONE, 0 shape :menu-button's already
+;; established — the SAME :on-activate signals entry, a second real use.
+;; gtk_drop_down_set_model exists (confirmed in gtk/gtkdropdown.h) so :items
+;; is entirely an :apply-time concern — the ctor always builds with an EMPTY
+;; string list (matching the ctor/apply prop-flow finding above: :ctor's
+;; props are always empty at the real call site anyway, so there's no
+;; "smarter" ctor-time construction to attempt here even if GTK allowed it).
+(ffi/defcfn gtk-string-list-new     "gtk_string_list_new"     [:pointer] :pointer)
+(ffi/defcfn gtk-string-list-append  "gtk_string_list_append"  [:pointer :string] :void)
+(ffi/defcfn gtk-drop-down-new       "gtk_drop_down_new"       [:pointer :pointer] :pointer)
+(ffi/defcfn gtk-drop-down-set-model "gtk_drop_down_set_model" [:pointer :pointer] :void)
+(ffi/defcfn gtk-drop-down-set-selected "gtk_drop_down_set_selected" [:pointer :uint] :void)
+(ffi/defcfn gtk-drop-down-get-selected "gtk_drop_down_get_selected" [:pointer] :uint)
+
+;; --- grid (genuinely new 2D per-child positioning) ----------------------------
+;; gtk_grid_attach(grid, child, column, row, width, height) needs 4 ints PER
+;; CHILD — the first container here whose placement data lives on the CHILD's
+;; own hiccup props, not a fixed slot or append order. glitter.gtk/set-attribute
+;; special-cases :grid/column|row|column-span|row-span, stashing them on the
+;; child's own tracking atom instead of routing through apply-props! (verified
+;; empirically, not assumed, that create-element never receives a child's real
+;; hiccup props at all — only set-attribute does, called once per key, before
+;; the child is ever appended to its parent). gtk_grid_remove takes the child
+;; widget directly, no position needed, so removal fits the existing generic
+;; dispatch. No signal of its own. See glitter.widget's grid-attach! and
+;; glitter.gtk's append-child/insert-before/replace-child for the full
+;; threading story.
+(ffi/defcfn gtk-grid-new                "gtk_grid_new"                [] :pointer)
+(ffi/defcfn gtk-grid-attach              "gtk_grid_attach"              [:pointer :pointer :int :int :int :int] :void)
+(ffi/defcfn gtk-grid-remove              "gtk_grid_remove"              [:pointer :pointer] :void)
+(ffi/defcfn gtk-grid-get-child-at        "gtk_grid_get_child_at"        [:pointer :int :int] :pointer)
+(ffi/defcfn gtk-grid-set-row-spacing     "gtk_grid_set_row_spacing"     [:pointer :uint] :void)
+(ffi/defcfn gtk-grid-get-row-spacing     "gtk_grid_get_row_spacing"     [:pointer] :uint)
+(ffi/defcfn gtk-grid-set-column-spacing  "gtk_grid_set_column_spacing"  [:pointer :uint] :void)
+(ffi/defcfn gtk-grid-get-column-spacing  "gtk_grid_get_column_spacing"  [:pointer] :uint)
 
 ;; --- signals & reference counting (libgobject) -------------------------------
 ;; g_signal_connect_data(instance, detailed_signal, c_handler, data, destroy_data, flags)

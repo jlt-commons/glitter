@@ -36,7 +36,13 @@
                 :linux  ["libgtk-4.so.1"
                          "libgtk-4.so"]}]
 
- :aliases {:aspect-frame-calendar-smoke {:extra-paths ["examples"]
+ :aliases {:ctor-apply-regression-smoke {:extra-paths ["examples"]
+                                         :main-opts ["-m" "glitter.ctor-apply-regression-smoke"]}
+           :window-handle-stack-smoke {:extra-paths ["examples"]
+                                       :main-opts ["-m" "glitter.window-handle-stack-smoke"]}
+           :drop-down-grid-smoke {:extra-paths ["examples"]
+                                  :main-opts ["-m" "glitter.drop-down-grid-smoke"]}
+           :aspect-frame-calendar-smoke {:extra-paths ["examples"]
                                          :main-opts ["-m" "glitter.aspect-frame-calendar-smoke"]}
            :overlay-flow-box-smoke {:extra-paths ["examples"]
                                     :main-opts ["-m" "glitter.overlay-flow-box-smoke"]}

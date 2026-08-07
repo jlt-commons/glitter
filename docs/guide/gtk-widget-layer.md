@@ -1707,6 +1707,351 @@ a `GtkButton` subclass; its `"activate"` signal is wired via
 mechanism entirely outside `GtkButton`'s own press-animation state
 machine.
 
+## The ctor/apply audit — four real, previously-shipped bugs
+
+Every widget spec up to this point was written under an implicit,
+never-verified assumption: that `:ctor`'s `props` argument sees the
+widget's real initial hiccup props, so a construction-time branch like
+`(if (:label p) (gtk-button-new-with-label (:label p)) (gtk-button-new))`
+does something. Investigating `:grid` (below) required understanding
+the ctor/apply prop flow precisely enough to design a new mechanism, and
+that investigation started with a targeted `println` probe inside
+`glitter.gtk/create-element` — which showed `options` is **always**
+`nil` or `{:ns "..."}` at the real call site, never `{:label "x"}` or
+anything resembling a hiccup prop. See
+[`architecture.md`](architecture.md#ctors-props-argument-is-always-empty--verified-live-round-11)
+for the full mechanism (`create-node`'s actual call, `set-attribute`'s
+one-key-per-call shape). This section covers what that finding meant
+for the widgets already shipped by round 10.
+
+A systematic audit of all 42 pre-round-11 widget specs, cross-checking
+every `:ctor` prop reference against `:apply`'s coverage, found four
+real bugs — all confirmed live, all shipped since as early as round 1,
+all invisible to every existing smoke because no existing smoke's
+chosen test values happened to exercise the gap:
+
+1. **`:checkbutton-spec`'s `:label` was read in `:ctor` but never
+   applied.** `(gtk-check-button-new-with-label (:label p))` never
+   actually ran (props are empty at `:ctor` time), and `:apply` never
+   called `gtk_check_button_set_label` either — so a checkbutton's
+   label was silently always empty. Confirmed live:
+   `[:checkbutton {:label "x"}]` mounted with no visible label at all.
+   The only call site in this project, `examples/glitter/todo.clj`,
+   never passes `:label`, so the bug shipped invisibly for 10 rounds.
+   Fixed by adding label handling to `:apply`:
+
+   ```clojure
+   (defn- checkbutton-spec []
+     {:ctor  (fn [_] (g/gtk-check-button-new))
+      :apply (fn [w p]
+               (when (contains? p :label) (g/gtk-checkbutton-set-label w (:label p)))
+               ...)
+      :container :none})
+   ```
+
+2. **`:scale-button-spec`'s `:min`/`:max`/`:step` had the identical
+   gap** — read in `:ctor`, never covered by `:apply` at all.
+   `GtkScaleButton` has no direct set-range call the way `GtkRange`
+   does; the fix reads the button's own `GtkAdjustment` via
+   `gtk_scale_button_get_adjustment` and reconfigures it with
+   `gtk_adjustment_configure`. The FIRST fix attempt used hardcoded
+   fallbacks (`(or (:min p) 0)`) inside that call — which turned out to
+   be bug #3's exact shape, caught by re-testing with values
+   (`:min 10 :max 20`) that didn't happen to match the fallback.
+
+3. **`:scale-spec`'s and `:spin-button-spec`'s `:min`/`:max` clobbered
+   each other across separate renders.** Both `:apply` closures called
+   one combined native function (`gtk_adjustment_configure` /
+   equivalent) with a hardcoded fallback for whichever key was absent
+   from the CURRENT `set-attribute` call — but `set-attribute` fires
+   once per changed key, never as a batched map, even at initial
+   mount. A render that changes only `:max` genuinely arrives as
+   `{:max 80}` alone; a hardcoded `(or (:min p) 0)` then resets `:min`
+   back to `0` even though nothing asked for that. Confirmed live via
+   a dedicated probe: mounting `[:scale {:min 5 :max 50}]` produced an
+   actual live range of `(0.0, 50.0)`, not `(5.0, 50.0)` — the bug
+   fires even on the very first render, since `set-attributes` still
+   delivers `:min` and `:max` as two separate `set-attribute` calls at
+   create time. The existing `scale_smoke.clj` (`:min 0 :max 100`) and
+   `spin_button_list_box_smoke.clj` (`:min 0`) both happened to choose
+   `0` as their minimum, which is exactly the broken fallback — an
+   order-dependent coincidence that masked the bug for 10 rounds.
+
+   Fixed by reading the widget's OWN current adjustment value as the
+   fallback instead of a hardcoded default:
+
+   ```clojure
+   (defn- scale-apply-range! [widget p]
+     (when (or (contains? p :min) (contains? p :max))
+       (let [adj (g/gtk-range-get-adjustment widget)]
+         (g/gtk-adjustment-configure
+          adj
+          (double (or (:min p) (g/gtk-adjustment-get-lower adj)))
+          (double (or (:max p) (g/gtk-adjustment-get-upper adj)))
+          (g/gtk-adjustment-get-step-increment adj) 0.0 0.0 0.0))))
+   ```
+
+   `:spin-button-spec` got the identical fix via
+   `gtk_spin_button_get_adjustment` instead of `gtk_range_get_adjustment`
+   (GtkSpinButton is not a GtkRange subclass).
+
+4. **Not fixed — documented v1 gap:** the audit found ONE more
+   instance of the same shape, `window-spec`'s `:width`/`:height` ->
+   `gtk_window_set_default_size`. Its counterpart getter,
+   `gtk_window_get_default_size`, uses OUT-PARAMETERS — a genuinely new
+   FFI marshalling class this project hasn't taken on — and the
+   practical severity is much lower than the other three (an
+   initial-sizing-only concern; the `-1` fallback GTK itself uses means
+   "natural size," not garbage, so a `:width`-only re-render doesn't
+   *break* anything, it just stops applying a previously-set `:height`
+   on the next unrelated resize). Left as a documented comment above
+   `window-spec` rather than fixed this round.
+
+`examples/glitter/ctor_apply_regression_smoke.clj` pins bugs 1-3
+permanently: it changes `:min`/`:max`/`:step` on SEPARATE re-renders
+(not together in one hiccup swap) specifically to exercise the
+one-key-at-a-time call pattern that caused the clobbering — changing
+both together in one render would never have caught the original bug,
+since that code path (`set-attribute` receiving two keys in one call)
+never exists in the real reconciler at all.
+
+**The rule going forward, stated for every future widget-spec author:**
+design for props flowing entirely through `:apply`, never rely on
+`:ctor` seeing anything. If `:ctor` branches on a prop for a
+performance or correctness reason (e.g. picking the right
+`gtk_*_new_with_*` constructor), that branch is dead code through the
+real reconciler path — `:apply` must independently cover the same prop,
+and if `:apply` combines multiple keys into one native call, it must
+read the widget's OWN current values as fallbacks, never hardcoded
+defaults.
+
+## A second finding: namespaced keyword props are silently dropped
+
+Before designing `:grid`'s structural-props mechanism, the original
+plan used namespaced keys — `:grid/column`, `:grid/row`, `:stack/name`
+— matching this project's own Clojure conventions
+([`clojure/conventions.md`](../../CLAUDE.md)'s "keywords over strings
+for keys" guidance, and simply looking more idiomatic). A throwaway
+probe mounting `[:label {:my-plain-prop 42 :grid/column 2}]` and
+printing every key `IRender/set-attribute` actually received showed
+only `:my-plain-prop` ever arrived — `:grid/column` never reached
+`set-attribute` at all, no error, no warning, just silently absent.
+
+Root cause: `glitter.core`'s `set-attr` and `update-attr` both guard on
+`(when-not (namespace attr) ...)` before calling into `IRender` —
+inherited directly from Replicant's own convention that a namespaced
+hiccup attribute is reserved for framework-internal use, not meant to
+reach the DOM. glitter's port kept this guard verbatim (it's exactly
+the mechanism `:glitter/remember`-style internal keys rely on to stay
+invisible to `IRender/set-attribute`), and nothing about it is
+glitter-specific or fixable at the widget-spec level — the drop happens
+in `glitter.core`, upstream of every backend.
+
+This is why `:grid-column`/`:grid-row`/`:grid-column-span`/
+`:grid-row-span`/`:stack-name` (below) are plain, hyphenated,
+non-namespaced keywords rather than the more idiomatic `:grid/column`
+form: the namespaced form would have compiled, mounted with no error,
+and simply never worked, for every consumer forever — a worse trap
+than an unusual naming choice.
+
+## `:glitter/structural-props` — a child's props read by its PARENT
+
+Every container strategy up to this point — ordered append lists,
+fixed named slots, the popup-surface special case — has one thing in
+common: the PARENT alone decides where a child goes. `:grid` breaks
+that: a `GtkGrid` cell's position is data the CHILD carries
+(`:grid-column`/`:grid-row`/`:grid-column-span`/`:grid-row-span`), and
+`:stack`'s page name (`:stack-name`) is the same shape — a child-borne
+prop the parent needs at attach time.
+
+Two things rule out routing these through the normal `:apply` path.
+First, no widget's `:apply` closure has any way to know it's about to
+be attached to a `:grid` versus a `:box` — `:apply` only ever sees its
+OWN widget and its OWN props, never its parent. Second, even if it did,
+`:apply` runs on an ALREADY-CONSTRUCTED widget; grid attachment is a
+call the PARENT makes (`gtk_grid_attach`) at the moment the child is
+inserted into the tree, not a property the child widget itself holds.
+
+The mechanism: `glitter.gtk/set-attribute` and `remove-attribute`
+special-case a small `structural-child-props` set, stashing matching
+keys on the CHILD's own `el` atom instead of routing them to
+`glitter.widget/apply-props!`:
+
+```clojure
+(def ^:private structural-child-props
+  #{:grid-column :grid-row :grid-column-span :grid-row-span :stack-name})
+
+(defn- structural-child-prop? [k] (contains? structural-child-props k))
+
+(set-attribute [_ el a v _opt]
+  (if (structural-child-prop? a)
+    (swap! el assoc-in [:glitter/structural-props a] v)
+    (w/apply-props! (:tag @el) (ptr el) {a v}))
+  nil)
+```
+
+`append-child`, the fresh-insert branch of `insert-before`, and
+`replace-child` all read `(:glitter/structural-props @child-node)` off
+the CHILD and pass it as a new, optional trailing argument into
+`glitter.widget`'s `append-child!`/`insert-child-after!`/
+`replace-child!` — the only place with access to both the parent's
+container kind and the child's stashed props:
+
+```clojure
+(w/append-child! (:tag @el) (ptr el) (ptr child-node) (:glitter/structural-props @child-node))
+```
+
+`glitter.widget`'s `grid-attach!` and `stack-append-child!` are the
+consumers:
+
+```clojure
+(defn- grid-attach! [parent child structural-props]
+  (let [{:keys [grid-column grid-row grid-column-span grid-row-span]} structural-props]
+    (g/gtk-grid-attach parent child
+                        (or grid-column 0) (or grid-row 0)
+                        (or grid-column-span 1) (or grid-row-span 1))))
+
+(defn- stack-append-child! [parent child structural-props]
+  (if-let [name (:stack-name structural-props)]
+    (g/gtk-stack-add-named parent child name)
+    (g/gtk-stack-add-child parent child)))
+```
+
+`remove-child!` needed no threading at all — both `gtk_grid_remove` and
+`gtk_stack_remove` identify the child by widget pointer alone, with no
+position/name argument needed for removal.
+
+**Known v1 constraint, deliberately not solved this round:**
+structural props are read ONLY when a child is first attached (a fresh
+mount or a keyed insert) — changing an already-attached child's
+`:grid-column`/`:stack-name` on a LATER re-render does not move or
+rename it, because there is no code path that re-reads
+`:glitter/structural-props` for an already-parented child.
+`reorder-child!`'s docstring documents this explicitly for both
+containers: `:grid`/`:stack` positions are data-driven/name-addressed,
+not order-driven, so "reorder" has no meaning for them the way it does
+for `:box`. Fine for the common case of a static layout with fixed
+positions; see [`limitations.md`](limitations.md).
+
+## `:window-handle` — a quick win, and a bug in THIS round's own code
+
+`GtkWindowHandle` has no signal of its own (confirmed: no
+`g_signal_new` in `gtk/gtkwindowhandle.c`) — a single-child CSD
+drag-handle wrapper, the same container strategy as `:frame`/
+`:revealer`/`:expander`/`:search-bar`. Its first live smoke run caught
+a real bug, but one shipped by THIS round's own new code, not a
+pre-existing one: the `:window-handle` case branch was missing
+entirely from `append-child!`/`remove-child!`/`replace-child!` in
+`glitter.widget.clj`. The widget compiled cleanly and mounted with no
+exception — `gtk_window_handle_set_child` simply never ran, so the
+widget silently had no child at all. Caught immediately by
+`window_handle_stack_smoke.clj` reading the child back and getting
+nothing, before this ever shipped. Fixed by adding the three missing
+`case` branches, mirroring every other single-child container already
+in those functions.
+
+## `:stack` — a third mount-time-auto-dispatch instance, and a real `:apply`-timing gap
+
+`GtkStack` is a `:notebook` sibling with no visible tabs of its own —
+pages are NAME-addressed (`:stack-name`, via the structural-props
+mechanism above), not index-addressed the way `:notebook`'s pages are.
+`gtk_stack_add_page`'s C body auto-selects the first added VISIBLE
+child as the stack's `visible-child` — confirmed by reading it
+directly — a THIRD instance of the exact mount-time-auto-dispatch
+finding `:notebook` first surfaced two rounds ago. Mounting a `:stack`
+with initial children genuinely dispatches a `"notify::visible-child-name"`
+before any real interaction; `window_handle_stack_smoke.clj`'s
+dispatch-count baseline starts at `1`, not `0`, for the same reason
+`notebook_scale_button_smoke.clj`'s does.
+
+A second, genuinely new finding fell out of writing this smoke: `:apply`
+runs at `create!` time, BEFORE the reconciler has appended any
+children (see the ctor/apply prop-flow section above) — so an initial
+`:visible-child-name` prop always landed on a completely EMPTY stack.
+`gtk_stack_set_visible_child_name` warned `Child name not found in
+GtkStack` on every single fresh mount, silently falling back to GTK's
+own auto-select-first-page behavior instead of the requested page.
+Fixed the WARNING (not the underlying timing gap) by guarding
+`set-stack-visible-child-name!` on `gtk_stack_get_child_by_name`,
+proceeding only if the named page already exists:
+
+```clojure
+(defn- set-stack-visible-child-name! [widget name]
+  (when (and name (g/gtk-stack-get-child-by-name widget name)
+             (not= name (g/gtk-stack-get-visible-child-name widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-stack-set-visible-child-name widget name)
+    (swap! suppressing disj widget)))
+```
+
+This silences the spurious warning, but leaves a real, documented v1
+gap: requesting a NON-default initial page still doesn't take effect
+at mount, because `:apply` has no way to defer itself until after
+children exist. `window_handle_stack_smoke.clj`'s own initial
+`:stack-page` is deliberately `"a"` — the page GTK's own auto-select
+would land on anyway — specifically to exercise the parts of `:stack`
+that DO work correctly (real interaction, suppressing-guard
+programmatic sync-back) rather than assert on the known gap. See
+[`limitations.md`](limitations.md).
+
+## `:drop-down` — the first "choose from options" widget
+
+`GtkDropDown` needed a model — `GtkStringList` — built incrementally,
+one string at a time, deliberately sidestepping
+`gtk_drop_down_new_from_strings`'s raw C-string-array argument, an FFI
+marshalling class (a `char**` array) this project has never needed:
+
+```clojure
+(defn- drop-down-build-model! [items]
+  (let [model (g/gtk-string-list-new jolt.ffi/null)]
+    (doseq [item items] (g/gtk-string-list-append model item))
+    model))
+```
+
+Consistent with the round's "design for `:apply`, never `:ctor`" rule
+(above): `:ctor` always builds an EMPTY `GtkStringList` — real props
+are never present at `:ctor` time regardless, so there's no reason to
+build anything else there — and `:apply`'s `:items` key calls
+`gtk_drop_down_set_model` to swap in a freshly-built model whenever the
+item list changes. `:selected` (a plain int index) follows the usual
+set-compare-suppress shape every value-bearing widget here uses.
+
+Both of `:drop-down`'s signals turned out to be free reuses, needing
+zero new `glitter.gtk` callable-shape code: `"notify::selected"` is the
+same 3-arg-void GObject property-change shape already generalized for
+`:list-box`/`:expander`/`:paned`/`:stack` (above), and `"activate"` is
+the same plain 2-arg-void shape `:menu-button` already registered.
+`drop_down_grid_smoke.clj`'s selection round-trip (a real FFI
+selection change bypassing the wrapper, then a programmatic sync-back)
+proves both reuses hold for a fourth and fifth widget respectively,
+not just that they compile.
+
+## `:grid` — the first child-placement container
+
+`GtkGrid`'s attachment API, `gtk_grid_attach(grid, child, column, row,
+width, height)`, takes the child's cell position as direct arguments
+at attach time — no separate "set cell" call the way `:center-box`'s
+named-slot setters work, and no ordered-append semantics the way
+`:box`'s do. This is what the `:glitter/structural-props` mechanism
+(above) exists to serve: `grid-attach!` reads the child's stashed
+`:grid-column`/`:grid-row`/`:grid-column-span`/`:grid-row-span` (each
+defaulting to `0`/`0`/`1`/`1` when absent) and calls `gtk_grid_attach`
+directly. `:row-spacing`/`:column-spacing` are the grid's OWN
+(non-structural) props, applied the normal way through `:apply`.
+
+`gtk_grid_remove` takes the child widget pointer directly, needing no
+position information — `remove-child!`'s `:grid` branch is a one-line
+`case` addition, no structural-props threading needed at all.
+`gtk_grid_get_child_at(grid, column, row)` is the live-GTK verification
+primitive `drop_down_grid_smoke.clj` uses to confirm real cell
+placement, including a column-span cell verified by pointer-equality at
+BOTH of the two coordinates it's meant to cover — proving the span
+argument, not just the base column/row, reached GTK correctly.
+
+`:grid` inherits `:glitter/structural-props`'s v1 constraint above: a
+child's cell position is fixed at first attach, not reactive to a
+later re-render's `:grid-column`/etc changes.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's
