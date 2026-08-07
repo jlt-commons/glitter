@@ -51,10 +51,23 @@
                         [:effect/assoc-in [:fahrenheit] fahrenheit]]
     :else               []))
 
-(defn format-number [n]
-  (if (and (number? n) (== n (long n)))
-    (str (long n))
-    (str n)))
+(defn format-number
+  "Displays a whole-number double without a trailing \".0\" (100.0 ->
+  \"100\"); anything else, including a value too large for (long n) to
+  hold, falls back to str's own rendering. The (long n) probe itself can
+  throw (finite-but-huge doubles like 1e300 are valid parse-number
+  output — see its docstring, which only rejects NaN/Infinity, not
+  large-but-finite values) — the same class of bug parse-number's own
+  non-finite guard was added to close, just for magnitude instead of
+  finiteness. Wrapped the same defensive way, rather than adding a new
+  Long/MAX_VALUE-range check whose availability under Jolt hasn't been
+  verified the way Double/parseDouble's has."
+  [n]
+  (try
+    (if (and (number? n) (== n (long n)))
+      (str (long n))
+      (str n))
+    (catch Exception _ (str n))))
 
 (defn parse-number
   "Parses a just-typed field's raw text into a finite double, or nil for

@@ -49,3 +49,16 @@
     (is (nil? (temperature/parse-number "-Infinity")))
     (is (nil? (temperature/parse-number "NaN")))
     (is (nil? (temperature/parse-number "1e400")))))
+
+(deftest format-number-test
+  (testing "Whole-number doubles render without a trailing .0"
+    (is (= "100" (temperature/format-number 100.0)))
+    (is (= "0" (temperature/format-number 0.0))))
+
+  (testing "Non-whole doubles render via str"
+    (is (= "37.5" (temperature/format-number 37.5))))
+
+  (testing "A finite-but-huge double (parse-number accepts it — see its own
+  docstring, which only rejects NaN/Infinity) does not crash the (long n)
+  probe, falling back to str's own rendering instead"
+    (is (= "1.0E300" (temperature/format-number 1.0E300)))))
