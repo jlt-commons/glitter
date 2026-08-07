@@ -56,6 +56,8 @@ failure:
 | `jolt switch-smoke` | `:switch`'s `state-set` signal (3-arg, non-void return — a generalized callable shape) delivers correctly, no spurious dispatch |
 | `jolt revealer-center-box-smoke` | `:revealer`'s props-driven reveal/transition; `:center-box`'s 3 named slots survive an append, a props-only update, and a removal |
 | `jolt spin-button-list-box-smoke` | `:spin-button`'s `value-changed` reads back through the right getter despite sharing `:scale`'s signal name; `:list-box`'s `row-selected` (a third callable shape) delivers the selected row's index, and a tag-swapped/removed row doesn't corrupt its siblings or spuriously dispatch |
+| `jolt password-search-entry-smoke` | `:password-entry`/`:search-entry` reuse `:entry`'s `GtkEditable`-delegate `changed` signal; `:search-entry`'s own `search-changed` fires synchronously on a text clear, no spurious dispatch on programmatic sync |
+| `jolt expander-paned-smoke` | `:expander`'s `notify::expanded` and `:paned`'s `notify::position` deliver correctly — free reuse of the 3-arg-void callable shape `:list-box` generalized — and `:paned`'s 2 named slots survive a safe tag swap |
 
 **In CI, invoke the alias form, not the task form** — `jolt -M:test`,
 `jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
@@ -141,7 +143,8 @@ rationale on both.
 Early. Widget set: window/box/button/label/entry/checkbutton/separator/
 frame/scrolled (forked from glimmer) plus `:scale`/`:spinner`/
 `:progress-bar`/`:image`/`:toggle-button`/`:level-bar`/`:link-button`/
-`:switch`/`:revealer`/`:center-box`/`:spin-button`/`:list-box`
+`:switch`/`:revealer`/`:center-box`/`:spin-button`/`:list-box`/
+`:password-entry`/`:search-entry`/`:expander`/`:paned`
 (first-party, added directly to glitter; see
 `docs/guide/gtk-widget-layer.md`) — `:spinner`/`:progress-bar`/`:image`/
 `:level-bar`/`:revealer` are display-only props with no signal to wire
@@ -202,6 +205,32 @@ swap goes through them. Both are now properly implemented for
 `reorder-child!` (a genuinely structural no-op — three named slots have
 no meaningful "reorder"). See `docs/guide/gtk-widget-layer.md`.
 
+**`:password-entry`/`:search-entry` reuse `:entry`'s `GtkEditable`
+signal for free — but `signal-value` still needed new entries.** Both
+implement `GtkEditable` via a delegate (confirmed against
+`gtk/gtkpasswordentry.c`/`gtk/gtksearchentry.c`), so `"changed"` and
+`gtk_editable_set/get_text` work on either pointer with no new plumbing.
+`signal-value`'s `[tag signal]` keying (above) meant `:entry`'s own
+registration didn't automatically cover them, though — the first version
+of this round shipped without `[:password-entry "changed"]`, silently
+losing the dispatched value. `:search-entry` also gets a genuinely new
+`"search-changed"` signal, debounced except when clearing to empty text
+(fires synchronously — confirmed by reading `gtk_search_entry_changed`'s
+C body).
+
+**`:expander`/`:paned` reuse the 3-arg-void shape for free; `:paned`
+inherits `:center-box`'s gap with a different failure shape.** Neither
+widget has a dedicated interaction signal — real interactivity is
+`"notify::expanded"`/`"notify::position"`, GObject property-change
+signals that share the exact `void(GObject*, GParamSpec*, gpointer)`
+shape `:list-box` already generalized `set-event-handler` for, so no new
+literal call site was needed. `:paned` is a new 2-named-slot container
+(a simpler `:center-box`), inheriting the same structural v1 gap but
+verified to fail DIFFERENTLY: swapping the last slot's tag while both
+are full lands correctly (no trailing slot to corrupt into); swapping
+the first slot's tag silently drops the new widget and leaves that slot
+empty. See `docs/guide/gtk-widget-layer.md` for both traces.
+
 Known v1 limitations:
 
 - **Removing an attribute entirely is a no-op.** Setting one to a new value
@@ -221,3 +250,7 @@ Known v1 limitations:
   are occupied.** Change props instead of tags, or nest a stable wrapper
   tag one level down so the type change happens where `:box`-shaped
   reconciliation already handles it correctly.
+- **`:paned` cannot safely swap a slot's hiccup tag while both slots are
+  occupied either** — same remedy, but the failure shape differs:
+  swapping the last slot lands correctly, swapping the first silently
+  drops the new widget and leaves that slot empty.

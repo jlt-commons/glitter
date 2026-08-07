@@ -346,6 +346,69 @@
 (ffi/defcfn gtk-range-set-range      "gtk_range_set_range"      [:pointer :double :double] :void)
 (ffi/defcfn gtk-range-set-increments "gtk_range_set_increments" [:pointer :double :double] :void)
 
+;; --- password entry (obscured-text GtkEditable) -------------------------------
+;; Implements GtkEditable via a delegate (confirmed against
+;; gtk/gtkpasswordentry.c: gtk_editable_init_delegate + get_delegate
+;; returning an inner GtkText, and that the delegate helper itself
+;; connects to the inner widget's "changed" and re-emits it on the outer
+;; object — gtk/gtkeditable.c's gtk_editable_init_delegate,
+;; g_signal_connect(delegate, "changed", ...)) — so
+;; gtk_editable_set_text/get_text and glitter.widget's existing
+;; set-entry-text!/:entry "changed" signal entry work directly on a
+;; GtkPasswordEntry pointer with no new plumbing.
+(ffi/defcfn gtk-password-entry-new                "gtk_password_entry_new"                [] :pointer)
+(ffi/defcfn gtk-password-entry-set-show-peek-icon "gtk_password_entry_set_show_peek_icon" [:pointer :int] :void)
+(ffi/defcfn gtk-password-entry-get-show-peek-icon "gtk_password_entry_get_show_peek_icon" [:pointer] :int)
+
+;; --- search entry (GtkEditable + a debounced "search-changed" signal) --------
+;; Same GtkEditable-delegate reuse story as password entry (confirmed
+;; against gtk/gtksearchentry.c: also calls gtk_editable_init_delegate).
+;; "search-changed" is genuinely new — confirmed via gtk/gtksearchentry.c's
+;; g_signal_new call to be G_TYPE_NONE, 0, the plain 2-arg-void shape, no
+;; set-event-handler generalization needed. Fires debounced (after
+;; :search-delay ms of no typing), unlike "changed" which fires on every
+;; keystroke.
+(ffi/defcfn gtk-search-entry-new              "gtk_search_entry_new"              [] :pointer)
+(ffi/defcfn gtk-search-entry-set-search-delay "gtk_search_entry_set_search_delay" [:pointer :uint] :void)
+(ffi/defcfn gtk-search-entry-get-search-delay "gtk_search_entry_get_search_delay" [:pointer] :uint)
+
+;; --- expander (single-child, collapsible disclosure section) -----------------
+;; gtk_expander_set_child makes it a single-child container — same
+;; strategy as :frame/:scrolled/:revealer. Confirmed against
+;; gtk/gtkexpander.c: it has NO g_signal_new call of its own — real
+;; interactivity means watching "notify::expanded", a GObject
+;; property-change signal that reuses the exact 3-arg-void callable shape
+;; already generalized for :list-box's "row-selected"/"row-activated" —
+;; see glitter.gtk/set-event-handler.
+(ffi/defcfn gtk-expander-new          "gtk_expander_new"          [:string] :pointer)
+(ffi/defcfn gtk-expander-set-label    "gtk_expander_set_label"    [:pointer :string] :void)
+(ffi/defcfn gtk-expander-get-label    "gtk_expander_get_label"    [:pointer] :string)
+(ffi/defcfn gtk-expander-set-expanded "gtk_expander_set_expanded" [:pointer :int] :void)
+(ffi/defcfn gtk-expander-get-expanded "gtk_expander_get_expanded" [:pointer] :int)
+(ffi/defcfn gtk-expander-set-child    "gtk_expander_set_child"    [:pointer :pointer] :void)
+
+;; --- paned (2-slot resizable split view) --------------------------------------
+;; Two independently addressable NAMED slots (start/end), like
+;; :center-box's three but simpler — confirmed against gtk/gtkpaned.h.
+;; Inherits the SAME structural v1 gap :center-box has (see
+;; gtk-widget-layer.md and center-box-insert-after!'s docstring): no
+;; transient capacity for a 3rd simultaneous occupant, so a same-slot
+;; hiccup TAG swap while both slots are full is unsupported — documented
+;; up front this time, not discovered live. GtkPaned implements
+;; GtkOrientable (confirmed: G_IMPLEMENT_INTERFACE (GTK_TYPE_ORIENTABLE,
+;; NULL) in gtk/gtkpaned.c), so orientation can use the SAME
+;; construct-then-correct-via-:apply pattern :box/:separator already use,
+;; unlike :scale's stricter must-resolve-at-construction constraint.
+;; :position (the divider's pixel offset) drives real interactivity via
+;; "notify::position" — another free reuse of the 3-arg-void shape.
+(ffi/defcfn gtk-paned-new             "gtk_paned_new"             [:int] :pointer)
+(ffi/defcfn gtk-paned-set-start-child "gtk_paned_set_start_child" [:pointer :pointer] :void)
+(ffi/defcfn gtk-paned-get-start-child "gtk_paned_get_start_child" [:pointer] :pointer)
+(ffi/defcfn gtk-paned-set-end-child   "gtk_paned_set_end_child"   [:pointer :pointer] :void)
+(ffi/defcfn gtk-paned-get-end-child   "gtk_paned_get_end_child"   [:pointer] :pointer)
+(ffi/defcfn gtk-paned-set-position    "gtk_paned_set_position"    [:pointer :int] :void)
+(ffi/defcfn gtk-paned-get-position    "gtk_paned_get_position"    [:pointer] :int)
+
 ;; --- signals & reference counting (libgobject) -------------------------------
 ;; g_signal_connect_data(instance, detailed_signal, c_handler, data, destroy_data, flags)
 ;; Returns the handler id (a gulong). destroy_data is a GClosureNotify fn ptr —

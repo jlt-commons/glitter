@@ -163,14 +163,17 @@
 ;; here, same as the original four — see signal-value below for their
 ;; value-fns.
 (def signals
-  (atom {:on-click          "clicked"
-         :on-change         "changed"
-         :on-activate       "activate"
-         :on-toggled        "toggled"
-         :on-value-changed  "value-changed"
-         :on-state-set      "state-set"
-         :on-row-selected   "row-selected"
-         :on-row-activated  "row-activated"}))
+  (atom {:on-click            "clicked"
+         :on-change           "changed"
+         :on-activate         "activate"
+         :on-toggled          "toggled"
+         :on-value-changed    "value-changed"
+         :on-state-set        "state-set"
+         :on-row-selected     "row-selected"
+         :on-row-activated    "row-activated"
+         :on-search-changed   "search-changed"
+         :on-expanded         "notify::expanded"
+         :on-position-changed "notify::position"}))
 
 ;; --- widget specs ------------------------------------------------------------
 ;; Each spec: {:ctor (fn [props] widget-ptr) :apply (fn [widget props]) :container (#{:box :window :none})}
@@ -179,7 +182,7 @@
 ;; reference to a name that isn't interned yet is a compile error, in a nested
 ;; closure as much as at the top level.
 (declare set-entry-text! set-checkbutton-active! set-scale-value! set-toggle-button-active! set-switch-active!
-         set-spin-button-value!)
+         set-spin-button-value! set-expander-expanded! set-paned-position!)
 
 (defn- window-spec []
   {:ctor    (fn [_] (g/gtk-window-new))
@@ -216,6 +219,25 @@
   {:ctor  (fn [_] (g/gtk-center-box-new))
    :apply (fn [_ _])
    :container :center-box})
+
+(defn- paned-spec []
+  ;; Two fixed NAMED slots (start/end) — like :center-box's three but
+  ;; simpler, and inheriting the SAME structural v1 gap :center-box has
+  ;; (see paned-insert-after!'s docstring below): do not swap a slot's
+  ;; hiccup TAG while both slots are occupied. GtkPaned implements
+  ;; GtkOrientable (confirmed against gtk/gtkpaned.c), so :orientation
+  ;; uses the same construct-with-a-safe-default-then-correct-via-:apply
+  ;; pattern :box/:separator already use — the raw int 0 is
+  ;; GTK_ORIENTATION_HORIZONTAL, same verified constant scale-spec/
+  ;; box-spec already rely on. :position (the divider's pixel offset)
+  ;; goes through set-paned-position! (suppressing-guard setter) and is
+  ;; watched via "notify::position" — another free reuse of the
+  ;; 3-arg-void callable shape.
+  {:ctor  (fn [_] (g/gtk-paned-new 0))
+   :apply (fn [w p]
+            (when (contains? p :orientation) (g/gtk-orientable-set-orientation w (->orientation (:orientation p))))
+            (when (contains? p :position)    (set-paned-position! w (:position p))))
+   :container :paned})
 
 (defn- button-spec []
   {:ctor    (fn [p] (if (:label p) (g/gtk-button-new-with-label (:label p)) (g/gtk-button-new)))
@@ -260,6 +282,32 @@
             (when (contains? p :text)        (set-entry-text! w (:text p)))
             (when (contains? p :placeholder) (g/gtk-editable-set-placeholder-text w (:placeholder p)))
             (when (contains? p :sensitive)   (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :none})
+
+(defn- password-entry-spec []
+  ;; GtkPasswordEntry implements GtkEditable via a delegate (confirmed
+  ;; against gtk/gtkpasswordentry.c — see ffi.clj's own comment) — reuses
+  ;; set-entry-text! and :entry's "changed" signal entry verbatim, same
+  ;; free-reuse story as :toggle-button/:link-button. Only
+  ;; :show-peek-icon (the reveal-text toggle button) is new.
+  {:ctor  (fn [_] (g/gtk-password-entry-new))
+   :apply (fn [w p]
+            (when (contains? p :text)           (set-entry-text! w (:text p)))
+            (when (contains? p :placeholder)    (g/gtk-editable-set-placeholder-text w (:placeholder p)))
+            (when (contains? p :show-peek-icon) (g/gtk-password-entry-set-show-peek-icon w (->bool (:show-peek-icon p))))
+            (when (contains? p :sensitive)      (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
+   :container :none})
+
+(defn- search-entry-spec []
+  ;; Same GtkEditable-delegate reuse as :password-entry, plus its own
+  ;; genuinely new :on-search-changed signal (debounced by :search-delay
+  ;; ms — see ffi.clj's own comment).
+  {:ctor  (fn [_] (g/gtk-search-entry-new))
+   :apply (fn [w p]
+            (when (contains? p :text)          (set-entry-text! w (:text p)))
+            (when (contains? p :placeholder)   (g/gtk-editable-set-placeholder-text w (:placeholder p)))
+            (when (contains? p :search-delay)  (g/gtk-search-entry-set-search-delay w (:search-delay p)))
+            (when (contains? p :sensitive)     (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
 
 (defn- checkbutton-spec []
@@ -327,6 +375,19 @@
             (when (contains? p :reveal-child)
               (g/gtk-revealer-set-reveal-child w (->bool (:reveal-child p)))))
    :container :revealer})
+
+(defn- expander-spec []
+  ;; Single-child container (gtk_expander_set_child) — same strategy as
+  ;; :frame/:scrolled/:revealer. No dedicated interaction signal of its
+  ;; own (confirmed: no g_signal_new in gtk/gtkexpander.c) — :on-expanded
+  ;; watches "notify::expanded" instead, reusing the 3-arg-void callable
+  ;; shape already generalized for :list-box (see ffi.clj's own comment
+  ;; and glitter.gtk/set-event-handler).
+  {:ctor  (fn [p] (g/gtk-expander-new (or (:label p) "")))
+   :apply (fn [w p]
+            (when (contains? p :label)    (g/gtk-expander-set-label w (or (:label p) "")))
+            (when (contains? p :expanded) (set-expander-expanded! w (:expanded p))))
+   :container :expander})
 
 (defn- scale-spec []
   ;; gtk_scale_new_with_range needs orientation + an initial min/max/step at
@@ -457,27 +518,31 @@
 ;; hiccup tag -> widget spec. An atom so extensions register new widget types
 ;; via register-widget! without editing this ns.
 (def specs
-  (atom {:window        (window-spec)
-         :box           (box-spec)
-         :center-box    (center-box-spec)
-         :button        (button-spec)
-         :link-button   (link-button-spec)
-         :label         (label-spec)
-         :entry         (entry-spec)
-         :checkbutton   (checkbutton-spec)
-         :toggle-button (toggle-button-spec)
-         :switch        (switch-spec)
-         :separator     (separator-spec)
-         :frame         (frame-spec)
-         :scrolled      (scrolled-spec)
-         :revealer      (revealer-spec)
-         :scale         (scale-spec)
-         :spin-button   (spin-button-spec)
-         :spinner       (spinner-spec)
-         :progress-bar  (progress-bar-spec)
-         :image         (image-spec)
-         :level-bar     (level-bar-spec)
-         :list-box      (list-box-spec)}))
+  (atom {:window         (window-spec)
+         :box            (box-spec)
+         :center-box     (center-box-spec)
+         :paned          (paned-spec)
+         :button         (button-spec)
+         :link-button    (link-button-spec)
+         :label          (label-spec)
+         :entry          (entry-spec)
+         :password-entry (password-entry-spec)
+         :search-entry   (search-entry-spec)
+         :checkbutton    (checkbutton-spec)
+         :toggle-button  (toggle-button-spec)
+         :switch         (switch-spec)
+         :separator      (separator-spec)
+         :frame          (frame-spec)
+         :scrolled       (scrolled-spec)
+         :revealer       (revealer-spec)
+         :expander       (expander-spec)
+         :scale          (scale-spec)
+         :spin-button    (spin-button-spec)
+         :spinner        (spinner-spec)
+         :progress-bar   (progress-bar-spec)
+         :image          (image-spec)
+         :level-bar      (level-bar-spec)
+         :list-box       (list-box-spec)}))
 
 (defn register-widget!
   "Register a widget spec under hiccup `tag`. A spec is
@@ -621,6 +686,32 @@
     (g/gtk-spin-button-set-value widget (double value))
     (swap! suppressing disj widget)))
 
+(defn- set-expander-expanded!
+  "Set an expander's expanded state, but only when it differs from the
+  widget's current state, and while suppressing the :on-expanded handler
+  for the synchronous 'notify::expanded' emission gtk_expander_set_expanded
+  causes (GObject property-change notification is always synchronous when
+  a setter actually changes the value). Same set-compare-suppress shape
+  as set-scale-value!/set-spin-button-value!/etc."
+  [widget expanded?]
+  (let [target (->bool expanded?)]
+    (when (not= target (g/gtk-expander-get-expanded widget))
+      (swap! suppressing conj widget)
+      (g/gtk-expander-set-expanded widget target)
+      (swap! suppressing disj widget))))
+
+(defn- set-paned-position!
+  "Set a paned's divider position, but only when it differs from the
+  widget's current position, and while suppressing the
+  :on-position-changed handler for the synchronous 'notify::position'
+  emission gtk_paned_set_position causes. Same set-compare-suppress shape
+  as every other value-bearing widget's programmatic setter here."
+  [widget position]
+  (when (and (some? position) (not= (int position) (g/gtk-paned-get-position widget)))
+    (swap! suppressing conj widget)
+    (g/gtk-paned-set-position widget (int position))
+    (swap! suppressing disj widget)))
+
 (defn- list-box-selected-index
   "The currently selected row's index, or nil if none — read via
   gtk_list_box_get_selected_row -> gtk_list_box_row_get_index AFTER the
@@ -662,12 +753,17 @@
 ;; "row-selected"/"row-activated" (:list-box) share list-box-selected-index
 ;; above, for the same reason.
 (def ^:private signal-value
-  (atom {[:entry "changed"]             (fn [widget] (g/gtk-editable-get-text widget))
-         [:scale "value-changed"]       (fn [widget] (g/gtk-range-get-value widget))
-         [:spin-button "value-changed"] (fn [widget] (g/gtk-spin-button-get-value widget))
-         [:switch "state-set"]          (fn [widget] (g/gtk-switch-get-active widget))
-         [:list-box "row-selected"]     list-box-selected-index
-         [:list-box "row-activated"]    list-box-selected-index}))
+  (atom {[:entry "changed"]                 (fn [widget] (g/gtk-editable-get-text widget))
+         [:password-entry "changed"]        (fn [widget] (g/gtk-editable-get-text widget))
+         [:search-entry "changed"]          (fn [widget] (g/gtk-editable-get-text widget))
+         [:search-entry "search-changed"]   (fn [widget] (g/gtk-editable-get-text widget))
+         [:scale "value-changed"]           (fn [widget] (g/gtk-range-get-value widget))
+         [:spin-button "value-changed"]     (fn [widget] (g/gtk-spin-button-get-value widget))
+         [:switch "state-set"]              (fn [widget] (g/gtk-switch-get-active widget))
+         [:list-box "row-selected"]         list-box-selected-index
+         [:list-box "row-activated"]        list-box-selected-index
+         [:expander "notify::expanded"]     (fn [widget] (g/gtk-expander-get-expanded widget))
+         [:paned "notify::position"]        (fn [widget] (g/gtk-paned-get-position widget))}))
 
 ;; Almost every GTK signal glitter connects has the uniform
 ;; void(widget, user_data) shape glitter.gtk's set-event-handler builds by
@@ -915,6 +1011,75 @@
     (= sibling (g/gtk-center-box-get-center-widget parent)) (g/gtk-center-box-set-end-widget parent child)
     :else nil))
 
+;; :paned helpers — two independently addressable NAMED slots (start/end),
+;; the same "query occupancy live via the getters" shape as :center-box's
+;; three, just simpler. Applies the SAME structural v1 gap from the start
+;; (see paned-insert-after!'s docstring) rather than discovering it live a
+;; second time.
+(defn- paned-append-child!
+  "Place `child` into the first EMPTY slot, start then end. A 3rd+ child
+  is silently dropped — GtkPaned only ever has two slots, full stop."
+  [parent child]
+  (cond
+    (ptr-null? (g/gtk-paned-get-start-child parent)) (g/gtk-paned-set-start-child parent child)
+    (ptr-null? (g/gtk-paned-get-end-child parent))   (g/gtk-paned-set-end-child parent child)
+    :else nil))
+
+(defn- paned-slot-setter
+  "Which gtk_paned_set_*_child fn currently holds `child` in `parent`, or
+  nil if `child` occupies no slot."
+  [parent child]
+  (cond
+    (= child (g/gtk-paned-get-start-child parent)) g/gtk-paned-set-start-child
+    (= child (g/gtk-paned-get-end-child parent))   g/gtk-paned-set-end-child
+    :else nil))
+
+(defn- paned-remove-child! [parent child]
+  (when-let [setter (paned-slot-setter parent child)] (setter parent ffi/null)))
+
+(defn- paned-replace-child! [parent old-child new-child]
+  (when-let [setter (paned-slot-setter parent old-child)] (setter parent new-child)))
+
+(defn- paned-insert-after!
+  "Insert `child` immediately after `sibling` in slot order (start < end)
+  — the only ordering a 2-fixed-named-slot container can meaningfully
+  express. `sibling` nil, or occupying no recognized slot, behaves like a
+  fresh append (first empty slot).
+
+  KNOWN V1 GAP, same ROOT CAUSE as :center-box's (see
+  center-box-insert-after!'s docstring for the full trace) but a
+  DIFFERENT, live-verified SYMPTOM — worth getting precise rather than
+  assuming the two match, since GtkPaned only has 2 slots, not 3:
+
+  - Swapping the LAST slot's tag while both are full (sibling = the
+    OTHER, unchanged slot's widget) happens to land correctly: the new
+    child overwrites the occupied end slot directly (gtk_paned_set_end_child
+    unparents + GTK finalizes the old occupant immediately, same as
+    :center-box), but unlike :center-box there is no THIRD slot after it
+    for the reconciler's stale post-insert bookkeeping to corrupt into —
+    verified live, no assertion failure, correct final state.
+  - Swapping the FIRST slot's tag while both are full (sibling = nil,
+    since it's the first child) fails differently: paned-append-child!'s
+    'first empty slot' search finds NEITHER slot empty (both still
+    occupied at insert time) and silently no-ops — the new child is
+    created but never attached anywhere. The reconciler's later removal
+    of the OLD first-slot child then leaves that slot genuinely EMPTY,
+    not holding either widget. Verified live: both
+    gtk_paned_get_start_child and reading back the swapped widget fail
+    GTK_IS_BUTTON assertions afterward.
+
+  Either way: no same-slot tag swap when both slots are already occupied
+  — change props instead of tags, or nest a stable wrapper tag one level
+  down so the type change happens where :box-shaped reconciliation
+  already handles it correctly. Applied here from the start rather than
+  re-discovered live, informed by the :center-box investigation — but
+  the exact failure shape still needed live verification, not assumption."
+  [parent child sibling]
+  (cond
+    (ptr-null? sibling) (paned-append-child! parent child)
+    (= sibling (g/gtk-paned-get-start-child parent)) (g/gtk-paned-set-end-child parent child)
+    :else nil))
+
 ;; :list-box helpers. gtk_list_box_append/insert auto-wrap a plain child in
 ;; a GtkListBoxRow (confirmed against gtk/gtklistbox.c's own bodies), so
 ;; APPENDING/INSERTING takes the child widget directly. gtk_list_box_remove
@@ -1018,7 +1183,9 @@
     :frame      (g/gtk-frame-set-child parent child)
     :scrolled   (g/gtk-scrolled-window-set-child parent child)
     :revealer   (g/gtk-revealer-set-child parent child)
+    :expander   (g/gtk-expander-set-child parent child)
     :center-box (center-box-append-child! parent child)
+    :paned      (paned-append-child! parent child)
     :list-box   (g/gtk-list-box-append parent child)
     nil))
 
@@ -1031,7 +1198,9 @@
     :frame      (g/gtk-frame-set-child parent ffi/null)
     :scrolled   (g/gtk-scrolled-window-set-child parent ffi/null)
     :revealer   (g/gtk-revealer-set-child parent ffi/null)
+    :expander   (g/gtk-expander-set-child parent ffi/null)
     :center-box (center-box-remove-child! parent child)
+    :paned      (paned-remove-child! parent child)
     :list-box   (list-box-remove-child! parent child)
     nil))
 
@@ -1053,7 +1222,9 @@
     :frame      (g/gtk-frame-set-child parent new-child)
     :scrolled   (g/gtk-scrolled-window-set-child parent new-child)
     :revealer   (g/gtk-revealer-set-child parent new-child)
+    :expander   (g/gtk-expander-set-child parent new-child)
     :center-box (center-box-replace-child! parent old-child new-child)
+    :paned      (paned-replace-child! parent old-child new-child)
     :list-box   (list-box-replace-child! parent old-child new-child)
     nil))
 
@@ -1062,15 +1233,14 @@
   within `parent`. GtkBox and GtkListBox both support real positional
   reordering (list-box via list-box-reorder-child! above, computing a
   fresh live index rather than the sibling-pointer approach GtkBox's own
-  API uses). The single-child containers (window/frame/scrolled/revealer)
-  no-op because they only ever have one child. :center-box no-ops too,
-  but as a genuinely STRUCTURAL limit, not an avoided one: GtkCenterBox's
-  three slots are fixed NAMED identities (start/center/end), not
-  positions — 'move this widget to sit after that one' has no
-  well-defined meaning when there are only three slots and each already
-  has a name. Used by the keyed reconciler to fix widget order after
-  reuse/create when survivors were reordered or a new item must precede
-  an existing one."
+  API uses). The single-child containers (window/frame/scrolled/revealer/
+  expander) no-op because they only ever have one child. :center-box/
+  :paned no-op too, but as a genuinely STRUCTURAL limit, not an avoided
+  one: their slots are fixed NAMED identities (start/center/end, or
+  start/end), not positions — 'move this widget to sit after that one'
+  has no well-defined meaning when every slot already has a name. Used by
+  the keyed reconciler to fix widget order after reuse/create when
+  survivors were reordered or a new item must precede an existing one."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box      (g/gtk-box-reorder-child-after parent child (or sibling ffi/null))
@@ -1080,29 +1250,32 @@
 (defn insert-child-after!
   "Insert `child` into `parent` immediately after `sibling` (nil = insert as the
   first child). GtkBox, GtkCenterBox (via center-box-insert-after! above),
-  and GtkListBox (via list-box-insert-after! above) all support this; the
-  single-child containers (window/frame/scrolled/revealer) no-op because
-  they only ever have one child. This is NOT an optional nicety for
-  :center-box/:list-box — found live that glitter.core's reconciler calls
-  THIS fn (not replace-child!) even for a plain, non-keyed, same-position
-  TAG SWAP (e.g. a :label becoming a :button at some fixed child index):
-  it inserts the new node first, then removes the old one as a separate
-  step. Leaving this a no-op for a container (this project's ORIGINAL v1
-  scope call for :center-box/:list-box, since reverted) desyncs
-  glitter.gtk's own :children bookkeeping — updated unconditionally by
-  IRender/insert-before regardless of whether the underlying GTK call did
-  anything — from live GTK state, and the reconciler's subsequent removal
-  step (which removes 'whatever is tracked at position N') ends up
-  removing the WRONG child. Caught only by a live re-render smoke, not by
-  a plain append-only one — see gtk-widget-layer.md. New relative to the
-  glimmer original: glimmer's own reconciler only ever appends
-  (reorder-child! moves an EXISTING child), but glitter.gtk's
-  IRender/insert-before needs a genuine positional insertion of a NEW
-  child (glimmer never needed this because Reagent-style positional
-  reconciliation never inserts into the middle of a live child list)."
+  GtkPaned (via paned-insert-after! above), and GtkListBox (via
+  list-box-insert-after! above) all support this; the single-child
+  containers (window/frame/scrolled/revealer/expander) no-op because they
+  only ever have one child. This is NOT an optional nicety for
+  :center-box/:paned/:list-box — found live that glitter.core's
+  reconciler calls THIS fn (not replace-child!) even for a plain,
+  non-keyed, same-position TAG SWAP (e.g. a :label becoming a :button at
+  some fixed child index): it inserts the new node first, then removes
+  the old one as a separate step. Leaving this a no-op for a container
+  (this project's ORIGINAL v1 scope call for :center-box/:list-box, since
+  reverted) desyncs glitter.gtk's own :children bookkeeping — updated
+  unconditionally by IRender/insert-before regardless of whether the
+  underlying GTK call did anything — from live GTK state, and the
+  reconciler's subsequent removal step (which removes 'whatever is
+  tracked at position N') ends up removing the WRONG child. Caught only
+  by a live re-render smoke, not by a plain append-only one — see
+  gtk-widget-layer.md. New relative to the glimmer original: glimmer's
+  own reconciler only ever appends (reorder-child! moves an EXISTING
+  child), but glitter.gtk's IRender/insert-before needs a genuine
+  positional insertion of a NEW child (glimmer never needed this because
+  Reagent-style positional reconciliation never inserts into the middle
+  of a live child list)."
   [parent-tag parent child sibling]
   (case (container-kind parent-tag)
     :box        (g/gtk-box-insert-child-after parent child (or sibling ffi/null))
     :center-box (center-box-insert-after! parent child sibling)
+    :paned      (paned-insert-after! parent child sibling)
     :list-box   (list-box-insert-after! parent child sibling)
     nil))

@@ -28,7 +28,11 @@
                          "libgtk-4.1.dylib" "libgtk-4.dylib"]
                 :linux  ["libgtk-4.so.1" "libgtk-4.so"]}]
 
- :aliases {:test    {:extra-paths ["test"]     :main-opts ["-m" "glitter.test-runner"]}
+ :aliases {:password-search-entry-smoke {:extra-paths ["examples"]
+                                         :main-opts ["-m" "glitter.password-search-entry-smoke"]}
+           :expander-paned-smoke {:extra-paths ["examples"]
+                                  :main-opts ["-m" "glitter.expander-paned-smoke"]}
+           :test    {:extra-paths ["test"]     :main-opts ["-m" "glitter.test-runner"]}
            :counter {:extra-paths ["examples"] :main-opts ["-m" "glitter.counter"]}
            :todo    {:extra-paths ["examples"] :main-opts ["-m" "glitter.todo"]}
            :smoke   {:extra-paths ["examples"] :main-opts ["-m" "glitter.smoke"]}

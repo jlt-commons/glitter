@@ -65,16 +65,22 @@ live GTK widget tree in sync.
   2-arg-void signal shape (to a third, distinct shape for `:list-box`),
   `:spin-button` — the widget that needed `glitter.widget/signal-value`
   re-keyed by `[tag signal]` after sharing `:scale`'s exact GTK signal
-  name, and `:center-box` — a genuinely new 3-named-slot container
+  name, `:center-box` — a genuinely new 3-named-slot container
   strategy that surfaced a real v1 gap (and, along the way, a real fix to
-  `insert-child-after!`/`reorder-child!` for every non-`:box` container).
+  `insert-child-after!`/`reorder-child!` for every non-`:box` container),
+  `:password-entry`/`:search-entry` — free `GtkEditable`-delegate signal
+  reuse plus a `signal-value` miss caught live before it shipped, and
+  `:expander`/`:paned` — free reuse of `:list-box`'s generalized
+  3-arg-void shape for their `notify::*` signals, and `:paned`'s own
+  2-named-slot container with a structural gap verified to fail
+  differently from `:center-box`'s.
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
-  headless fake-`IRender` test renderer, the thirteen automated live-GTK
+  headless fake-`IRender` test renderer, the fifteen automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md) — every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

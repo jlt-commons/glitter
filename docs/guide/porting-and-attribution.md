@@ -88,7 +88,17 @@ listed here for provenance, not legal requirement:
   `gtk-spin-button-set-digits`, `gtk-spin-button-set-increments`,
   `gtk-list-box-new`, `gtk-list-box-append`, `gtk-list-box-remove`,
   `gtk-list-box-insert`, `gtk-list-box-get-selected-row`,
-  `gtk-list-box-row-get-index`, `gtk-list-box-select-row`).
+  `gtk-list-box-row-get-index`, `gtk-list-box-select-row`), and twenty
+  more for `:password-entry`/`:search-entry`/`:expander`/`:paned`
+  (`gtk-password-entry-new`, `gtk-password-entry-set-show-peek-icon`,
+  `gtk-password-entry-get-show-peek-icon`, `gtk-search-entry-new`,
+  `gtk-search-entry-set-search-delay`, `gtk-search-entry-get-search-delay`,
+  `gtk-expander-new`, `gtk-expander-set-label`, `gtk-expander-get-label`,
+  `gtk-expander-set-expanded`, `gtk-expander-get-expanded`,
+  `gtk-expander-set-child`, `gtk-paned-new`, `gtk-paned-set-start-child`,
+  `gtk-paned-get-start-child`, `gtk-paned-set-end-child`,
+  `gtk-paned-get-end-child`, `gtk-paned-set-position`,
+  `gtk-paned-get-position`).
 - `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
   `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
   the `:scale` widget spec (a first-party demonstration of the
@@ -136,8 +146,28 @@ listed here for provenance, not legal requirement:
   `list-box-reorder-child!` suppress on the list-box widget around
   `gtk_list_box_remove` — removing the currently-selected row fires a
   real, synchronous `"row-selected(NULL)"` GTK signal that would
-  otherwise reach app dispatch. See
-  [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
+  otherwise reach app dispatch.
+
+  Round 7 adds `password-entry-spec`/`:password-entry` +
+  `search-entry-spec`/`:search-entry` (both reuse `:entry`'s
+  `GtkEditable`-delegate `"changed"` signal *name*, but each still needed
+  its own `signal-value` entry under `[tag "changed"]` — reusing
+  `:entry`'s registration doesn't work once `signal-value` is keyed by
+  tag; `:search-entry` also gets its own new `:on-search-changed` — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#password-entrysearch-entry--free-gtkeditable-reuse-and-a-signal-value-miss)),
+  `set-expander-expanded!`/`expander-spec`/`:expander` (single-child
+  container, no dedicated signal — `:on-expanded` watches
+  `"notify::expanded"` instead), and `set-paned-position!`/`paned-spec`/
+  `:paned` + `paned-append-child!`/`paned-slot-setter`/
+  `paned-remove-child!`/`paned-replace-child!`/`paned-insert-after!` (a
+  second new named-slot container strategy — 2 slots this time —
+  `:on-position-changed` watches `"notify::position"`; both `:expander`'s
+  and `:paned`'s `notify::*` signals reuse `:list-box`'s generalized
+  3-arg-void `set-event-handler` shape for free, and `:paned` inherits
+  `:center-box`'s structural v1 gap with a verified-DIFFERENT failure
+  shape — see
+  [`gtk-widget-layer.md`](gtk-widget-layer.md#expanderpaned--free-signal-reuse-and-a-second-structural-gap)).
+  See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum` — forked from `glimmer.genum`, unmodified.
 - `glitter.app` — adapted from the non-reactive slice of `glimmer.core`
   (`post-to-gui`, `on-gui`, `run*`, `run`). glimmer's own `mount`/`unmount!`/

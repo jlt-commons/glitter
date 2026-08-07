@@ -132,6 +132,33 @@ one-widget patch, and this round's tag-swap scenario is a narrow enough
 usage pattern (most center-box usage keeps a stable widget type per slot
 across re-renders) that it wasn't judged worth that scope increase yet.
 
+## `:paned` cannot safely swap a slot's hiccup tag while both slots are full
+
+Same root cause as `:center-box`'s gap above — `GtkPaned` has exactly two
+fixed named slots (`start`/`end`), no transient capacity for a 3rd
+simultaneous occupant — but a DIFFERENT, live-verified failure shape,
+since two slots behave differently from three when the reconciler's
+"insert new, then remove old" sequencing runs out of room:
+
+- Swapping the **last** slot's tag while both are full lands correctly —
+  there is no third slot after it for the reconciler's stale bookkeeping
+  to corrupt into, unlike `:center-box`.
+- Swapping the **first** slot's tag while both are full fails
+  differently: the insert step finds no empty slot and silently no-ops,
+  and the subsequent removal of the old occupant leaves that slot
+  genuinely EMPTY — not corrupted, just missing both the old and the new
+  widget.
+
+**What to do instead:** same remedy as `:center-box` — change props, not
+tags, or nest a stable wrapper tag one level down. Full trace, including
+the live verification of both failure shapes:
+[`gtk-widget-layer.md`](gtk-widget-layer.md#expanderpaned--free-signal-reuse-and-a-second-structural-gap).
+
+**Why left as-is:** same reasoning as `:center-box` — a real fix needs
+`glitter.gtk`'s generic child bookkeeping to become container-kind-aware,
+not a one-widget patch, and swapping a fixed-slot container's tag
+dynamically is a narrow usage pattern.
+
 ## `:list-box`'s `reorder-child!` is implemented but not live-verified
 
 `list-box-reorder-child!` (moving an already-parented row to a new

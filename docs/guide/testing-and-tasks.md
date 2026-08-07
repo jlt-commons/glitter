@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and thirteen automated smokes that drive a *real* GTK4 window
+fake renderer, and fifteen automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter — several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Thirteen examples under `examples/glitter/` each open a real GTK window,
+Fifteen examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -74,6 +74,8 @@ on mismatch:
 | `jolt switch-smoke` | `:switch`'s `"state-set"` signal (3-arg, non-void return — a generalized `foreign-callable` shape) delivers the correct boolean, and a programmatic state sync doesn't cause a spurious second dispatch | a real FFI `gtk_switch_set_active` call simulates a live toggle (bypassing `set-switch-active!`), asserting the dispatched boolean and dispatch count both before and after a subsequent programmatic `reset!` — see [`gtk-widget-layer.md`](gtk-widget-layer.md#switch--generalizing-set-event-handler) |
 | `jolt revealer-center-box-smoke` | `:revealer`'s `:reveal-child`/`:transition-type`/`:transition-duration` land on real GTK state; `:center-box`'s 3 named slots survive an append, a props-only update, and a removal | reads `gtk_revealer_get_reveal_child`/`get_transition_type`/`get_transition_duration` and each `gtk_center_box_get_*_widget` back on mount and after two re-renders (a safe props-only text update, then dropping a slot's child entirely) — see [`gtk-widget-layer.md`](gtk-widget-layer.md#center-box--a-genuinely-new-container-strategy-and-a-real-v1-gap) |
 | `jolt spin-button-list-box-smoke` | `:spin-button`'s `"value-changed"` reads back through the RIGHT getter despite sharing `:scale`'s signal name; `:list-box`'s `"row-selected"` (a third callable shape) delivers the selected row's index, and a tag-swapped/removed row doesn't corrupt its siblings or spuriously dispatch | a real FFI `gtk_spin_button_set_value` call and a real `gtk_list_box_select_row` call simulate live interactions; a subsequent re-render swaps the selected row's TAG then removes it entirely, asserting dispatch counts and sibling row content stay correct throughout — see [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs) |
+| `jolt password-search-entry-smoke` | `:password-entry`/`:search-entry` reuse `:entry`'s `GtkEditable`-delegate `"changed"` signal NAME but each needed its own `signal-value` entry; `:search-entry`'s own `"search-changed"` fires synchronously on a text clear | a real FFI `gtk_editable_set_text` call types into the password entry and clears the search entry (the documented-in-source path that skips `"search-changed"`'s normal debounce), asserting both dispatched values and that a subsequent programmatic sync causes no spurious dispatch — see [`gtk-widget-layer.md`](gtk-widget-layer.md#password-entrysearch-entry--free-gtkeditable-reuse-and-a-signal-value-miss) |
+| `jolt expander-paned-smoke` | `:expander`'s `"notify::expanded"` and `:paned`'s `"notify::position"` (both free reuses of `:list-box`'s generalized 3-arg-void callable shape) deliver correctly, and `:paned`'s 2 named slots survive a safe last-slot tag swap | real FFI `gtk_expander_set_expanded`/`gtk_paned_set_position` calls simulate live interactions, asserting dispatched values, dispatch counts before/after a subsequent programmatic `reset!`, and both paned slots' content after the swap — see [`gtk-widget-layer.md`](gtk-widget-layer.md#expanderpaned--free-signal-reuse-and-a-second-structural-gap) |
 
 `jolt counter` and `jolt todo` are the interactive examples — the full
 quick-start demo from `docs/guide/index.md`, and a larger task-board demo
@@ -112,13 +114,14 @@ bb smoke | keyed | replace-child | aliased | main-thread-smoke
 bb scale-smoke | class-smoke | leaf-widgets-smoke | toggle-level-smoke
 bb link-button-smoke | switch-smoke
 bb revealer-center-box-smoke | spin-button-list-box-smoke
+bb password-search-entry-smoke | expander-paned-smoke
                         # individual live-GTK smokes
-bb smokes               # all thirteen smokes in sequence; stops at first failure
+bb smokes               # all fifteen smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly — never the
 `jolt <task>` shorthand — so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all thirteen smokes with a plain
+CI gate on their own. `bb smokes` chains all fifteen smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

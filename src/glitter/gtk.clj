@@ -149,7 +149,15 @@
               ;; g_signal_new calls. The row argument itself is ignored
               ;; (`_row` below): the value-fn re-reads the box's own
               ;; get_selected_row after the signal fires, same pattern as
-              ;; every other value-bearing signal here.
+              ;; every other value-bearing signal here. GObject property-
+              ;; notify signals ("notify::expanded" for :expander,
+              ;; "notify::position" for :paned — neither GtkExpander nor
+              ;; GtkPaned has a dedicated interaction signal of its own)
+              ;; share this EXACT shape too — void(GObject*, GParamSpec*,
+              ;; gpointer) is the standard "notify" signature, and a
+              ;; GParamSpec* is just another :pointer under FFI — so both
+              ;; reuse this branch for free, no new literal call site
+              ;; needed.
               ;;
               ;; This can't be collapsed into one data-driven call: jolt's
               ;; foreign-callable/__ccallable is a compile-time special
@@ -166,9 +174,9 @@
                     (fn [src-widget _state _data] (dispatch! src-widget) 0)
                     [:pointer :int :pointer] :int :collect-safe)
 
-                   (#{"row-selected" "row-activated"} signal)
+                   (#{"row-selected" "row-activated" "notify::expanded" "notify::position"} signal)
                    (jolt.ffi/foreign-callable
-                    (fn [src-widget _row _data] (dispatch! src-widget))
+                    (fn [src-widget _pspec-or-row _data] (dispatch! src-widget))
                     [:pointer :pointer :pointer] :void :collect-safe)
 
                    :else

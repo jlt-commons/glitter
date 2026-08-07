@@ -6,6 +6,7 @@
 ;;   bb smoke | keyed | replace-child | aliased | main-thread-smoke | scale-smoke | class-smoke
 ;;   | leaf-widgets-smoke | toggle-level-smoke | link-button-smoke | switch-smoke
 ;;   | revealer-center-box-smoke | spin-button-list-box-smoke
+;;   | password-search-entry-smoke | expander-paned-smoke
 ;;                           individual live-GTK smokes (each exits non-zero on failure)
 ;;   bb smokes               run every live-GTK smoke in sequence; stops at first failure
 ;;   bb lint | lint:strict   clj-kondo over glitter-authored code; :strict propagates findings
@@ -52,6 +53,8 @@
           (row "switch-smoke" ":switch's state-set signal (3-arg, non-void return) via a generalized callable")
           (row "revealer-center-box-smoke" ":revealer's props-driven reveal; :center-box's 3 named slots")
           (row "spin-button-list-box-smoke" ":spin-button's tag-safe value-fn; :list-box's row-selected + container fixes")
+          (row "password-search-entry-smoke" ":password-entry/:search-entry reuse :entry's GtkEditable signal")
+          (row "expander-paned-smoke" ":expander/:paned's notify::* signals reuse the round-6 3-arg-void shape")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -121,6 +124,12 @@
   spin-button-list-box-smoke {:doc "Live-GTK smoke: :spin-button's tag-safe value-fn; :list-box's row-selected + container-management fixes"
                               :task (shell "jolt" "-M:spin-button-list-box-smoke")}
 
+  password-search-entry-smoke {:doc "Live-GTK smoke: :password-entry/:search-entry reuse :entry's GtkEditable-delegate \"changed\" signal"
+                               :task (shell "jolt" "-M:password-search-entry-smoke")}
+
+  expander-paned-smoke {:doc "Live-GTK smoke: :expander/:paned's notify::* signals reuse the round-6 3-arg-void callable shape"
+                        :task (shell "jolt" "-M:expander-paned-smoke")}
+
   smokes {:doc "Run every live-GTK smoke in sequence (CI gate); stops at the first failure"
           :task (do (shell "jolt" "-M:smoke")
                     (shell "jolt" "-M:keyed")
@@ -134,7 +143,9 @@
                     (shell "jolt" "-M:link-button-smoke")
                     (shell "jolt" "-M:switch-smoke")
                     (shell "jolt" "-M:revealer-center-box-smoke")
-                    (shell "jolt" "-M:spin-button-list-box-smoke"))}
+                    (shell "jolt" "-M:spin-button-list-box-smoke")
+                    (shell "jolt" "-M:password-search-entry-smoke")
+                    (shell "jolt" "-M:expander-paned-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings

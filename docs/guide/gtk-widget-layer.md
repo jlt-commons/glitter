@@ -914,6 +914,175 @@ which directly exercises the `:box` branch of the same
 from `when` to `case`) were re-run to confirm zero regression before this
 shipped.
 
+## `:password-entry`/`:search-entry` — free `GtkEditable` reuse, and a signal-value miss
+
+Both `GtkPasswordEntry` and `GtkSearchEntry` implement `GtkEditable` via
+a **delegate**, confirmed against `gtk/gtkpasswordentry.c` and
+`gtk/gtksearchentry.c`: both call `gtk_editable_init_delegate`, which
+internally does
+
+```c
+g_signal_connect (delegate, "changed", G_CALLBACK (delegate_changed), editable);
+```
+
+— the delegate helper connects to the INNER widget's `"changed"` and
+re-emits it on the OUTER object. So `gtk_editable_set_text`/
+`gtk_editable_get_text` and glitter.widget's existing `set-entry-text!`
+work directly on either pointer, exactly like `:entry`, and `signals`
+(the event-keyword -> GTK-signal-name table) needed no new entry: `:on-change
+-> "changed"` already covers both.
+
+`signal-value` (the `[tag signal] -> value-fn` table) is a different
+story. Being keyed by `[tag signal]` since `:spin-button` (two widgets
+ago) means `:entry`'s own `[:entry "changed"]` registration does **not**
+automatically cover `:password-entry`/`:search-entry`, even though all
+three share the identical GTK signal NAME and the identical value-fn
+body (`gtk_editable_get_text`). **The first version of this round
+shipped without `[:password-entry "changed"]`**, and a live smoke caught
+it immediately: typing into the password entry dispatched
+`:action/set-pw` (confirming the SIGNAL wiring worked), but the
+dispatched value came back `nil` every time (confirming the VALUE
+extraction silently failed) —
+
+```clojure
+;; set-event-handler's dispatch!, unchanged:
+(handler (cond-> {:glitter/node el :glitter/gtk-widget src-widget}
+           value-fn (assoc :glitter/value (value-fn src-widget))))
+;; value-fn = (w/signal-value-fn :password-entry "changed") = nil,
+;; since only [:entry "changed"] existed — the cond-> clause never fires,
+;; :glitter/dom-event never gets a :glitter/value key at all.
+```
+
+Fixed by adding the widget's own entries, even though the value-fn body
+is identical to `:entry`'s:
+
+```clojure
+[:password-entry "changed"] (fn [widget] (g/gtk-editable-get-text widget))
+[:search-entry "changed"]   (fn [widget] (g/gtk-editable-get-text widget))
+```
+
+This is exactly the risk `:spin-button`'s `[tag signal]` re-keying was
+designed to prevent (a shared signal name silently losing one widget's
+registration) — but re-keying by tag doesn't mean each widget gets
+`:entry`'s registration "for free" the way `signals` (the signal-NAME
+table) does; it means the OPPOSITE — every widget that wants a
+value-bearing signal needs its own explicit entry, full stop, even when
+that entry is a byte-for-byte duplicate of another widget's. Caught by
+`password_search_entry_smoke.clj` before it ever shipped, not
+discovered after the fact.
+
+`:search-entry` also gets its own genuinely new signal, `"search-changed"`
+— confirmed via `gtk/gtksearchentry.c`'s `g_signal_new` call to be
+`G_TYPE_NONE, 0`, the plain 2-arg-void shape, no `set-event-handler`
+generalization needed. It's debounced by the widget's own internal timer
+(`:search-delay` ms after the user stops typing) — **except** when the
+text is cleared to empty, which reads `gtk_search_entry_changed`'s C
+body directly:
+
+```c
+if (str == NULL || *str == '\0')
+  {
+    ...
+    g_clear_handle_id (&entry->delayed_changed_id, g_source_remove);
+    g_signal_emit (entry, signals[SEARCH_CHANGED], 0);   /* immediate */
+  }
+else
+  {
+    ...
+    reset_timeout (entry);                               /* debounced */
+  }
+```
+
+`password_search_entry_smoke.clj` uses this documented-in-source special
+case (clear to `""`) as its live-interaction trigger for `"search-changed"`
+— a deterministic, synchronous path, instead of trying to wait out a
+real GLib timeout inside a smoke test.
+
+## `:expander`/`:paned` — free signal reuse, and a second structural gap
+
+Neither `GtkExpander` nor `GtkPaned` has a dedicated interaction signal
+of its own. Confirmed live, not assumed: `gtk/gtkexpander.c` has no
+`g_signal_new` call at all; `gtk/gtkpaned.c`'s only signals
+(`cycle-child-focus`, `toggle-handle-focus`, `move-handle`,
+`cycle-handle-focus`) are keybinding-navigation actions, not "the user
+dragged the divider." Real interactivity for both means watching a
+GObject **property-change** signal instead — `"notify::expanded"` for
+`:expander`, `"notify::position"` for `:paned` — using GLib's standard
+`"notify::<property-name>"` detailed-signal syntax with
+`g_signal_connect_data`.
+
+A GObject `"notify"` signal's real C signature is
+`void (*notify) (GObject *gobject, GParamSpec *pspec, gpointer user_data)`
+— 3 args, VOID return. That is the **exact same shape** already
+generalized for `:list-box`'s `"row-selected"`/`"row-activated"` two
+widget-additions ago (`void(GtkListBox*, GtkListBoxRow*, gpointer)`) —
+a `GParamSpec*` is just another `:pointer` under FFI, indistinguishable
+in shape from a `GtkListBoxRow*`. So both new signals slot into the
+EXISTING literal branch with zero new `foreign-callable` call sites:
+
+```clojure
+(#{"row-selected" "row-activated" "notify::expanded" "notify::position"} signal)
+(jolt.ffi/foreign-callable
+ (fn [src-widget _pspec-or-row _data] (dispatch! src-widget))
+ [:pointer :pointer :pointer] :void :collect-safe)
+```
+
+This is the payoff the round-6 `:list-box` write-up promised — "add a
+new signal branch here for the next one" turned out to mean, for THIS
+specific 3-arg-void shape, "add the signal NAME to the existing set,"
+not "write a new branch." `expander_paned_smoke.clj`'s dispatch-count
+assertions are what actually prove this reuse works end-to-end, not
+just that it compiles.
+
+### `:paned` — a second named-slot container, with a DIFFERENT verified failure shape
+
+`GtkPaned` has two independently addressable NAMED slots
+(`start_child`/`end_child`) — a simpler sibling to `:center-box`'s
+three, built the same way (`paned-append-child!`/`paned-slot-setter`/
+`paned-remove-child!`/`paned-replace-child!`/`paned-insert-after!`,
+querying occupancy live via the getters). It inherits the same ROOT
+CAUSE as `:center-box`'s structural v1 gap (see
+[`:center-box`'s section](#center-box--a-genuinely-new-container-strategy-and-a-real-v1-gap)):
+no transient capacity for a 3rd simultaneous occupant when both slots
+are full and a same-slot hiccup TAG swap goes through
+`glitter.core`'s "insert new, then remove old" sequencing.
+
+This gap was applied to `:paned` from the start this round, informed by
+the `:center-box` investigation — but the exact SYMPTOM still needed
+live verification, not assumption, because `GtkPaned` only has 2 slots,
+not 3, and that changes what actually breaks:
+
+- **Swapping the LAST slot's tag** (`sibling` = the OTHER, unchanged
+  slot's widget) while both are full lands **correctly**. The new child
+  overwrites the occupied end slot directly — `gtk_paned_set_end_child`
+  unparents (and, with nothing else referencing it, GTK finalizes) the
+  old occupant immediately, same mechanism as `:center-box` — but unlike
+  `:center-box` there is no THIRD slot after it for the reconciler's
+  stale post-insert bookkeeping to corrupt into. Verified live: no
+  assertion failure, correct final state. `expander_paned_smoke.clj`
+  exercises exactly this path.
+- **Swapping the FIRST slot's tag** (`sibling` = nil, since it's the
+  first child) fails **differently**: `paned-append-child!`'s "first
+  empty slot" search finds NEITHER slot empty (both still occupied at
+  insert time) and silently no-ops — the new widget is created but never
+  attached anywhere. The reconciler's subsequent removal of the OLD
+  first-slot child then leaves that slot genuinely EMPTY, holding
+  neither widget. Verified live in a throwaway probe: both
+  `gtk_paned_get_start_child` and reading back the intended replacement
+  trip `GTK_IS_BUTTON` assertions afterward — not corruption of an
+  unrelated slot this time, just a silently-failed swap.
+
+Either way, the remedy is identical to `:center-box`'s: no same-slot tag
+swap when both slots are already occupied — change props instead of
+tags, or nest a stable wrapper tag one level down so the type change
+happens where `:box`-shaped reconciliation already handles it correctly.
+`expander_paned_smoke.clj` only exercises the safe half (last-slot
+swap); the first-slot failure mode is documented in
+`paned-insert-after!`'s own docstring and `docs/guide/limitations.md`,
+not re-tested in the permanent smoke — the same "document, don't ship a
+test that asserts broken behavior" precedent `:center-box`'s smoke
+already set.
+
 ## Boolean props: `some?`, not truthiness
 
 `apply-props!` filters the prop map before handing it to a widget's
