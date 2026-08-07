@@ -226,14 +226,14 @@ treating the 2 known warnings the same as a clean run.
 `bb hooks:install` writes an executable `.git/hooks/pre-commit` (via
 `spit`, not tracked in the repo — each clone opts in with its own `bb
 hooks:install` run, adapted from `b12n-adk-clj`'s identical pattern). The
-FAST hook runs in ~2s: `clj-kondo --lint src test examples` gated on
-`bb lint:errors`' exit-3-only rule, then `clojure-lsp clean-ns --dry`.
-`bb hooks:install:full` adds a third step, the full `jolt -M:test` suite
-(safe to run in a hook — the suite is headless, driven by
-`glitter.test-renderer`, no live GTK window needed). `bb hooks:uninstall`
-deletes the hook file (idempotent — reports "no pre-commit hook found" on
-a second run rather than erroring). `git commit --no-verify` skips the
-hook for one commit.
+FAST hook runs in ~2s, three steps: `clj-kondo --lint src test examples`
+gated on `bb lint:errors`' exit-3-only rule, then `clojure-lsp format
+--dry`, then `clojure-lsp clean-ns --dry`. `bb hooks:install:full` adds a
+fourth step, the full `jolt -M:test` suite (safe to run in a hook — the
+suite is headless, driven by `glitter.test-renderer`, no live GTK window
+needed). `bb hooks:uninstall` deletes the hook file (idempotent — reports
+"no pre-commit hook found" on a second run rather than erroring). `git
+commit --no-verify` skips the hook for one commit.
 
 **Formatting: reversed from "leave it" to "format everything," and why.**
 The codebase originally had real drift against clojure-lsp's default
@@ -272,11 +272,11 @@ diff against in the first place (`gtk.clj`, `test_renderer.clj`, and
 Bucket-2 files like `widget.clj`/`app.clj` — the diffability argument
 never applied to those, so leaving them unformatted alongside the ported
 files was a broader style inconsistency than the original rationale
-justified). The pre-commit hooks still don't include `format --dry` —
-not because of unresolved drift (there is none now) but because the FAST
-hook is deliberately scoped to lint + clean-ns only; adding `format --dry`
-now that the codebase conforms is a natural, cheap follow-up, not
-blocked on anything.
+justified). `format --dry` is now a step in both pre-commit hooks (see
+the mechanics above) — the natural, cheap follow-up mentioned as an
+option is done: every commit now gates on staying
+`bb lsp:format-check`-clean, so the codebase can't silently drift back
+out of format again the way it originally did.
 
 **Why `check:positional-args`'s `exceptions` set is empty despite 32
 current findings.** Running it against glitter's own `src/glitter/` finds

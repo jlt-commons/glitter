@@ -75,7 +75,7 @@
           (row "check:positional-args" "find fns with 3+ positional args (report only)")
           (row "check:positional-args:strict" "bb check:positional-args, but exit non-zero if any found")
           (hdr "Git hooks")
-          (row "hooks:install" "install FAST pre-commit hook (lint errors + clean-ns, ~2s)")
+          (row "hooks:install" "install FAST pre-commit hook (lint errors + format + clean-ns, ~2s)")
           (row "hooks:install:full" "install FULL pre-commit hook (+ unit tests, slower)")
           (row "hooks:uninstall" "remove the git pre-commit hook")
           (hdr "Dev")
@@ -265,48 +265,50 @@
 
   ;; --- Git hooks ------------------------------------------------------------
   ;; FAST hook: lint errors-only (ignores the 2 known-legitimate warnings —
-  ;; see lint:errors above) + clean-ns dry-run. No `format --dry` here — not
-  ;; because of unresolved drift (the whole codebase, `bb lsp:format`ed in one
-  ;; pass, now conforms to clojure-lsp's default cljfmt style, confirmed clean
-  ;; via `bb lsp:format-check`) but because FAST is deliberately scoped to
-  ;; lint + clean-ns only. Earlier, `bb lsp:format` was deliberately withheld
-  ;; from even the 10 Replicant-ported files (clojure-lsp's default wraps
-  ;; `{:keys [x] :as y}` destructuring across two lines even when it fits on
-  ;; one, which upstream Replicant's own source does NOT do — verified
-  ;; against replicant.core directly), trading upstream diffability against
-  ;; those files for the readability of the hand-tuned original. That
-  ;; tradeoff was revisited and reversed in favor of one uniform style across
-  ;; the whole codebase as new features land — see git history for the
-  ;; `bb lsp:format` commit. `bb lsp:format-check`/`bb lsp:format` remain
-  ;; available as on-demand tools; adding `format --dry` to this hook (now
-  ;; that there's nothing for it to flag) is a natural, cheap follow-up.
-  hooks:install {:doc "Install FAST git pre-commit hook (lint errors + clean-ns, ~2s)"
+  ;; see lint:errors above) + format dry-run + clean-ns dry-run. `format --dry`
+  ;; was deliberately excluded for a while: an earlier decision withheld
+  ;; `bb lsp:format` from even the 10 Replicant-ported files (clojure-lsp's
+  ;; default wraps `{:keys [x] :as y}` destructuring across two lines even
+  ;; when it fits on one, which upstream Replicant's own source does NOT do
+  ;; — verified against replicant.core directly), trading upstream
+  ;; diffability against those files for the readability of the hand-tuned
+  ;; original. That tradeoff was revisited and reversed in favor of one
+  ;; uniform style across the whole codebase as new features land — see git
+  ;; history for the `bb lsp:format` commit. With the codebase now
+  ;; `bb lsp:format-check`-clean throughout, gating on it here catches
+  ;; future drift before it accumulates again, at the same ~2s budget
+  ;; format-check already runs at on its own.
+  hooks:install {:doc "Install FAST git pre-commit hook (lint errors + format + clean-ns, ~2s)"
                  :task (let [hook ".git/hooks/pre-commit"]
                          (spit hook (str "#!/bin/bash\n"
-                                         "# glitter pre-commit (FAST — lint errors-only + clean-ns dry-run).\n"
+                                         "# glitter pre-commit (FAST — lint errors-only + format + clean-ns dry-run).\n"
                                          "# Full (+ test suite): bb hooks:install:full\n"
-                                         "echo 'pre-commit 1/2: clj-kondo (errors only; known warnings accepted)'\n"
+                                         "echo 'pre-commit 1/3: clj-kondo (errors only; known warnings accepted)'\n"
                                          "clj-kondo --lint src test examples\n"
                                          "LINT_EXIT=$?\n"
                                          "if [ \"$LINT_EXIT\" = \"3\" ]; then echo 'pre-commit: lint errors found'; exit 1; fi\n"
-                                         "echo 'pre-commit 2/2: clojure-lsp clean-ns --dry'\n"
+                                         "echo 'pre-commit 2/3: clojure-lsp format --dry'\n"
+                                         "clojure-lsp format --dry || { echo 'run bb lsp:format'; exit 1; }\n"
+                                         "echo 'pre-commit 3/3: clojure-lsp clean-ns --dry'\n"
                                          "clojure-lsp clean-ns --dry || { echo 'run bb lsp:clean-ns'; exit 1; }\n"
                                          "exit 0\n"))
                          (shell "chmod" "+x" hook)
                          (println "OK fast pre-commit hook installed")
                          (println ">> skip once with: git commit --no-verify"))}
 
-  hooks:install:full {:doc "Install FULL git pre-commit hook (lint errors + clean-ns + unit tests, slower)"
+  hooks:install:full {:doc "Install FULL git pre-commit hook (lint errors + format + clean-ns + unit tests, slower)"
                       :task (let [hook ".git/hooks/pre-commit"]
                               (spit hook (str "#!/bin/bash\n"
                                               "# glitter pre-commit (FULL). Fast: bb hooks:install\n"
-                                              "echo 'pre-commit 1/3: clj-kondo (errors only; known warnings accepted)'\n"
+                                              "echo 'pre-commit 1/4: clj-kondo (errors only; known warnings accepted)'\n"
                                               "clj-kondo --lint src test examples\n"
                                               "LINT_EXIT=$?\n"
                                               "if [ \"$LINT_EXIT\" = \"3\" ]; then echo 'pre-commit: lint errors found'; exit 1; fi\n"
-                                              "echo 'pre-commit 2/3: clojure-lsp clean-ns --dry'\n"
+                                              "echo 'pre-commit 2/4: clojure-lsp format --dry'\n"
+                                              "clojure-lsp format --dry || { echo 'run bb lsp:format'; exit 1; }\n"
+                                              "echo 'pre-commit 3/4: clojure-lsp clean-ns --dry'\n"
                                               "clojure-lsp clean-ns --dry || { echo 'run bb lsp:clean-ns'; exit 1; }\n"
-                                              "echo 'pre-commit 3/3: unit tests'\n"
+                                              "echo 'pre-commit 4/4: unit tests'\n"
                                               "jolt -M:test\n"
                                               "exit $?\n"))
                               (shell "chmod" "+x" hook)

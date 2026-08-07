@@ -109,14 +109,13 @@ excludes the files ported verbatim from Replicant (they keep intentional
 `#?(:clj :cljs)` reader conditionals in a `.clj` extension — a permanent,
 harmless false positive for that specific porting strategy, not a real
 defect), so `bb lint` and friends run unscoped over `src test examples`.
-`bb hooks:install` sets up a fast pre-commit hook (lint errors + ns
-cleanliness); it excludes `format --dry` because the FAST hook is scoped
-to lint + clean-ns only, not because of any unresolved drift — the whole
-codebase is `bb lsp:format`-clean, including the files ported from
-Replicant (an earlier decision to exempt those from clojure-lsp's default
-style, to preserve upstream diffability, was later reversed in favor of
-one uniform style project-wide) — see `docs/guide/testing-and-tasks.md`
-for the full rationale on both.
+`bb hooks:install` sets up a fast pre-commit hook (lint errors + format +
+ns cleanliness) that gates every commit on staying `bb lsp:format-check`-
+clean — the whole codebase is formatted uniformly now, including the
+files ported from Replicant (an earlier decision to exempt those from
+clojure-lsp's default style, to preserve upstream diffability, was later
+reversed in favor of one uniform style project-wide) — see
+`docs/guide/testing-and-tasks.md` for the full rationale on both.
 
 ## Architecture
 
