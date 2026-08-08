@@ -2,27 +2,13 @@
 
 ## The shape of a render
 
-```
-        state atom
-            │ swap!
-            ▼
-     add-watch fires ──► glitter.app/on-gui (marshal to GTK main thread if needed)
-                              │
-                              ▼
-                       (view @state) ──► new hiccup
-                              │
-                              ▼
-              glitter.core/reconcile(renderer, root-el, new-hiccup, prev-vdom)
-                              │
-              diffs new hiccup against prev-vdom, issues the
-              minimal set of protocol calls to bring the live
-              tree in sync
-                              │
-                              ▼
-                 glitter.protocols/IRender + IMemory
-                 (glitter.gtk implements this for real GTK4;
-                  glitter.test-renderer implements it for
-                  headless tests)
+```mermaid
+flowchart TD
+  state["state atom"] -->|swap!| watch["add-watch fires"]
+  watch --> ongui["glitter.app/on-gui<br/>(marshal to GTK main thread if needed)"]
+  ongui --> view["(view @state)"]
+  view -->|new hiccup| reconcile["glitter.core/reconcile(renderer, root-el, new-hiccup, prev-vdom)"]
+  reconcile -->|"diffs new hiccup against prev-vdom, issues the<br/>minimal set of protocol calls to bring the<br/>live tree in sync"| protocols["glitter.protocols/IRender + IMemory<br/>(glitter.gtk implements this for real GTK4;<br/>glitter.test-renderer implements it for<br/>headless tests)"]
 ```
 
 `glitter.core` (ported from `replicant.core`, see
