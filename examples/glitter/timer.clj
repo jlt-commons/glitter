@@ -100,12 +100,27 @@
       (float (/ s10 10)))))
 
 (defn get-view-state [state]
+  ;; :pct's division uses (double duration), NOT the returned :duration
+  ;; itself, so a literal integer 0 (the :scale's own :min, reachable via
+  ;; {:duration 0}) can't hit an integer divide-by-zero — live-verified
+  ;; that an already-double 0.0 divides safely (NaN, then (int NaN) -> 0
+  ;; under Jolt), but a bare int 0 throws ArithmeticException. The live
+  ;; app never actually constructs a bare int 0 here (:scale's
+  ;; :glitter/value always resolves through gtk_range_get_value, a C
+  ;; double getter), but this fn is public and directly unit-tested, so
+  ;; it shouldn't crash on the single most natural literal a caller/test
+  ;; would write. The returned :duration deliberately keeps duration's
+  ;; ORIGINAL type (not the coerced double) — live-verified that (=
+  ;; 10 10.0) is false under Jolt (unlike JVM Clojure, where it's true),
+  ;; so coercing the returned value would have silently broken every
+  ;; existing int-duration test assertion.
   (let [duration (or (:duration state) 20)
+        divisor (double duration)
         elapsed (min (if-let [started (:started state)]
                        (/ (- (:now state) started) 1.0e9)
                        0)
-                     duration)]
-    {:pct (int (* 100 (/ elapsed duration)))
+                     divisor)]
+    {:pct (int (* 100 (/ elapsed divisor)))
      :elapsed (str (format-seconds elapsed) "s")
      :duration duration}))
 

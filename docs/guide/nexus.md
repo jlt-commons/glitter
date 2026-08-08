@@ -311,8 +311,11 @@ reason, closer to `crud.clj`/`todo.clj`'s than `temperature.clj`'s:
 `:action/tick`'s `(fn [state] [[:effect/schedule 100 [[:effect/assoc-in
 [:last-tick] (:now state)] [:action/tick]]]])` genuinely reads
 `(:now state)` — a fresh `System/nanoTime` reading, supplied by
-`timer.clj`'s own `:nexus/system->state` (below) — to decide what to
-write and to re-schedule itself; `:action/reset`'s `(fn [_state]
+`timer.clj`'s own `:nexus/system->state` (below) — to give `:last-tick`
+a real timestamp instead of `nil`. (The `[:action/tick]` re-schedule
+itself is an unconditional literal, not decided by `(:now state)` —
+`:now`'s only causal effect here is `:last-tick`'s value, not whether
+or how often the loop perpetuates.) `:action/reset`'s `(fn [_state]
 [[:effect/assoc-in [:started] [:clock/now]]])` ignores `state` (same
 shape as `temperature.clj`'s `set-temperature`), but the same
 non-nil-`:nexus/expansions` assert applies regardless of which

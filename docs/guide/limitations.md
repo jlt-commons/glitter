@@ -456,3 +456,14 @@ on every diff — genuine design work, not attempted here.
 synchronously — there is no animated mount/unmount transition support.
 Both remain explicit v1 scope boundaries from the design spec, not
 partially-implemented features.
+
+## `timer.clj`: dragging duration to 0 is a UX dead end, not a crash
+
+`examples/glitter/timer.clj`'s duration `:scale` allows `:min 0`, and
+`get-view-state` is written to stay safe at `:duration 0` (coerced to a
+double before the percentage division, so it resolves to `{:pct 0
+:elapsed "0s"}` rather than throwing) — but the practical result is a
+permanently frozen 0%/"0s" display with no way to progress, since
+`elapsed` is always `(min elapsed 0)`. Not fixed, since "what should a
+0-second timer visually do" isn't specified by the 7GUIs task and any
+answer is a UX judgment call, not a correctness fix.

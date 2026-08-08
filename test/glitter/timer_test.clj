@@ -49,4 +49,14 @@
             :duration 10}
            (timer/get-view-state {:now 64667000000
                                   :started 0
-                                  :duration 10})))))
+                                  :duration 10}))))
+
+  (testing "Duration 0 (the :scale's own :min) does not throw — a bare
+  int 0 divides by an integer 0 downstream unless coerced to a double
+  first; a plain double 0.0 was always safe. The returned :duration
+  stays the original int 0, not the internally-coerced double — (=
+  0 0.0) is false under Jolt, unlike JVM Clojure"
+    (is (= {:pct 0
+            :elapsed "0s"
+            :duration 0}
+           (timer/get-view-state {:duration 0})))))
