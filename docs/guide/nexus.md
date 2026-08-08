@@ -266,14 +266,15 @@ non-nil, and `flights.clj` registers no actions/expansions at all, so
 is a direct `assoc-in` on the raw system atom; nothing reads derived
 state back through nexus.
 
-### `crud.clj`/`todo.clj`/`temperature.clj` — action-expansions
+### `crud.clj`/`todo.clj`/`temperature.clj`/`timer.clj` — action-expansions
 
 `crud.clj` and `todo.clj` were both retrofitted onto `glitter.nexus` in
 this arc (replacing a hand-written `execute-actions` `case` form);
-`temperature.clj` (the 7GUIs Temperature Converter) was written against
-`glitter.nexus` from the start, like `flights.clj` before it. All three
-register `:nexus/expansions` (via `register-action!`/`register-expansion!`
-— see above), the layer `flights.clj` never needs at all — but for two
+`temperature.clj` (the 7GUIs Temperature Converter) and `timer.clj`
+(the 7GUIs Timer) were both written against `glitter.nexus` from the
+start, like `flights.clj` before them. All four register
+`:nexus/expansions` (via `register-action!`/`register-expansion!` —
+see above), the layer `flights.clj` never needs at all — but for a few
 different reasons. `crud.clj`'s
 `:action/select-row`/`:action/create`/`:action/update`/`:action/delete`
 and `todo.clj`'s `:action/toggle`/`:action/add-task` need to READ
@@ -305,7 +306,50 @@ never uses its `state` argument; omitting it throws
 `Assert failed: Either :nexus/system+dispatch-data->state or
 :nexus/system->state must be a function` on the very first dispatch.
 
-All three demos still register `:effect/assoc-in` and `:glitter/value`
+`timer.clj`'s two expansions need `:nexus/expansions` for a THIRD
+reason, closer to `crud.clj`/`todo.clj`'s than `temperature.clj`'s:
+`:action/tick`'s `(fn [state] [[:effect/schedule 100 [[:effect/assoc-in
+[:last-tick] (:now state)] [:action/tick]]]])` genuinely reads
+`(:now state)` — a fresh `System/nanoTime` reading, supplied by
+`timer.clj`'s own `:nexus/system->state` (below) — to decide what to
+write and to re-schedule itself; `:action/reset`'s `(fn [_state]
+[[:effect/assoc-in [:started] [:clock/now]]])` ignores `state` (same
+shape as `temperature.clj`'s `set-temperature`), but the same
+non-nil-`:nexus/expansions` assert applies regardless of which
+specific expansion runs, so `timer.clj` also has to register a
+`:nexus/system->state` function.
+
+**`timer.clj` is the first demo whose `:nexus/system->state` isn't a
+bare `deref`.** `flights.clj` needs none at all; `crud.clj`/`todo.clj`/
+`temperature.clj` all register `(nxr/register-system->state! deref)` —
+a no-op wrapper satisfying the assert above, since none of their
+expansions need anything beyond the state atom's own stored keys.
+`timer.clj` registers `(fn [system] (assoc @system :now
+(System/nanoTime)))` instead, augmenting the dereffed atom with a
+value the atom itself never stores. **This augmentation is consumed
+by `:action/tick`'s own action-expansion — a dispatch-time read — NOT
+by `view` (a render-time call).** `glitter.gtk/mount!`'s `add-watch`
+re-renders `view` directly off the raw new value of the watched state
+atom (`src/glitter/gtk.clj`), entirely independent of
+`glitter.nexus`'s dispatch machinery, and unaware
+`:nexus/system->state` even exists; since the atom itself never
+stores a `:now` key
+(only `:started`/`:duration`/`:last-tick` are ever written via
+`:effect/assoc-in`), an early version of `timer.clj`'s `view` that
+tried to read `(:now state)` directly threw a live
+`NullPointerException` on every tick (verified live: 63 occurrences
+over an 8-second run) — swallowed by `glitter.nexus`'s own
+`try-f`/`on-error` handling, so the process didn't crash, but
+`core/reconcile` never ran, and the display never advanced past its
+initial paint. The fix: `view` reads `System/nanoTime` directly
+itself, the same live-fresh-read-at-render-time pattern
+`flights.clj`'s `get-form-state` already established for `(t/today)`
+(see that fn's own comment) — a demo's `view` computes what it needs
+fresh, rather than assuming anything nexus computed for a DIFFERENT
+purpose (dispatch-time action-expansion) will also be there at render
+time.
+
+All four demos still register `:effect/assoc-in` and `:glitter/value`
 too — `crud.clj`/`todo.clj` for the fields that ARE pure passthroughs
 (the filter field in `crud.clj`, which dispatches a bare
 `:effect/assoc-in` directly via its `field-row` helper, not an action
@@ -315,11 +359,15 @@ pure-passthrough field at all (both its `:entry` fields route through
 because `set-temperature`'s own expansion result is built from
 `:effect/assoc-in` tuples, and `:glitter/value` because its
 demo-local `:fmt/number` placeholder nests `[:glitter/value]` inside
-its own placeholder chain (`[:fmt/number [:glitter/value]]`). The two
-consumer shapes aren't mutually exclusive within one demo; they're a
-per-interaction choice, made by whether that interaction needs to read
-state, or branch on dispatch data, before deciding what effects to
-run.
+its own placeholder chain (`[:fmt/number [:glitter/value]]`);
+`timer.clj`'s single pure-passthrough interaction is its duration
+`:scale`'s `:on {:value-changed [[:effect/assoc-in [:duration]
+[:glitter/value]]]}}` — a bare `:effect/assoc-in`/`:glitter/value`
+pair, no expansion, dispatched alongside its two action-expansions.
+The two consumer shapes aren't mutually exclusive within one demo;
+they're a per-interaction choice, made by whether that interaction
+needs to read state, or branch on dispatch data, before deciding what
+effects to run.
 
 ## Action-expansions are not atomic
 

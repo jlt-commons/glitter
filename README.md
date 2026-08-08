@@ -51,10 +51,15 @@ action/effect/placeholder engine (see below). `jolt temperature` is a
 fifth interactive demo — a port of the [7GUIs Temperature Converter
 task](https://eugenkiss.github.io/7guis/tasks/#temp): two linked
 `:entry` fields (Celsius, Fahrenheit) where editing one immediately
-updates the other, a third, minimal `glitter.nexus` consumer.
+updates the other, a third, minimal `glitter.nexus` consumer. `jolt timer`
+is a sixth interactive demo — a port of the [7GUIs Timer
+task](https://eugenkiss.github.io/7guis/tasks/#timer): a duration slider,
+an elapsed-time progress bar/label that advances on its own via a
+background tick, and a Reset button — a fourth `glitter.nexus` consumer
+and the first demo whose state changes without any user interaction.
 
-As of this arc, `jolt todo`/`jolt crud`/`jolt flights`/`jolt temperature`
-all dispatch through `glitter.nexus` — a port of
+As of this arc, `jolt todo`/`jolt crud`/`jolt flights`/`jolt temperature`/
+`jolt timer` all dispatch through `glitter.nexus` — a port of
 [nexus](https://github.com/cjohansen/nexus) (same author as Replicant)
 that replaces a hand-written `execute-actions` `case` form with plain
 data: actions dispatch through registered **effect** handlers (the only
@@ -63,7 +68,7 @@ event-derived values into that data, and **action-expansions** are pure
 `(state & args) -> more-actions` functions for interactions that need
 to read current state before deciding what should happen. `jolt flights`
 needs only effects and placeholders; `jolt crud`/`jolt todo`/
-`jolt temperature` also use action-expansions. See
+`jolt temperature`/`jolt timer` also use action-expansions. See
 [`docs/guide/nexus.md`](docs/guide/nexus.md) for the full model,
 including a live-verified `t/parse-date` leniency gotcha that
 `jolt flights`' date validation had to work around.
@@ -120,6 +125,7 @@ bb todo      # interactive task-board demo
 bb crud      # interactive 7GUIs CRUD demo
 bb flights   # interactive 7GUIs Flight Booker demo
 bb temperature # interactive 7GUIs Temperature Converter demo
+bb timer     # interactive 7GUIs Timer demo
 bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure)
 ```
 

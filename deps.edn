@@ -63,6 +63,7 @@
            :crud {:extra-paths ["examples"] :main-opts ["-m" "glitter.crud"]}
            :flights {:extra-paths ["examples"] :main-opts ["-m" "glitter.flights"]}
            :temperature {:extra-paths ["examples"] :main-opts ["-m" "glitter.temperature"]}
+           :timer {:extra-paths ["examples"] :main-opts ["-m" "glitter.timer"]}
            :ctor-apply-regression-smoke {:extra-paths ["examples"]
                                          :main-opts ["-m" "glitter.ctor-apply-regression-smoke"]}
            :window-handle-stack-smoke {:extra-paths ["examples"]
