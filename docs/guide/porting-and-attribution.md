@@ -45,8 +45,13 @@ mechanical port:
 
 ## Bucket 2: forked from glimmer
 
-Same author/org as glitter, no license file, no attribution obligation —
-listed here for provenance, not legal requirement:
+[glimmer](https://github.com/jolt-lang/glimmer) is authored by Dmitri
+Sotnikov (`Yogthos`) under the `jolt-lang` organization — a different
+author from glitter's, verified from git history on `upstream/main` (29
+commits, 25 as `Yogthos` and 4 as `Dmitri Sotnikov`, zero by anyone else).
+Upstream ships no LICENSE file, so no grant has been made; this bucket
+records provenance, not a claimed permission. See `NOTICE.md`'s `## glimmer`
+section for the authoritative statement and its full reasoning:
 
 - `glitter.ffi` — forked from `glimmer.ffi`, plus the original four new
   bindings (`g-signal-handler-disconnect`, `gtk-box-insert-child-after`,
