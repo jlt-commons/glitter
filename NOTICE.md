@@ -52,8 +52,11 @@ The following files under `src/glitter/` are forked from
 [glimmer](https://github.com/jolt-lang/glimmer), Copyright 2026 Dmitri Sotnikov
 (`Yogthos`), published under the `jolt-lang` organization — a DIFFERENT author
 from glitter's. Authorship verified from git history on `upstream/main`: 29
-commits, 25 as `Yogthos` and 4 as `Dmitri Sotnikov` (the same person under two
-git identities), zero by anyone else.
+commits, 25 as `Yogthos` and 4 as `Dmitri Sotnikov` — two distinct git
+identities, different names and different emails; widely identified elsewhere
+as the same person, but git history alone doesn't establish that, and it
+doesn't need settling either way since neither identity is glitter's author —
+zero by anyone else.
 
 **Upstream ships no LICENSE file.** Absent a license, default copyright reserves
 all rights — no grant has been made. This section records accurate provenance,
