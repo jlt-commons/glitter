@@ -23,7 +23,7 @@
 ;; of scope for it. Pinning :source-paths here decouples clojure-lsp's
 ;; view from deps.edn's per-alias :extra-paths entirely, preserving the
 ;; status quo (examples/ has never actually been covered by
-;; `bb lsp:format-check`/`bb lsp:diagnostics`, despite AGENTS.md's/
+;; `bb lsp:format-check`/`bb lsp:diagnostics`, despite the
 ;; README's "whole codebase is bb lsp:format-check-clean" claim — that
 ;; claim is about src+test, not examples; a real gap, but a separate
 ;; follow-up, not this task's to fix). `bb lint`/`clj-kondo` are

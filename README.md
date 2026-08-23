@@ -165,10 +165,26 @@ reversed in favor of one uniform style project-wide) — see
 
 ## Architecture
 
+```mermaid
+flowchart TD
+  hiccup["hiccup<br/><i>(state -&gt; view fn)</i>"] --> reconcile
+  reconcile["<b>glitter.core/reconcile</b><br/><i>ported from replicant.core,<br/>diff algorithm unchanged</i>"] --> proto
+  proto["<b>glitter.protocols</b><br/>IRender + IMemory"] --> gtk & testrend
+  gtk["<b>glitter.gtk</b><br/><i>real GTK4, via<br/>glitter.widget + glitter.ffi</i>"]
+  testrend["<b>glitter.test-renderer</b><br/><i>headless, in-memory</i>"]
+```
+
+`glitter.core` drives *when* — it diffs old hiccup against new and calls
+`IRender`/`IMemory` methods. It has no idea GTK exists, which is what makes
+two backends possible from one reconciler: real widgets for an app, an
+in-memory fake for headless tests.
+
+Where the code came from:
+
 - `glitter.core`, `glitter.protocols`, `glitter.hiccup*`, `glitter.vdom`,
   `glitter.alias`, `glitter.errors`, `glitter.assert*`, `glitter.console-logger`
   — ported from [Replicant](https://github.com/cjohansen/replicant) (MIT,
-  Christian Johansen). See `NOTICE.md`.
+  Christian Johansen). See `NOTICE`.
 - `glitter.ffi`, `glitter.widget`, `glitter.genum` — forked from
   [glimmer](https://github.com/jolt-lang/glimmer). `glitter.app` is adapted
   from the non-reactive app-loop slice of `glimmer.core`.
@@ -183,12 +199,13 @@ reversed in favor of one uniform style project-wide) — see
   attribution ledger, testing, and every known v1 limitation in depth.
   Mirrored to [`b12n-wikis/glitter`](https://github.com/burinc/b12n-wikis/tree/main/glitter)
   for browsing outside a checkout.
-- **[`AGENTS.md`](AGENTS.md)** — canonical context for coding agents working
-  in this repo (architecture summary, build/run commands, conventions and
-  gotchas not to regress). `CLAUDE.md` imports it for Claude Code.
-- Design spec / implementation plan: not included in this repo — they live
-  at `~/dev/b12n-sp-docs/glitter/{specs,plans}/` (the centralized
-  superpowers planning store) for anyone with access to that store.
+- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — how to set up, which gates to
+  run before a PR, how to add a widget, and the numbered list of invariants
+  not to regress (each one was a real bug at some point).
+- **[`NOTICE`](NOTICE)** — file-by-file provenance for everything ported from
+  Replicant, forked from glimmer, or ported from nexus.
+- Design spec and implementation plan are not part of this repo; they live in
+  a private planning store.
 
 ## Status
 
@@ -219,7 +236,7 @@ different container strategy (3 fixed named slots, not an ordered list);
 still doesn't — GTK4 has no DOM-`style`-attribute equivalent, only
 class-based styling, so an inline `:style` prop has no direct GTK
 counterpart to wire to. No animated mount/unmount transitions yet — see
-`NOTICE.md`'s file-by-file notes for exactly what's ported vs. new.
+`NOTICE`'s file-by-file notes for exactly what's ported vs. new.
 
 **Non-standard GTK signals.** Almost every GTK signal glitter connects is
 `void(widget, user_data)` — `glitter.gtk/set-event-handler` builds that
@@ -381,7 +398,7 @@ finding, and the new `:glitter/structural-props` mechanism `:grid`/
 `:stack` need.** A probe confirmed `:ctor`'s `props` argument is
 ALWAYS empty at the real call site — `glitter.core` only ever passes
 an optional namespace hint, never the hiccup attrs; real props arrive
-afterward, one key per `IRender/set-attribute` call. Auditing all 42
+afterward, one key per `IRender/set-attribute` call. Auditing all 39
 pre-round-11 widget specs against this found four real, previously-
 shipped bugs, invisible to every existing smoke: `:checkbutton`'s
 `:label` was never applied at all; `:scale-button`'s `:min`/`:max`/

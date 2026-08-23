@@ -1,0 +1,192 @@
+# Contributing
+
+Thanks for taking an interest. glitter is a
+[Replicant](https://github.com/cjohansen/replicant)-style GTK4 renderer for
+[Jolt](https://github.com/jolt-lang/jolt) — native Clojure on a Chez Scheme
+host, no JVM — talking to real GTK4 over its C ABI through `glitter.ffi`.
+
+The deep documentation lives in [`docs/guide/`](docs/guide/index.md) and is
+mirrored to [`b12n-wikis/glitter`](https://github.com/burinc/b12n-wikis/tree/main/glitter)
+for browsing outside a checkout. `docs/guide/` is the source of truth — edit
+the Markdown here, never the mirror.
+
+## Setting up
+
+You need Jolt and a native GTK4:
+
+```sh
+jolt --version           # developed/verified against v0.6.3
+brew install gtk4        # macOS; on Linux use your distro's gtk4 + glib dev packages
+```
+
+`deps.edn`'s `:jolt/native` declares `glib-2.0`, `gobject-2.0`, `gio-2.0` and
+`gtk-4`, with Homebrew paths for darwin and `.so` names for linux.
+
+[babashka](https://babashka.org) is optional but makes everything friendlier —
+`bb info` prints a grouped cheat-sheet of every task. Without it, use
+`jolt -M:<alias>` directly.
+
+## Before you open a PR
+
+```sh
+bb test               # unit suite (headless — no display needed)
+bb lint:strict        # clj-kondo, non-zero exit on any finding
+bb lsp:format-check   # clojure-lsp formatting, dry run
+bb smokes             # every live-GTK smoke in sequence (needs a display)
+```
+
+`bb lsp:fix` applies formatting and ns cleanup in place if `lsp:format-check`
+complains. **Formatting is owned by clojure-lsp**, and the whole codebase is
+uniform under it — including the ten files ported verbatim from Replicant. An
+earlier decision exempted those to preserve upstream diffability; it was
+reversed in favour of one project-wide style. Please don't reintroduce the
+exemption for a file you touch.
+
+`bb hooks:install` sets up a fast (~2s) local pre-commit hook — lint errors,
+format check, ns check. It's never committed, so each clone opts in.
+
+**`bb lint` needs `.clj-kondo/hooks/jolt_ffi.clj`**, which rewrites
+`jolt.ffi/defcfn` into an equivalent `defn` so clj-kondo and clojure-lsp can
+see through the FFI macro. Without it every `gtk-*`/`g-*` binding reports as
+unresolved.
+
+## Architecture
+
+```mermaid
+flowchart TD
+  hiccup["hiccup<br/><i>(state -&gt; view fn)</i>"] --> reconcile
+  reconcile["<b>glitter.core/reconcile</b><br/><i>ported from replicant.core,<br/>diff algorithm unchanged</i>"] --> proto
+  proto["<b>glitter.protocols</b><br/>IRender + IMemory"] --> gtk & testrend
+  gtk["<b>glitter.gtk</b><br/><i>real GTK4, via<br/>glitter.widget + glitter.ffi</i>"]
+  testrend["<b>glitter.test-renderer</b><br/><i>headless, in-memory</i>"]
+```
+
+- `glitter.core` drives *when* — it diffs old vs. new hiccup and calls
+  `IRender`/`IMemory` methods. It has no idea GTK exists.
+- `glitter.gtk` implements those protocols for real GTK4 widgets, plus
+  `mount!` (the state-atom watcher that drives re-render).
+- `glitter.widget` maps hiccup tags to widget constructors, prop-appliers and
+  container strategies (`glitter.widget/specs`, extensible via
+  `register-widget!`), and owns the foreign-callable retain/release
+  bookkeeping GTK's C ABI requires.
+- `glitter.app` is the GTK4 bootstrap: `GtkApplication`, `:activate` handler,
+  and cross-thread marshalling (`on-gui`/`post-to-gui`).
+- `glitter.test-renderer` is a fake `IRender`/`IMemory` for headless
+  reconciler tests. It ships in `src/`, not `test/`, so applications built on
+  glitter can reuse it in their own suites.
+
+Full breakdown: [`docs/guide/architecture.md`](docs/guide/architecture.md).
+
+## Invariants — please don't regress these
+
+Each of these was a real bug at some point. Most are explained at length in
+[`docs/guide/`](docs/guide/index.md); the short forms are here so a reviewer
+can point at a number.
+
+1. **Never gate CI on `jolt <task>`.** A `deps.edn` `:tasks` entry doesn't
+   propagate its child process's exit status (verified against jolt v0.6.3),
+   so `jolt test` prints failures and still exits 0. Use `jolt -M:<alias>`, or
+   a `bb.edn` task — those already do it correctly.
+
+2. **`insert-before` covers two different cases** — a genuinely new child, and
+   repositioning an *already-parented* child (a keyed reorder).
+   `gtk_box_insert_child_after` asserts its child is unparented and silently
+   no-ops otherwise, so `glitter.gtk`'s `insert-before` branches on whether
+   `child-node` is already tracked in the parent's `:children`, calling
+   `w/insert-child-after!` or `w/reorder-child!` accordingly. Don't "simplify"
+   it to always call one.
+
+3. **`replace-child!`'s `:box` branch must capture the old child's previous
+   sibling *before* removing it.** `gtk_box_append` always lands at the end, so
+   naively removing then appending silently relocates any non-final child.
+
+4. **A prop value of `false` must reach the widget, not be treated as absent.**
+   `update-attr`/`set-attributes`/`apply-props!` route on `some?`, not
+   truthiness. The DOM has no "boolean absent" state to confuse with `false`;
+   GTK booleans (`:sensitive`, `:active`, …) genuinely need `false` applied.
+   This is DEVIATION #3 from the pure Replicant port — see
+   [`porting-and-attribution.md`](docs/guide/porting-and-attribution.md).
+
+5. **Protocol composition uses `reify`, never `:extend-via-metadata`.**
+   Verified broken under Jolt: the with-meta-as-method-table style throws
+   `No method create-element in glitter.protocols/IRender` at call time.
+   `glitter.gtk`'s and `glitter.test-renderer`'s renderers each implement
+   `IRender` *and* `IMemory` in one `reify`; `with-meta` carries only
+   auxiliary data (the log/memory atoms), never protocol dispatch.
+
+6. **`on-gui` must run inline when already on the GTK main thread**, rather
+   than always marshalling via `g_idle_add`. `glitter.app` tracks the thread
+   `g_application_run` actually runs on, so a caller already there — a click
+   handler, `mount!`'s watcher firing from a same-thread `swap!` — gets a
+   synchronous read-back instead of an unnecessary async hop.
+   `examples/glitter/main_thread_smoke.clj` pins this.
+
+7. **`bb.edn`/`deps.edn` `:tasks` bodies are EDN-parsed.** No `#"regex"`,
+   `@deref`, or `#(...)` reader macros — use `(re-pattern …)`, `(deref …)`,
+   `(fn [x] …)`. Mistakes here abort *every* `bb` invocation, not just the
+   edited task.
+
+8. **A value-bearing signal's value doesn't travel through the action tuple.**
+   Hiccup `:on` data is static, fixed when `view` runs, so an action can't
+   carry a value that only exists once the user types. `glitter.gtk`'s
+   `set-event-handler` stuffs the current value onto the event object as
+   `:glitter/value`; `glitter.core`'s `build-event-map` wraps that under
+   `:glitter/dom-event`. A handler needing live input reads
+   `(get-in event [:glitter/dom-event :glitter/value])` from the dispatch
+   fn's first argument. See [`nexus.md`](docs/guide/nexus.md) for the
+   placeholder-based generalization.
+
+9. **There's no function-as-hiccup-tag convention.** Unlike glimmer/Reagent, a
+   helper returning a hiccup fragment is called as a plain function —
+   `(my-fn args…)`, spliced into the parent vector — not embedded as
+   `[my-fn args…]`. `glitter.hiccup/hiccup?` requires a literal keyword in
+   position 0, so a function in tag position is treated as an opaque child
+   value and silently stringified into literal text. For a genuinely reusable,
+   keyword-addressable component use `glitter.alias/defalias`. Full
+   explanation: [`architecture.md`](docs/guide/architecture.md#composing-views-plain-function-calls-not-hiccup-tags).
+
+## Adding a widget
+
+`glitter.widget/specs` maps a hiccup tag to a constructor, a prop-applier and
+a container strategy; `register-widget!` adds one from outside the library.
+Read [`gtk-widget-layer.md`](docs/guide/gtk-widget-layer.md) first — it is the
+long-form record of how every currently-supported widget was added, including
+the ones that needed real architectural work.
+
+Two things that reliably surprise people:
+
+- **A new signal shape needs a hand-written branch in
+  `glitter.gtk/set-event-handler`.** `jolt.ffi/foreign-callable` is a
+  compile-time special form whose argtypes and rettype must be literal at the
+  call site, so signal shapes cannot be data-driven. `register-signal!`
+  deliberately has no shape parameter, because it could never honour one. The
+  standard `void(widget, user_data)` shape is free; anything else — GTK's
+  3-arg `"state-set"`, the 4-arg `"switch-page"` — is a new literal branch.
+
+- **Verify against real GTK, not reasoning.** GTK4 is a live, stateful system
+  with a blocking main loop. Several of this project's fixed bugs (the keyed
+  reorder, `replace-child!`'s position, cross-thread render) were each
+  "obviously correct" on paper and wrong when actually run. Add a smoke under
+  `examples/glitter/` and wire it into `bb.edn`'s `smokes` list.
+
+## Known limitations
+
+Before filing a bug, please check
+[`docs/guide/limitations.md`](docs/guide/limitations.md). Each entry there is
+a deliberate v1 scope call with the reasoning recorded, not an oversight — for
+example, removing an attribute entirely is a no-op because GTK has no generic
+"unset this property", and several container widgets can't safely swap a
+child's hiccup *tag* while their fixed slots are full.
+
+## Licensing
+
+glitter is released under the MIT License; see [`LICENSE`](LICENSE). By
+contributing, you agree your contribution is licensed under those terms.
+
+The project vendors substantial ported and forked code — from Replicant, from
+[glimmer](https://github.com/jolt-lang/glimmer), and from
+[nexus](https://github.com/cjohansen/nexus) — under file-by-file attribution
+in [`NOTICE`](NOTICE). If your change moves code between those buckets, or
+adds a new upstream source, please update `NOTICE` and
+[`porting-and-attribution.md`](docs/guide/porting-and-attribution.md) in the
+same PR.

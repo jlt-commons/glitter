@@ -775,7 +775,7 @@
   ;; re-applies :label via gtk_check_button_set_label, same "construct
   ;; bare, apply for real afterward" shape as :button/:toggle-button/
   ;; :frame/:expander already use correctly. Was a real, shipped bug
-  ;; before this fix — see NOTICE.md/gtk-widget-layer.md for the trace.
+  ;; before this fix — see NOTICE/gtk-widget-layer.md for the trace.
   {:ctor  (fn [p] (if (:label p)
                     (g/gtk-checkbutton-new-with-label (:label p))
                     (g/gtk-checkbutton-new)))
@@ -1007,7 +1007,7 @@
   ;; re-range path). Reads the CURRENT value first so reconfiguring the
   ;; range doesn't reset the button's live position. Was a real, shipped
   ;; bug before this fix (range silently stuck at the ctor fallback
-  ;; 0-100-step-1) — see NOTICE.md/gtk-widget-layer.md for the trace.
+  ;; 0-100-step-1) — see NOTICE/gtk-widget-layer.md for the trace.
   {:ctor  (fn [p]
             (g/gtk-scale-button-new
              (double (or (:min p) 0)) (double (or (:max p) 100)) (double (or (:step p) 1)) ffi/null))
@@ -1766,8 +1766,8 @@
 ;; guard was written to intercept — and left unsuppressed it dispatches a
 ;; spurious deselection straight through to the app, which live-verified
 ;; can synchronously re-enter core/reconcile mid-reconcile (mount!'s watcher
-;; runs inline when already on the GTK main thread — see AGENTS.md
-;; convention #6) and trip a GTK_IS_WIDGET assertion on a widget the outer,
+;; runs inline when already on the GTK main thread — see CONTRIBUTING.md
+;; invariant #6) and trip a GTK_IS_WIDGET assertion on a widget the outer,
 ;; still-in-progress reconcile call hasn't finished processing yet.
 ;; suppressing conj/disj on `parent` (the list-box itself — "row-selected"'s
 ;; src-widget arg, per its real C signature) around the remove call silences

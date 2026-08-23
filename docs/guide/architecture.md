@@ -50,7 +50,7 @@ registered once for reuse throughout an app; use a plain function call for
 an ordinary same-file layout helper. `examples/glitter/aliased.clj`
 exercises the alias path; `examples/glitter/todo.clj`'s `stat-card`/
 `task-row` are the plain-function-call case (and were the live bug that
-surfaced this distinction — see `AGENTS.md`'s conventions list).
+surfaced this distinction — see CONTRIBUTING.md's invariants list).
 
 ## `mount!` — the state-atom watcher
 

@@ -1,8 +1,8 @@
 # Porting and attribution
 
-glitter's source falls into four buckets. `NOTICE.md` (repo root) is the
+glitter's source falls into four buckets. `NOTICE` (repo root) is the
 authoritative, maintained ledger — this page explains what the buckets mean
-and summarizes the deviations; if the two ever disagree, `NOTICE.md` wins.
+and summarizes the deviations; if the two ever disagree, `NOTICE` wins.
 
 ## Bucket 1: ported from Replicant
 
@@ -50,7 +50,7 @@ Sotnikov (`Yogthos`) under the `jolt-lang` organization — a different
 author from glitter's, verified from git history on `upstream/main` (29
 commits, 25 as `Yogthos` and 4 as `Dmitri Sotnikov`, zero by anyone else).
 Upstream ships no LICENSE file, so no grant has been made; this bucket
-records provenance, not a claimed permission. See `NOTICE.md`'s `## glimmer`
+records provenance, not a claimed permission. See `NOTICE`'s `## glimmer`
 section for the authoritative statement and its full reasoning:
 
 - `glitter.ffi` — forked from `glimmer.ffi`, plus the original four new
@@ -415,7 +415,7 @@ The following files under `src/glitter/` are ported from
 [nexus](https://github.com/cjohansen/nexus), commit
 `5f6c93672f25d2a5b2a91ac3b65a921ecf8826b2`, by Christian Johansen,
 Magnar Sveen, and Teodor Heggelund. MIT License — same terms as the
-Replicant bucket above (see NOTICE.md for the full text).
+Replicant bucket above (see NOTICE for the full text).
 
 - `src/glitter/nexus.clj` — `src/nexus/core.cljc`. One deliberate
   deviation: the three `#?(:clj Exception :cljs :default)`
@@ -445,10 +445,10 @@ it conceptually the way an application depends on a dispatch library,
 which is why this is its own bucket rather than folded into Bucket 1 or
 3. See [`nexus.md`](nexus.md) for the architecture this enables.
 
-## Keeping `NOTICE.md` current
+## Keeping `NOTICE` current
 
 Any new ported/forked file, or any new deviation in an already-ported file,
-gets a line added to the relevant bucket in `NOTICE.md` in the same commit
+gets a line added to the relevant bucket in `NOTICE` in the same commit
 as the code change — not as a follow-up. That file is what a downstream
 consumer or license auditor actually reads; this guide page is context for
 contributors, not a substitute.

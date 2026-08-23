@@ -3,7 +3,7 @@
   from nexus.action-log + nexus.inspector
   (https://github.com/cjohansen/nexus), commit
   5f6c93672f25d2a5b2a91ac3b65a921ecf8826b2. Copyright 2025 Christian
-  Johansen, Magnar Sveen, Teodor Heggelund. MIT License — see NOTICE.md.
+  Johansen, Magnar Sveen, Teodor Heggelund. MIT License — see NOTICE.
 
   There is no single upstream file to mirror: the log-accumulation logic
   now lives inside nexus.inspector, entangled with dataspex.*

@@ -2,7 +2,7 @@
   "Automated :class smoke against the LIVE GTK tree — pins glitter.gtk's
   add-class/remove-class wiring to real GTK CSS classes
   (gtk_widget_add_css_class/gtk_widget_remove_css_class), which used to be
-  hardcoded no-ops (see docs/guide/gtk-widget-layer.md and NOTICE.md's v1
+  hardcoded no-ops (see docs/guide/gtk-widget-layer.md and NOTICE's v1
   status notes prior to this).
 
   Reads GTK's actual class membership back via gtk_widget_has_css_class —

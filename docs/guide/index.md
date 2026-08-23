@@ -159,6 +159,6 @@ live GTK widget tree in sync.
   sibling this project forked its GTK4 FFI/widget layer from.
 - [Replicant](https://github.com/cjohansen/replicant) — the source of
   `glitter.core`'s reconciler and most of the non-GTK-specific namespaces.
-- `NOTICE.md` (repo root) — the authoritative file-by-file attribution
-  ledger; `porting-and-attribution.md` explains it, `NOTICE.md` is the
+- `NOTICE` (repo root) — the authoritative file-by-file attribution
+  ledger; `porting-and-attribution.md` explains it, `NOTICE` is the
   source of truth for exact commit SHAs and per-file deviation notes.

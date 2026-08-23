@@ -2,7 +2,7 @@
   "Registry-atom convenience API over glitter.nexus, ported from
   nexus.registry (https://github.com/cjohansen/nexus), commit
   5f6c93672f25d2a5b2a91ac3b65a921ecf8826b2. Copyright 2025 Christian
-  Johansen, Magnar Sveen, Teodor Heggelund. MIT License — see NOTICE.md.
+  Johansen, Magnar Sveen, Teodor Heggelund. MIT License — see NOTICE.
 
   Byte-for-byte port — no adaptations needed, pure atom + map
   operations, no reader conditionals in the source. Mirrors

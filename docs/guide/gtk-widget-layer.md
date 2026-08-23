@@ -333,8 +333,8 @@ Shipping `:switch` state-settable-but-non-interactive (readable via
 `:active`, but never dispatching back on user toggle) was considered and
 rejected as a quiet half-measure: it would look identical to `:checkbutton`
 in hiccup but silently not round-trip, a worse trap than not shipping it
-at all. Left as an explicitly open decision (see `AGENTS.md`'s Scope
-section) rather than resolved either way.
+at all. Left as an explicitly open decision at the time, rather than
+resolved either way.
 
 **Resolved two rounds later** — see
 ["`:switch` — generalizing `set-event-handler`"](#switch--generalizing-set-event-handler)
@@ -879,7 +879,8 @@ CONTAINER operation (`gtk_list_box_remove`), not a value-setter. Left
 unsuppressed, the spurious dispatch reaches the app's `*dispatch*` fn
 exactly like a real user deselection would — and because `mount!`'s
 watcher runs `render!` INLINE when already on the GTK main thread
-(convention #6, `app-loop-and-threading.md`), and this all happens
+(CONTRIBUTING.md invariant #6, `app-loop-and-threading.md`), and this all
+happens
 synchronously inside a GTK signal callback fired from INSIDE an
 in-progress `core/reconcile` call, the resulting `swap!` on the app's
 state atom triggers a SECOND, NESTED `core/reconcile` call before the
@@ -1724,7 +1725,7 @@ for the full mechanism (`create-node`'s actual call, `set-attribute`'s
 one-key-per-call shape). This section covers what that finding meant
 for the widgets already shipped by round 10.
 
-A systematic audit of all 42 pre-round-11 widget specs, cross-checking
+A systematic audit of all 39 pre-round-11 widget specs, cross-checking
 every `:ctor` prop reference against `:apply`'s coverage, found four
 real bugs — all confirmed live, all shipped since as early as round 1,
 all invisible to every existing smoke because no existing smoke's
@@ -1829,9 +1830,8 @@ defaults.
 
 Before designing `:grid`'s structural-props mechanism, the original
 plan used namespaced keys — `:grid/column`, `:grid/row`, `:stack/name`
-— matching this project's own Clojure conventions
-([`clojure/conventions.md`](../../CLAUDE.md)'s "keywords over strings
-for keys" guidance, and simply looking more idiomatic). A throwaway
+— matching this project's own Clojure conventions ("keywords over
+strings for keys", and simply looking more idiomatic). A throwaway
 probe mounting `[:label {:my-plain-prop 42 :grid/column 2}]` and
 printing every key `IRender/set-attribute` actually received showed
 only `:my-plain-prop` ever arrived — `:grid/column` never reached

@@ -15,7 +15,7 @@
  ;; call sites, plus every destructured arg inside the body).
  :lint-as {glitter.alias/defalias clojure.core/defn}
 
- ;; These 10 files are ported verbatim from Replicant (see NOTICE.md /
+ ;; These 10 files are ported verbatim from Replicant (see NOTICE /
  ;; docs/guide/porting-and-attribution.md) and deliberately keep
  ;; #?(:clj :cljs) reader conditionals in a .clj extension — a mechanical
  ;; sed rename from Replicant's original .cljc, not a bug. Standard Clojure

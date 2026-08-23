@@ -6,7 +6,7 @@
   #?(:cljs (:require-macros [glitter.assert])))
 ;; Ported from replicant.assert (https://github.com/cjohansen/replicant),
 ;; commit 379bb3c1ad4d5d3002c57e67ab647d12f3c2d322. Copyright 2023-2025
-;; Christian Johansen. MIT License — see NOTICE.md.
+;; Christian Johansen. MIT License — see NOTICE.
 
 (def ^:no-doc current-context (atom nil))
 (def ^:no-doc current-node (atom nil))

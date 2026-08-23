@@ -2,7 +2,7 @@
   "Data-driven action/effect/placeholder dispatch, ported from nexus.core
   (https://github.com/cjohansen/nexus), commit
   5f6c93672f25d2a5b2a91ac3b65a921ecf8826b2. Copyright 2025 Christian
-  Johansen, Magnar Sveen, Teodor Heggelund. MIT License — see NOTICE.md.
+  Johansen, Magnar Sveen, Teodor Heggelund. MIT License — see NOTICE.
 
   Toolkit-agnostic by design, same as upstream — this file knows nothing
   about GTK or glitter's own event shape. glitter-specific wiring (the

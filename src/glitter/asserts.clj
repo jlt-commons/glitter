@@ -8,7 +8,7 @@
 
 ;; Ported from replicant.asserts (https://github.com/cjohansen/replicant),
 ;; commit 379bb3c1ad4d5d3002c57e67ab647d12f3c2d322. Copyright 2023-2025
-;; Christian Johansen. MIT License — see NOTICE.md.
+;; Christian Johansen. MIT License — see NOTICE.
 
 (defmacro assert-no-nested-renders []
   `(assert/assert

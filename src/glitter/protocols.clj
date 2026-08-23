@@ -2,7 +2,7 @@
 
 ;; Ported from replicant.protocols (https://github.com/cjohansen/replicant),
 ;; commit 379bb3c1ad4d5d3002c57e67ab647d12f3c2d322. Copyright 2023-2025
-;; Christian Johansen. MIT License — see NOTICE.md.
+;; Christian Johansen. MIT License — see NOTICE.
 
 (defprotocol IRender
   :extend-via-metadata true

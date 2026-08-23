@@ -132,7 +132,7 @@
 ;; share this shape. Plain function call, not [field-row ...]: glitter's
 ;; hiccup (ported from Replicant) requires a literal KEYWORD in tag
 ;; position, so a function-valued tag would silently render as opaque
-;; stringified text instead of expanding — see AGENTS.md convention #10
+;; stringified text instead of expanding — see CONTRIBUTING.md invariant #9
 ;; and examples/glitter/todo.clj's stat-card for the same pattern.
 (defn- field-row [label value path]
   [:hbox {:spacing 8}
@@ -154,7 +154,7 @@
         ;; correctly disabled when the selection scrolls out of the
         ;; filtered results. `boolean`, not bare `some` — `some` returns
         ;; nil (not false) on no match, and glitter's apply-props! only
-        ;; re-applies props present via `some?` (AGENTS.md convention #4:
+        ;; re-applies props present via `some?` (CONTRIBUTING.md invariant #4:
         ;; :sensitive false must reach the widget, not be treated as
         ;; absent) — a bare `nil` here would be silently DROPPED instead
         ;; of applied, leaving :sensitive stuck at its last true value.

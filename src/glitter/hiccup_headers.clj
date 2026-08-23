@@ -3,7 +3,7 @@
 
 ;; Ported from replicant.hiccup_headers (https://github.com/cjohansen/replicant),
 ;; commit 379bb3c1ad4d5d3002c57e67ab647d12f3c2d322. Copyright 2023-2025
-;; Christian Johansen. MIT License — see NOTICE.md.
+;; Christian Johansen. MIT License — see NOTICE.
 
 (defn ^:no-doc make-key
   "Key for a keyed node. A [tag k] tuple, except under squint where JS Set and

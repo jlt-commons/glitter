@@ -66,8 +66,8 @@ of why the arg list has a leading, usually-unused context arg.
 
 ### Placeholders — resolving event data into action data
 
-Hiccup `:on` data is fixed at the moment `view` runs (see AGENTS.md
-convention #9) — it can't carry a value that only exists once the user
+Hiccup `:on` data is fixed at the moment `view` runs (see CONTRIBUTING.md
+invariant #8) — it can't carry a value that only exists once the user
 types. nexus's placeholder mechanism is the generic version of the
 `:glitter/value`-in-the-event-map trick every demo already needs:
 `glitter.nexus/interpolate-walk` walks an action's data, and any nested
@@ -219,8 +219,8 @@ in the ported files, mirroring how upstream's own dev example,
   ...}`); `e` is the raw event object `glitter.gtk/set-event-handler`
   constructs, which stuffs the widget's current value onto it as
   `:glitter/value` for any value-bearing signal (see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md) and AGENTS.md convention
-  #9). This is the SAME value every demo read by hand before this arc;
+  [`gtk-widget-layer.md`](gtk-widget-layer.md) and CONTRIBUTING.md invariant
+  #8). This is the SAME value every demo read by hand before this arc;
   registering it as a nexus placeholder just moves the `get-in` call out
   of a hand-written dispatch fn and into data.
 - **`:nexus/on-error` → `clojure.tools.logging`** — every demo registers
@@ -380,7 +380,7 @@ own full, synchronous `core/reconcile` before the next effect in the
 same expansion runs — not one render for the whole expansion. This
 follows from two facts already true elsewhere in this project:
 `app.clj`'s `on-gui` runs inline when already on the GTK main thread
-(see AGENTS.md convention #6), and every effect in this codebase
+(see CONTRIBUTING.md invariant #6), and every effect in this codebase
 dispatches from a GTK signal callback, which already runs on that
 thread. So there's no batching boundary around an expansion's effects
 the way one hand-written `swap!` implicitly gave the pre-retrofit code.

@@ -179,7 +179,7 @@ bb hooks:install / :install:full / :uninstall   git pre-commit hook (fast | +tes
 
 Adapted from sibling Jolt/FFI projects in the same author's umbrella
 (`b12n-adk-clj` for the positional-args script, `b12n-rljlt` for the
-clj-kondo hook — see `NOTICE.md`), not written from scratch, because both
+clj-kondo hook — see `NOTICE`), not written from scratch, because both
 needed the same fix for the same underlying problem: **`jolt.ffi/defcfn`
 is a macro clj-kondo cannot see through.**
 
