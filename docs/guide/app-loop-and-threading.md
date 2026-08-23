@@ -1,7 +1,7 @@
 # App loop and cross-thread marshalling
 
 `glitter.app` is adapted from the non-reactive slice of `glimmer.core`
-(`post-to-gui`, `on-gui`, `run*`, `run`) — bootstrapping a `GtkApplication`
+(`post-to-gui`, `on-gui`, `run*`, `run`): bootstrapping a `GtkApplication`
 and hopping callbacks onto the GTK main thread has nothing to do with which
 reconciler sits on top, so this code ports cleanly. The one real change
 from the original: glimmer's `:activate` handler hardcodes a call into
@@ -38,8 +38,8 @@ invocation, where the calling thread already *is* the process main thread).
 ## Cross-thread marshalling: `on-gui`
 
 While the GTK loop runs, `g_application_run` owns the main thread. Any code
-that touches a widget from a *different* thread — an nREPL eval's worker
-thread, a `future` — has to defer that work onto the loop, because
+that touches a widget from a *different* thread (an nREPL eval's worker
+thread, a `future`) has to defer that work onto the loop, because
 off-main-thread widget mutation is an AppKit violation on macOS. GTK's
 mechanism for this is a one-shot `g_idle_add` source (idle callbacks run on
 the main thread):
@@ -78,14 +78,14 @@ Two things matter here, both load-bearing:
 
 1. **Headless (no loop running) runs inline.** Unit tests using
    `glitter.test-renderer` never start a `GtkApplication`, so `on-gui`
-   degrades to a plain synchronous call — no `g_idle_add` machinery, no
+   degrades to a plain synchronous call, no `g_idle_add` machinery, no
    dependency on a loop that doesn't exist.
 2. **Already-on-the-main-thread runs inline, not marshalled.** `glitter.app`
    tracks which thread `g_application_run` actually runs on (`main-thread`,
    set once in `run*` via `(reset! main-thread (Thread/currentThread))`).
-   Without this check, *every* call to `on-gui` — even one already safely on
+   Without this check, *every* call to `on-gui` (even one already safely on
    the GTK main thread, like a click handler's dispatch triggering a
-   `swap!` whose watcher fires synchronously — would post asynchronously via
+   `swap!` whose watcher fires synchronously) would post asynchronously via
    `g_idle_add`, deferring the render to the next main-loop iteration. That
    breaks any caller expecting a synchronous read-back immediately after
    triggering a state change (`examples/glitter/keyed.clj` does exactly
@@ -98,9 +98,9 @@ Two things matter here, both load-bearing:
 `examples/glitter/main_thread_smoke.clj` is the automated pin for exactly
 this: it mutates `state` from inside a `future` (a genuinely different
 thread), then schedules a read-back through `on-gui`, and asserts **which
-thread `view` actually ran on** — not merely that the label updated. An
+thread `view` actually ran on**, not merely that the label updated. An
 unmarshalled watcher would still update the label (nothing stops a
-worker thread from mutating GTK internals under Jolt — it's just an AppKit
+worker thread from mutating GTK internals under Jolt; it's just an AppKit
 violation, not a crash), so a text-only assertion would pass with the bug
 present and prove nothing. The example records `(Thread/currentThread)`
 inside `view` itself and requires it to equal the GTK main thread, and
@@ -110,8 +110,8 @@ whole check can't pass vacuously if `future` ever ran inline).
 This gap existed once: `glitter.gtk/mount!`'s state-atom watcher originally
 called the reconciler synchronously on whatever thread performed the
 `swap!`, bypassing `glitter.app`'s marshalling entirely. Every *other*
-example mutates state from inside `activate` or a signal callback — i.e.
-already on the GTK main thread — so none of them could ever have caught
+example mutates state from inside `activate` or a signal callback (i.e.
+already on the GTK main thread), so none of them could ever have caught
 it. This example is the one the original design spec called for and the
 implementation arc initially missed; its absence is why the bug went
 unnoticed until a dedicated review pass.

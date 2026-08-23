@@ -26,7 +26,7 @@
   (including `:pointer`) become a number, `:string` a string, and
   everything else (`:void`) nil.
 
-  This DEVIATES from b12n-rljlt's original in one deliberate way:
+  This DEVIATES from b12n-raylib-jlt's original in one deliberate way:
   `:pointer` maps to a number here, not nil. rljlt's raylib pointers are
   opaque handles only ever passed back into other untyped `ffi/*` calls, so
   nil cost nothing. glitter.ffi's own ns docstring states pointers are
@@ -39,7 +39,7 @@
   not `:size-t` — both are recognized below in case a future binding uses
   either spelling.
 
-  Adapted from b12n-rljlt's `.clj-kondo/hooks/jolt_ffi.clj` (same
+  Adapted from b12n-raylib-jlt's `.clj-kondo/hooks/jolt_ffi.clj` (same
   `jolt.ffi/defcfn` macro, same false-positive problem) — see that repo for
   the original raylib-flavored version of this comment and the un-adapted
   `:pointer -> nil` mapping."

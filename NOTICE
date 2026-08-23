@@ -116,7 +116,7 @@ is why this is its own bucket.
   `Timing` is a dataspex render type with no glitter equivalent, simply
   never written down until now.
 
-## b12n-adk-clj / b12n-rljlt
+## b12n-adk-clj / b12n-raylib-jlt
 
 Same author/org as glitter (private repos, no license file, no attribution
 obligation, listed here for provenance only):
@@ -131,7 +131,7 @@ obligation, listed here for provenance only):
   would have found zero of its 17 files; the same bug affects b12n-adk-clj's
   own copy, which has both flat and nested source files).
 - `.clj-kondo/hooks/jolt_ffi.clj` — `.clj-kondo/hooks/jolt_ffi.clj` from
-  b12n-rljlt (same `jolt.ffi/defcfn` macro, same false-positive problem);
+  b12n-raylib-jlt (same `jolt.ffi/defcfn` macro, same false-positive problem);
   one behavioural deviation: `:pointer` return values map to a number, not
   `nil` — glitter.ffi's own ns docstring states pointers are "plain machine
   addresses (jolt numbers)", and glitter.genum/glitter.widget call `zero?`

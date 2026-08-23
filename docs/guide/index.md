@@ -1,11 +1,11 @@
-# glitter — Guide
+# glitter: Guide
 
 ## Why this exists
 
 `glitter` is a Replicant-style GTK4 renderer for Jolt. Its sibling,
 [glimmer](https://github.com/jolt-lang/glimmer), already applies Reagent's
 model (ratoms, automatic dependency tracking, component-local state) to
-GTK4; glitter deliberately applies a different model —
+GTK4; glitter deliberately applies a different model;
 [Replicant](https://github.com/cjohansen/replicant)'s single application-
 state atom, pure `state -> hiccup` view function, top-down re-render, and
 data-driven action-dispatch handlers. This guide covers how that model was
@@ -44,20 +44,20 @@ live GTK widget tree in sync.
 ## Pages
 
 ### Orientation
-- [`examples.md`](examples.md) — the six interactive demos (four of them
+- [`examples.md`](examples.md): the six interactive demos (four of them
   [7GUIs](https://eugenkiss.github.io/7guis/) tasks) and the twenty-six
   live-GTK smokes: what each one runs, and what it pins. `counter.clj` is
   the 20-line version of the whole model and the fastest way in.
-- [`architecture.md`](architecture.md) — the reconcile → `IRender`/
+- [`architecture.md`](architecture.md): the reconcile → `IRender`/
   `IMemory` flow, `mount!`'s state-atom watcher, why elements are tracking
   atoms rather than raw GTK pointers.
-- [`porting-and-attribution.md`](porting-and-attribution.md) — the four
+- [`porting-and-attribution.md`](porting-and-attribution.md): the four
   sourcing buckets (ported from Replicant / forked from glimmer / new to
-  glitter / ported from nexus — see [`nexus.md`](nexus.md)), and every
+  glitter / ported from nexus; see [`nexus.md`](nexus.md)), and every
   documented deviation from the pure Replicant port.
 
 ### Dispatch
-- [`nexus.md`](nexus.md) — `glitter.nexus`, a port of
+- [`nexus.md`](nexus.md): `glitter.nexus`, a port of
   [nexus](https://github.com/cjohansen/nexus)'s data-driven
   action/effect/placeholder dispatch engine. It covers:
 
@@ -67,19 +67,19 @@ live GTK widget tree in sync.
     happen), and interceptors (the `before-*`/`after-*` mechanism the
     engine itself runs on).
   - **The two glitter-specific wiring pieces** every consumer registers
-    for itself — `:glitter/value` and `:nexus/on-error` →
-    `clojure.tools.logging` — and why they live in each demo rather than
+    for itself: `:glitter/value` and `:nexus/on-error` →
+    `clojure.tools.logging`, and why they live in each demo rather than
     in the ported files.
   - **The two consumer shapes this project ships.** `flights.clj`'s
     pure-effects-only Flight Booker, versus `crud.clj`'s and
     `todo.clj`'s action-expansion retrofits.
   - **The action log** and its `:entries`/`:chronology` accumulation
-    tree (`(pr-str @log)` — no viewer yet), plus the `t/parse-date`
+    tree (`(pr-str @log)`, no viewer yet), plus the `t/parse-date`
     leniency finding that makes Flight Booker's date validation
     actually work.
 
 ### GTK integration
-- [`gtk-widget-layer.md`](gtk-widget-layer.md) — the hiccup-tag → widget
+- [`gtk-widget-layer.md`](gtk-widget-layer.md): the hiccup-tag → widget
   registry and the signal connect/disconnect lifecycle. The long one: a
   per-widget record of how each of the 43 supported tags was added and
   what it taught. Grouped by what it covers:
@@ -95,7 +95,7 @@ live GTK widget tree in sync.
     Most widgets reuse the uniform 2-arg-void shape for free. Four did
     not: `:switch` (3-arg, non-void return), `:list-box` (a distinct
     3-arg-void shape, later reused for free by `:expander`/`:paned`'s
-    `notify::*`), `:notebook` (4-arg `"switch-page"` — the first signal
+    `notify::*`), `:notebook` (4-arg `"switch-page"`: the first signal
     that must read its own raw argument, because the getter is still
     stale when it fires), and `:scale-button` (the first case where the
     signal *name* alone can't determine the shape, making dispatch
@@ -109,34 +109,34 @@ live GTK widget tree in sync.
   - **Findings that changed the design.** Namespaced keyword props never
     reach `IRender/set-attribute` at all; `signal-value` had to be keyed
     by `[tag signal]` rather than signal name; a ctor/apply audit found
-    four previously-shipped bugs; and — not glitter-specific — bulk
+    four previously-shipped bugs; and, not glitter-specific: bulk
     `GtkEditable` text replacement fires `"changed"` once or twice
     depending on the buffer's starting state.
   - **Free wins.** The display-only widgets (`:spinner`,
     `:progress-bar`, `:image`, `:level-bar`, `:revealer`, `:picture`,
     `:inscription`, `:search-bar`), the `GtkEditable`-delegate reuses
     (`:password-entry`, `:search-entry`, `:editable-label`), and
-    `:menu-button`/`:popover` — the first popup surface here, and the
+    `:menu-button`/`:popover`: the first popup surface here, and the
     first hiccup relationship that isn't an ordinary
     `append-child!`-managed tree child.
 
-- [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
+- [`app-loop-and-threading.md`](app-loop-and-threading.md): the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
-- [`testing-and-tasks.md`](testing-and-tasks.md) — the unit suite, the
+- [`testing-and-tasks.md`](testing-and-tasks.md) (the unit suite, the
   headless fake-`IRender` test renderer, the twenty-six automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
-- [`limitations.md`](limitations.md) — every known v1 gap, and the
+- [`limitations.md`](limitations.md)) every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.
 
 ## See also
 
-- [glimmer](https://github.com/jolt-lang/glimmer) — the Reagent-style
+- [glimmer](https://github.com/jolt-lang/glimmer): the Reagent-style
   sibling this project forked its GTK4 FFI/widget layer from.
-- [Replicant](https://github.com/cjohansen/replicant) — the source of
+- [Replicant](https://github.com/cjohansen/replicant): the source of
   `glitter.core`'s reconciler and most of the non-GTK-specific namespaces.
-- `NOTICE` (repo root) — the authoritative file-by-file attribution
+- `NOTICE` (repo root): the authoritative file-by-file attribution
   ledger; `porting-and-attribution.md` explains it, `NOTICE` is the
   source of truth for exact commit SHAs and per-file deviation notes.

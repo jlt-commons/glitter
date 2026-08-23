@@ -1,6 +1,6 @@
 # The examples
 
-Everything runnable lives under `examples/glitter/` — 32 namespaces, in two
+Everything runnable lives under `examples/glitter/`; 32 namespaces, in two
 kinds:
 
 - **Six interactive demos** you open and click. Four of them are
@@ -18,34 +18,34 @@ Run any of them with `bb <name>`, or `jolt -M:<name>` without babashka.
 
 | `bb` name | Task | What it demonstrates |
 |---|---|---|
-| `counter` | — | The canonical demo. One state atom, a pure `state -> hiccup` view, handlers as data. The 20-line version of the whole model. |
-| `todo` | — | A task board: derived counts computed inline (glitter has no reactive-derivation primitive — the view just re-runs), an entry with `:change`/`:activate`, checkbutton toggles, list rendering in a frame. |
+| `counter` |: | The canonical demo. One state atom, a pure `state -> hiccup` view, handlers as data. The 20-line version of the whole model. |
+| `todo` | (| A task board: derived counts computed inline (glitter has no reactive-derivation primitive) the view just re-runs), an entry with `:change`/`:activate`, checkbutton toggles, list rendering in a frame. |
 | `crud` | [CRUD](https://eugenkiss.github.io/7guis/tasks/#crud) | Live prefix filter, single-selection list box, name/surname fields, Create/Update/Delete. The spec's "separation of domain and presentation logic" is the pure `get-people` fn, shared by the view and the select-row expansion. |
-| `flights` | [Flight Booker](https://eugenkiss.github.io/7guis/tasks/#flight-booker) | Constraints *between* widgets and *within* one. The first `glitter.nexus` consumer, and the only demo that needs no action expansions at all — every interaction is at most two effects. |
+| `flights` | [Flight Booker](https://eugenkiss.github.io/7guis/tasks/#flight-booker) | Constraints *between* widgets and *within* one. The first `glitter.nexus` consumer, and the only demo that needs no action expansions at all: every interaction is at most two effects. |
 | `temperature` | [Temperature Converter](https://eugenkiss.github.io/7guis/tasks/#temp) | Two linked numeric fields, each updating the other. Needs exactly one action expansion, because which field is the *source* depends on which one you just edited. |
-| `timer` | [Timer](https://eugenkiss.github.io/7guis/tasks/#timer) | The first demo whose state advances **on its own** — a background tick via a demo-local `:effect/schedule`, plus a Reset button. |
+| `timer` | [Timer](https://eugenkiss.github.io/7guis/tasks/#timer) | The first demo whose state advances **on its own**: a background tick via a demo-local `:effect/schedule`, plus a Reset button. |
 
-### Why the demos are worth reading, not just running
+## Why the demos are worth reading, not just running
 
 Each one is a deliberate contrast with how the same UI would be written
 in [glimmer](https://github.com/jolt-lang/glimmer), the Reagent-style
 sibling. `counter.clj` says it directly: in glimmer, local state lives in
 a component-scoped ratom and a click closure calls `swap!` itself. Here
 all state is in one top-level atom, the view is a pure function of it,
-and click handlers are *data* dispatched through one global fn — never
+and click handlers are *data* dispatched through one global fn, never
 closures. That difference is the whole point of the project, and it is
 easier to see in 20 lines of `counter.clj` than in any prose.
 
 The four 7GUIs demos add a second axis: each names the specific challenge
 its task is designed to expose, and shows what that challenge looks like
-under this model. `flights.clj` and `crud.clj` are the interesting pair —
+under this model. `flights.clj` and `crud.clj` are the interesting pair:
 same engine, and one needs no action expansions while the other's
 interactions can't be expressed without them.
 
-### One finding worth knowing
+## One finding worth knowing: lenient date parsing
 
 `flights.clj` needed its own `parse-date`. `t/parse-date` from
-`jolt-lang/time` is **lenient**, not strict — verified live that
+`jolt-lang/time` is **lenient**, not strict: verified live that
 `"27.03.2014x"`, `"not-a-date"` and `"31.02.2014"` all parse without
 throwing. The demo wraps it in a round-trip check (parse, reformat with
 the same formatter, reject unless the result matches the trimmed input),
@@ -62,7 +62,7 @@ loop, and several of this project's fixed bugs were "obviously correct"
 on paper and wrong when actually run. Each smoke pins the specific
 behaviour that was once broken.
 
-### Reconciler behaviour
+## Smokes: reconciler behaviour
 
 | `bb` name | Pins |
 |---|---|
@@ -74,12 +74,12 @@ behaviour that was once broken.
 | `list-box-reorder-smoke` | The `g_object_ref_sink` fix for the keyed-reorder use-after-dispose bug |
 | `ctor-apply-regression-smoke` | Four real ctor/apply bugs found in the round-11 audit stay fixed |
 
-### Signals and value delivery
+## Smokes: signals and value delivery
 
 | `bb` name | Pins |
 |---|---|
 | `scale-smoke` | `value-changed` delivers the right double, with no spurious dispatch |
-| `switch-smoke` | `state-set` — 3-arg, non-void return — via a generalized callable |
+| `switch-smoke` | `state-set` (3-arg, non-void return) via a generalized callable |
 | `toggle-level-smoke` | `:toggle-button`'s `toggled`, plus `:level-bar` re-render |
 | `link-button-smoke` | `:link-button` reuses `:on-click`; a real click via `gtk_widget_activate` |
 | `spin-button-list-box-smoke` | `:spin-button`'s tag-safe value-fn; `:list-box`'s `row-selected` |
@@ -87,7 +87,7 @@ behaviour that was once broken.
 | `expander-paned-smoke` | `notify::*` signals reuse the 3-arg-void callable shape |
 | `notebook-scale-button-smoke` | `switch-page`'s raw-arg read and mount-time auto-select; `:scale-button`'s tag-aware `value-changed` |
 
-### Containers and layout
+## Smokes: containers and layout
 
 | `bb` name | Pins |
 |---|---|
@@ -99,14 +99,14 @@ behaviour that was once broken.
 | `window-handle-stack-smoke` | `:window-handle`'s single-child wrap; `:stack`'s name-addressed pages |
 | `drop-down-grid-smoke` | `:drop-down`'s `GtkStringList` selection round-trip; `:grid`'s structural-props cell placement |
 
-### Props and display-only widgets
+## Smokes: props and display-only widgets
 
 | `bb` name | Pins |
 |---|---|
-| `class-smoke` | `:class` reaches real GTK CSS classes — add, coexist, remove on diff |
+| `class-smoke` | `:class` reaches real GTK CSS classes (add, coexist, remove on diff |
 | `leaf-widgets-smoke` | `:spinner`/`:progress-bar`/`:image` construction and re-render |
 | `picture-editable-label-smoke` | `:picture` re-render; `:editable-label` as a third `GtkEditable` reuse |
-| `inscription-search-bar-smoke` | Display and props only — the round where zero `glitter.gtk` changes were needed |
+| `inscription-search-bar-smoke` | Display and props only) the round where zero `glitter.gtk` changes were needed |
 
 ## Adding an example
 
@@ -116,7 +116,7 @@ invisible to something:
 1. **The namespace** under `examples/glitter/`.
 2. **A `deps.edn` alias**, so `jolt -M:<name>` works without babashka.
 3. **A `bb.edn` task**, so `bb <name>` works and it shows up in `bb info`.
-4. **If it's a smoke**, add it to `bb.edn`'s `smokes` list — otherwise
+4. **If it's a smoke**, add it to `bb.edn`'s `smokes` list: otherwise
    `bb smokes` won't run it and CI-by-hand won't catch a regression in it.
 
 A smoke must exit non-zero on failure. Do **not** gate it on `jolt <task>`:
