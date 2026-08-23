@@ -25,10 +25,8 @@
  ;; (jolt -M:test proves that), just not what clj-kondo expects from this
  ;; extension. It's a "syntax"-class finding, which isn't gated by
  ;; :linters levels the way ordinary lint warnings are, so exclusion here
- ;; is the only fix — this is exactly the pattern b12n-sumo-app's
- ;; .clj-kondo/config.edn uses to exclude ClojureDart source clj-kondo
- ;; can't parse (see ~/dev/b12n-wikis/b12n-sumo-app/
- ;; developer-workflow-and-bb-tasks.md). Scoping this here (not just in
+ ;; is the only fix; this is the usual way a .clj-kondo/config.edn
+ ;; excludes source clj-kondo can't parse. Scoping this here (not just in
  ;; bb.edn's task command lines) means `clj-kondo --lint src test examples`
  ;; is safe to run directly — an editor's clojure-lsp pass or an
  ;; accidental un-scoped invocation can't reintroduce the flood.

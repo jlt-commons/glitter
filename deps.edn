@@ -27,7 +27,7 @@
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}}
 
  ;; GTK4 and its GLib dependencies, bound natively via jolt.ffi. Identical
- ;; declarations to glimmer's deps.edn (~/dev/glimmer/deps.edn) — glitter
+ ;; declarations to glimmer's own deps.edn (jolt-lang/glimmer) — glitter
  ;; targets the same native libraries, just a different reconciler on top.
  :jolt/native [{:name "glib-2.0"
                 :darwin ["/opt/homebrew/lib/libglib-2.0.0.dylib"

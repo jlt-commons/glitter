@@ -177,8 +177,9 @@ bb verify                                 pre-commit gate: lint (report) + test 
 bb hooks:install / :install:full / :uninstall   git pre-commit hook (fast | +tests | remove)
 ```
 
-Adapted from sibling Jolt/FFI projects in the same author's umbrella
-(`b12n-adk-clj` for the positional-args script, `b12n-raylib-jlt` for the
+Adapted from sibling Jolt/FFI projects by the same author (`b12n-adk-clj`,
+a private repo, for the positional-args script;
+[`b12n-raylib-jlt`](https://github.com/burinc/b12n-raylib-jlt) for the
 clj-kondo hook; see `NOTICE`), not written from scratch, because both
 needed the same fix for the same underlying problem: **`jolt.ffi/defcfn`
 is a macro clj-kondo cannot see through.**
@@ -230,9 +231,8 @@ rigorously than static analysis could); it is simply not the syntax
 clj-kondo expects from a `.clj` extension. `"syntax"`-class findings aren't
 gated by `:linters` levels the way ordinary lint warnings are, so the fix
 is `.clj-kondo/config.edn`'s `:output {:exclude-files [...]}` (10 regex
-patterns, one per ported file) the same pattern
-[`b12n-sumo-app`](https://github.com/burinc/b12n-sumo-app) uses to exclude
-ClojureDart source clj-kondo can't parse at all. Scoping at the *config*
+patterns, one per ported file), the same approach commonly used to
+exclude source clj-kondo can't parse at all. Scoping at the *config*
 level rather than in every task's command line means `clj-kondo --lint src
 test examples` (or even an editor's clojure-lsp pass, since `clojure-lsp
 diagnostics` runs clj-kondo under the hood and respects the same config)

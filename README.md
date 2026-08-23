@@ -203,8 +203,6 @@ Where the code came from:
   reconcile → `IRender`/`IMemory` architecture, the GTK4-specific widget/
   signal-lifecycle mechanics, cross-thread marshalling, the porting/
   attribution ledger, testing, and every known v1 limitation in depth.
-  Mirrored to [`b12n-wikis/glitter`](https://github.com/burinc/b12n-wikis/tree/main/glitter)
-  for browsing outside a checkout.
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** (how to set up, which gates to
   run before a PR, how to add a widget, and the numbered list of invariants
   not to regress (each one was a real bug at some point).

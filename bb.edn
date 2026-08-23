@@ -383,7 +383,7 @@
 
   ;; --- Docs -----------------------------------------------------------------
   docs-sync
-  {:doc "Republish the docs: rebuild via b12n-docs -> push site repo -> mirror to wiki. Maintainer task (needs sibling repos). bb docs-sync [--no-push]"
+  {:doc "Republish the docs: rebuild, push the site repo, mirror the guide. Maintainer-only: needs private sibling repos you will not have. bb docs-sync [--no-push]"
    ;; Pages variant: GitHub serves docs/ straight from the site repo's main
    ;; branch, so there is no S3 sync and no CloudFront invalidation to do —
    ;; a push IS the deploy. Contrast b12n-raylib-clj's docs-sync, which

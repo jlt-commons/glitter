@@ -5,10 +5,7 @@ Thanks for taking an interest. glitter is a
 [Jolt](https://github.com/jolt-lang/jolt) (native Clojure on a Chez Scheme
 host, no JVM) talking to real GTK4 over its C ABI through `glitter.ffi`.
 
-The deep documentation lives in [`docs/guide/`](docs/guide/index.md) and is
-mirrored to [`b12n-wikis/glitter`](https://github.com/burinc/b12n-wikis/tree/main/glitter)
-for browsing outside a checkout. `docs/guide/` is the source of truth; edit
-the Markdown here, never the mirror.
+The deep documentation lives in [`docs/guide/`](docs/guide/index.md).
 
 ## Setting up
 

@@ -6,7 +6,8 @@
 ;; Usage: bb scripts/check_positional_args.clj [--strict]
 ;;        --strict: exit non-zero if any functions are found
 ;;
-;; Adapted from b12n-adk-clj's scripts/check_positional_args.clj — same
+;; Adapted from b12n-adk-clj's scripts/check_positional_args.clj (a private
+;; sibling repo by the same author; see NOTICE) — same
 ;; script, source-dirs pointed at glitter's src/glitter layout.
 
 (ns check-positional-args
