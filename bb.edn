@@ -381,6 +381,40 @@
                              (do (fs/delete hook) (println "OK pre-commit hook removed"))
                              (println ">> no pre-commit hook found")))}
 
+  ;; --- Demo GIFs ------------------------------------------------------------
+  demos:examples
+  {:doc "Print the demo item list as EDN for screen-grab (used by bb record)"
+   :task
+   (prn (vec (for [row [["counter"     "basics" "state atom + action dispatch, the whole model in 20 lines"]
+                        ["todo"        "basics" "checkbutton toggles driving derived counts"]
+                        ["crud"        "7guis"  "live prefix filter, list-box selection, create/update/delete"]
+                        ["flights"     "7guis"  "constraints between widgets and within one"]
+                        ["temperature" "7guis"  "two linked fields, each updating the other"]
+                        ["timer"       "7guis"  "elapsed time that advances on its own, plus Reset"]]]
+               {:id (nth row 0)
+                :group (nth row 1)
+                :desc (nth row 2)
+                :src (str "examples/glitter/" (str/replace (nth row 0) "-" "_") ".clj")
+                :run (str "jolt -M:" (nth row 0))})))}
+
+  record
+  {:doc "Batch-record a demo GIF for every interactive demo: bb record [--only a,b] [--force] [--dry-run]"
+   ;; Maintainer-only. The capture CLI is not publicly released yet, and
+   ;; recording takes the screen over for a few minutes. Contributors never
+   ;; need it: every GIF is committed under docs/demos/.
+   :task (if-not (fs/which "screen-grab")
+           (binding [*out* *err*]
+             (println "bb record needs the `screen-grab` capture CLI on your PATH.")
+             (println "That tool is internal and not publicly released yet, so this")
+             (println "task is maintainer-only. You do not need it to view the demos:")
+             (println "every GIF is committed under docs/demos/ - see docs/demos/README.md.")
+             (System/exit 1))
+           (let [{:keys [exit]} (apply shell {:continue true}
+                                       "screen-grab" "record"
+                                       "--manifest" "scripts/demo_manifest.edn"
+                                       *command-line-args*)]
+             (System/exit exit)))}
+
   ;; --- Docs -----------------------------------------------------------------
   docs-sync
   {:doc "Republish the docs: rebuild, push the site repo, mirror the guide. Maintainer-only: needs private sibling repos you will not have. bb docs-sync [--no-push]"

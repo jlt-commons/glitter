@@ -1,0 +1,62 @@
+;; screen-grab manifest for glitter's interactive demos.
+;; https://github.com/burinc/b12n-screen-grab
+;;
+;; Driver is :spawn — each demo is launched fresh via `jolt -M:<id>`, captured,
+;; and torn down. Steering is KEYBOARD ONLY: screen-grab's own README is
+;; explicit that :click/:move/:drag move the cursor but their press is never
+;; processed by the target app, so a GTK button cannot be clicked this way.
+;; Tab/Space/Enter/typing all work, and GTK's focus ring makes the keyboard
+;; path legible on screen anyway.
+{:driver  :spawn
+ :capture :cgevent-gif
+
+ :examples-cmd "bb demos:examples"
+
+ :out-dir "docs/demos"
+ :ledger  "docs/demos/ledger.edn"
+ :readme  "docs/demos/README.md"
+ :title   "Demos"
+ :preamble "Animated previews of glitter's interactive demos. Regenerate with `bb record` (maintainer-only: it needs an internal capture tool that is not publicly released). The GIFs here are committed, so you do not need it to browse them."
+
+ :groups [{:key "basics" :title "basics"}
+          {:key "7guis"  :title "7GUIs tasks"}]
+
+ :defaults {:duration 8 :fps 10 :width 520 :warmup 12}
+
+ :overrides
+ {;; Tab moves focus to the "+ 1" button, Space presses it. Repeated so the
+  ;; count visibly climbs rather than ticking once.
+  "counter"     {:input [[1.5 :key "tab"] [2.5 :key "space"] [3.5 :key "space"]
+                         [4.5 :key "space"] [5.5 :key "space"] [6.5 :key "space"]]}
+
+  ;; No typing here, deliberately. :type against GTK repeats characters on
+  ;; this setup ("write the guide" arrived as "wriiiiiteeeee g", verified
+  ;; live), which looks broken in a published GIF. Single characters are
+  ;; fine - see "crud" below - but a whole task title is not. Toggling the
+  ;; three checkbuttons with Space shows the derived counts recomputing,
+  ;; which is what this demo is actually about.
+  "todo"        {:input [[1.5 :key "space"] [3.0 :key "tab"] [3.5 :key "space"]
+                         [5.0 :key "tab"] [5.5 :key "space"] [7.0 :key "space"]]
+                 :duration 9}
+
+  ;; Type into the filter field to show the live prefix filter, which is the
+  ;; part of the CRUD task worth seeing.
+  ;; Single characters only (see "todo"). "M" narrows to Mustermann and "T"
+  ;; to Tisch - both real matches. An earlier take filtered on "R", which
+  ;; matches nothing, so the GIF showed an empty list: technically correct
+  ;; filtering, but it reads as a broken demo.
+  "crud"        {:input [[2.0 :type "M"] [4.5 :key "backspace"] [6.0 :type "T"]]
+                 :duration 9}
+
+  ;; Editing one field updates the other eagerly - the whole point of the task.
+  "temperature" {:input [[2.0 :type "100"] [5.0 :key "tab"]] :duration 9}
+
+  ;; Tab into the date field and make it invalid, so the red ill-formatted
+  ;; state and the disabled Book button both show.
+  "flights"     {:input [[2.0 :key "tab"] [3.0 :type "x"] [6.0 :key "backspace"]]
+                 :duration 9}
+
+  ;; Needs no input at all: the elapsed bar advances on its own. This is the
+  ;; only demo whose state changes without a user, so it is the one item here
+  ;; that would animate even with an empty timeline.
+  "timer"       {:duration 10}}}

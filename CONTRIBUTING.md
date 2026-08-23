@@ -166,6 +166,25 @@ Two things that reliably surprise people:
   "obviously correct" on paper and wrong when actually run. Add a smoke under
   `examples/glitter/` and wire it into `bb.edn`'s `smokes` list.
 
+## Demo GIFs
+
+You do not need to record anything. Every GIF under `docs/demos/` is
+committed, and `docs/demos/README.md` is generated from
+`scripts/demo_manifest.edn`.
+
+`bb record` drives an internal capture tool that is not publicly released,
+so it is maintainer-only; it says so and exits rather than failing
+obscurely. If a new demo would benefit from a particular steering sequence,
+add an `:overrides` entry for it in the manifest and mention it in your PR,
+and a maintainer will record it.
+
+Two things worth knowing if you do touch the manifest. Pointer actions
+(`:click`/`:move`/`:drag`) move the cursor but their press never reaches
+the app, so demos are steered by keyboard only. And `:type` repeats
+characters against GTK on some setups ("write the guide" arrived as
+"wriiiiiteeeee g"), so single characters are safe and whole phrases are
+not; prefer Tab/Space/Enter where the demo allows it.
+
 ## Known limitations
 
 Before filing a bug, please check
