@@ -507,9 +507,6 @@ and the round-trip wrapper still rejects every one of them.
 A second, unrelated date finding from the same file, and the reason
 `flights.clj` does not call `(t/today)` at all.
 
-`ZoneId/systemDefault` and `Clock/systemDefaultZone` are hardcoded to UTC
-in `jolt-lang/time` — literally `"systemDefault" (fn [] (zone-id "Z" 0))`
-in `zones.clj`, and the matching `systemDefaultZone` in `zoned.clj`. So
 `(t/today)` answers the **UTC** date on every machine, and ignores `TZ`
 even when it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
 
@@ -517,13 +514,38 @@ even when it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
 (t/today)                                  => 2026-08-23
 TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
 (t/zone)                                   => Z
-(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24
+(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24   ; correct
 ```
 
+**Two independent defects in `jolt-lang/time` produce this, and fixing
+either one alone would not be enough.** Worth stating separately, because
+the first is the one you find immediately and it is only half the story.
+
+*No zone discovery.* `ZoneId/systemDefault` and `Clock/systemDefaultZone`
+are hardcoded to UTC — literally `"systemDefault" (fn [] (zone-id "Z" 0))`
+in `zones.clj`, and the matching `systemDefaultZone` in `zoned.clj` — so
+nothing ever asks the machine which zone it is in.
+
+*`now` ignores a zone it IS given.* `LocalDate/now`, `LocalTime/now`,
+`LocalDateTime/now` and `OffsetDateTime/now` read epoch millis and split
+them into fields with no offset applied at all, so an explicit zone
+argument changes nothing:
+
+```
+(LocalDate/now (ZoneId/of "Australia/Sydney"))     => 2026-08-23
+(LocalDate/now (Clock/system (ZoneId/of "…")))     => 2026-08-23
+(LocalDateTime/now (ZoneId/of "Australia/Sydney")) => 2026-08-23T21:47
+(OffsetDateTime/now (ZoneId/of "Australia/Sydney"))=> 2026-08-23T21:48Z
+(ZonedDateTime/now (Clock/system (ZoneId/of "…"))) => 2026-08-24T07:48+10:00
+```
+
+`ZonedDateTime/now` is the only member of the family that honors a zone
+(`zoned.clj` reads the clock's `:zone` field), which is why
+`(t/in (t/now) "Australia/Sydney")` is correct while `(t/today)` is not.
+
 Note what is NOT broken: the libc zone backend underneath answers named
-zones correctly (`tz-offset-seconds "Australia/Sydney"` => `36000`). Only
-zone *discovery* — "which zone is this machine in" — is missing, and
-`systemDefault` returns UTC instead of admitting it doesn't know.
+zones correctly (`tz-offset-seconds "Australia/Sydney"` => `36000`). The
+offset math is there; nothing calls it on this path.
 
 `get-form-state` defaults the departure field to today, so this demo
 opened on *yesterday* for the first 10 hours of every AEST day. The fix

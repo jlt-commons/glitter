@@ -65,16 +65,23 @@ no `ResolverStyle`/`withResolverStyle` at all — `DateTimeFormatterBuilder`'s
 
 ### `(t/today)` is the UTC date, so the demo doesn't call it
 
-`ZoneId/systemDefault` and `Clock/systemDefaultZone` are hardcoded to UTC
-in `jolt-lang/time` (`zones.clj`'s `"systemDefault" (fn [] (zone-id "Z" 0))`),
-so `(t/today)` answers the UTC date on every machine and ignores `TZ` even
-when it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
+`(t/today)` answers the UTC date on every machine and ignores `TZ` even when
+it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
 
 ```
-(t/today)                                 => 2026-08-23
-TZ=Australia/Sydney … (t/today)           => 2026-08-23   ; TZ ignored
-(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24
+(t/today)                                  => 2026-08-23
+TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
+(LocalDate/now (ZoneId/of "Australia/Sydney")) => 2026-08-23   ; zone ignored
+(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24   ; correct
 ```
+
+Two independent defects in `jolt-lang/time` produce that, and fixing either
+one alone would not be enough: `ZoneId/systemDefault` and
+`Clock/systemDefaultZone` are hardcoded to UTC, so nothing ever asks the
+machine which zone it is in — *and* `LocalDate/now`, `LocalTime/now`,
+`LocalDateTime/now` and `OffsetDateTime/now` ignore a zone even when handed
+one explicitly. Only `ZonedDateTime/now` honors one, which is why the last
+line above is right while the first is not.
 
 The Flight Booker defaults its departure field to today, so it opened on
 *yesterday* for the first 10 hours of every AEST day. `flights.clj`'s

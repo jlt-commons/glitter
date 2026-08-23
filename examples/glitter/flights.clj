@@ -78,15 +78,29 @@
 
 ;; Today's date in the machine's OWN zone, via GLib rather than (t/today).
 ;;
-;; (t/today) would be the natural call and is wrong here: jolt-lang/time
-;; hardcodes ZoneId/systemDefault and Clock/systemDefaultZone to UTC
-;; (zones.clj's `"systemDefault" (fn [] (zone-id "Z" 0))`), so (t/today)
-;; answers the UTC date on every machine and ignores TZ even when it is
-;; explicitly set. Measured at 07:29 AEST on 2026-08-24: (t/today) =>
-;; 2026-08-23, and => 2026-08-23 again under TZ=Australia/Sydney. For a
-;; date-defaulting form that means the field opens on yesterday for the
-;; first 10 hours of every AEST day. GLib reads the real zone, so it is
-;; currently the only correct answer available in a jolt process.
+;; (t/today) would be the natural call and is wrong here: it answers the
+;; UTC date on every machine. Measured at 07:29 AEST on 2026-08-24,
+;; (t/today) => 2026-08-23, and => 2026-08-23 again under
+;; TZ=Australia/Sydney. For a date-defaulting form that means the field
+;; opens on yesterday for the first 10 hours of every AEST day.
+;;
+;; TWO independent defects in jolt-lang/time produce that, and fixing
+;; either one alone would not be enough:
+;;
+;;   1. No zone DISCOVERY. ZoneId/systemDefault and Clock/systemDefaultZone
+;;      are hardcoded to UTC — zones.clj's
+;;      `"systemDefault" (fn [] (zone-id "Z" 0))` and zoned.clj's match —
+;;      so nothing ever asks the machine which zone it is in.
+;;   2. `now` ignores a zone it IS given. LocalDate/now, LocalTime/now,
+;;      LocalDateTime/now and OffsetDateTime/now read epoch millis and
+;;      split them into fields with no offset applied, so even an explicit
+;;      (LocalDate/now (ZoneId/of "Australia/Sydney")) answered 2026-08-23.
+;;      Only ZonedDateTime/now honors a zone, which is why
+;;      (t/in (t/now) "Australia/Sydney") is correct while (t/today) is not.
+;;
+;; Note what is NOT broken: the libc backend answers NAMED zones correctly
+;; (tz-offset-seconds "Australia/Sydney" => 36000). GLib reads the real
+;; zone, so it is currently the only correct answer available here.
 ;;
 ;; Needs jolt v0.7.23-10-gc50a3717 or newer: before jolt-lang/jolt#712,
 ;; jolt's boot-time zone probe left TZ=UTC set process-globally and GLib
