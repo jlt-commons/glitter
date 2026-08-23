@@ -1,5 +1,11 @@
 # Third-party code
 
+glitter is MIT licensed (see LICENSE, Copyright 2026 Burin Choomnuan) and
+vendors third-party code under that same license. This file is the
+authoritative, file-by-file record of what came from where, and carries the
+full text of each upstream license, which applies to those files in addition
+to glitter's own.
+
 ## Replicant
 
 The following files under `src/glitter/` are ported from
