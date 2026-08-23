@@ -1,9 +1,6 @@
-Copyright 2026 Burin Choomnuan
+MIT License
 
-This project vendors third-party code under its own copyright — most notably
-substantial portions of Replicant (Copyright 2023-2025 Christian Johansen,
-MIT). See NOTICE for the file-by-file provenance and the full text of the
-upstream license, which applies to those files in addition to this one.
+Copyright 2026 Burin Choomnuan
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -21,3 +18,12 @@ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+Third-party code
+----------------
+
+This project vendors third-party code under its own copyright, most notably
+substantial portions of Replicant (Copyright 2023-2025 Christian Johansen,
+MIT). See NOTICE for the file-by-file provenance and the full text of the
+upstream license, which applies to those files in addition to this one.
