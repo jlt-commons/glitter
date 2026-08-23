@@ -46,7 +46,9 @@ under this model. `flights.clj` and `crud.clj` are the interesting pair:
 same engine, and one needs no action expansions while the other's
 interactions can't be expressed without them.
 
-## One finding worth knowing: lenient date parsing
+## Two findings worth knowing, both from `flights.clj`
+
+### Lenient date parsing
 
 `flights.clj` needed its own `parse-date`. `t/parse-date` from
 `jolt-lang/time` is **lenient**, not strict: verified live that
@@ -55,6 +57,38 @@ throwing. The demo wraps it in a round-trip check (parse, reformat with
 the same formatter, reject unless the result matches the trimmed input),
 which is the only way the spec's "T is coloured red when ill-formatted"
 requirement actually works.
+
+This one is structural, not a version to wait out: `jolt/time/fmt.clj`'s
+`parse-with-pattern` is a hand-rolled field scanner, and the library has
+no `ResolverStyle`/`withResolverStyle` at all — `DateTimeFormatterBuilder`'s
+`parseLenient` and `parseCaseInsensitive` are `(fn [b] b)` no-ops.
+
+### `(t/today)` is the UTC date, so the demo doesn't call it
+
+`ZoneId/systemDefault` and `Clock/systemDefaultZone` are hardcoded to UTC
+in `jolt-lang/time` (`zones.clj`'s `"systemDefault" (fn [] (zone-id "Z" 0))`),
+so `(t/today)` answers the UTC date on every machine and ignores `TZ` even
+when it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
+
+```
+(t/today)                                 => 2026-08-23
+TZ=Australia/Sydney … (t/today)           => 2026-08-23   ; TZ ignored
+(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24
+```
+
+The Flight Booker defaults its departure field to today, so it opened on
+*yesterday* for the first 10 hours of every AEST day. `flights.clj`'s
+`local-today` asks GLib instead (`g_date_time_new_now_local`, which reads
+the real zone) and converts straight back to a tick date, so every other
+date operation in the file stays on one representation. The `GDateTime`
+is caller-owned and unref'd, the same discipline `:calendar` follows.
+
+**This needs jolt `v0.7.23-10-gc50a3717` or newer.** Before
+[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712) jolt's own
+boot-time libc zone probe set `TZ=UTC` process-globally and never restored
+it, so GLib answered UTC too — measured `[2026 8 23 21]` against a real
+local `[2026 8 24 7]`, and correct again the moment `TZ` was unset
+in-process. On an older jolt this route silently returns the UTC date.
 
 ## Live-GTK smokes
 

@@ -12,9 +12,18 @@ The deep documentation lives in [`docs/guide/`](docs/guide/index.md).
 You need Jolt and a native GTK4:
 
 ```sh
-jolt --version           # developed/verified against v0.6.3
+jolt --version           # developed against v0.6.3; re-verified on v0.7.23-10-gc50a3717
 brew install gtk4        # macOS; on Linux use your distro's gtk4 + glib dev packages
 ```
+
+Everything except one demo works on any Jolt in that range. `jolt flights`
+wants **`v0.7.23-10-gc50a3717` or newer** to show the correct date: it reads
+today from GLib, and on an older Jolt the boot-time libc zone probe left
+`TZ=UTC` set process-globally, so GLib answered UTC too. Fixed upstream in
+[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712); see
+[`docs/guide/nexus.md`](docs/guide/nexus.md#the-ttoday-is-utc-finding) for the
+measurements. On an older Jolt the demo still runs, it just defaults its
+departure field to the UTC date.
 
 `deps.edn`'s `:jolt/native` declares `glib-2.0`, `gobject-2.0`, `gio-2.0` and
 `gtk-4`, with Homebrew paths for darwin and `.so` names for linux.

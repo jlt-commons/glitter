@@ -346,8 +346,10 @@ over an 8-second run): swallowed by `glitter.nexus`'s own
 `core/reconcile` never ran, and the display never advanced past its
 initial paint. The fix: `view` reads `System/nanoTime` directly
 itself, the same live-fresh-read-at-render-time pattern
-`flights.clj`'s `get-form-state` already established for `(t/today)`
-(see that fn's own comment): a demo's `view` computes what it needs
+`flights.clj`'s `get-form-state` already established for today's date
+(see that fn's own comment; that call was `(t/today)` when this was
+written, and is `local-today` now — see
+[the `(t/today)` finding below](#the-ttoday-is-utc-finding)): a demo's `view` computes what it needs
 fresh, rather than assuming anything nexus computed for a DIFFERENT
 purpose (dispatch-time action-expansion) will also be there at render
 time.
@@ -489,3 +491,75 @@ parsing (a `tick`/`jolt-lang/time` library behavior), not to any GTK
 widget, so it's documented here rather than in
 [`gtk-widget-layer.md`](gtk-widget-layer.md); this is its one and only
 write-up in this project's docs.
+
+It is also structural rather than a version to wait out.
+`jolt/time/fmt.clj`'s `parse-with-pattern` is a hand-rolled field scanner
+whose own comment calls itself "good enough for tick's parse-* with a
+custom formatter"; the library has no `ResolverStyle` or
+`withResolverStyle` anywhere, and `DateTimeFormatterBuilder`'s
+`parseLenient`/`parseCaseInsensitive` are `(fn [b] b)` no-ops. Re-verified
+against jolt `v0.7.23-10-gc50a3717` with `jolt-lang/time` at the SHA
+`deps.edn` pins: all four bad inputs above still parse without throwing,
+and the round-trip wrapper still rejects every one of them.
+
+## The `(t/today)` is-UTC finding
+
+A second, unrelated date finding from the same file, and the reason
+`flights.clj` does not call `(t/today)` at all.
+
+`ZoneId/systemDefault` and `Clock/systemDefaultZone` are hardcoded to UTC
+in `jolt-lang/time` — literally `"systemDefault" (fn [] (zone-id "Z" 0))`
+in `zones.clj`, and the matching `systemDefaultZone` in `zoned.clj`. So
+`(t/today)` answers the **UTC** date on every machine, and ignores `TZ`
+even when it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
+
+```
+(t/today)                                  => 2026-08-23
+TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
+(t/zone)                                   => Z
+(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24
+```
+
+Note what is NOT broken: the libc zone backend underneath answers named
+zones correctly (`tz-offset-seconds "Australia/Sydney"` => `36000`). Only
+zone *discovery* — "which zone is this machine in" — is missing, and
+`systemDefault` returns UTC instead of admitting it doesn't know.
+
+`get-form-state` defaults the departure field to today, so this demo
+opened on *yesterday* for the first 10 hours of every AEST day. The fix
+is `local-today`, which asks GLib:
+
+```clojure
+(defn local-today []
+  (let [d (g/g-date-time-new-now-local)
+        date (t/new-date (g/g-date-time-get-year d)
+                         (g/g-date-time-get-month d)
+                         (g/g-date-time-get-day-of-month d))]
+    (g/g-date-time-unref d)
+    date))
+```
+
+It converts straight back to a tick date, so parsing, formatting and
+comparison all stay on one representation; only the *source* of "today"
+changes. The `GDateTime` is caller-owned and unref'd, the same discipline
+`:calendar`'s `set-calendar-date!`/`signal-value` entry already follow
+(see [`gtk-widget-layer.md`](gtk-widget-layer.md#aspect-framecalendar--a-quick-win-and-a-genuinely-new-value-type)).
+
+This reverses a decision `flights.clj`'s own ns docstring used to argue
+for — that reaching for a GDateTime binding just to answer "what is
+today's date" was worse layering than using tick for it. That was
+reasoning from an unchecked fact, and the docstring now records the
+reversal rather than quietly dropping it.
+
+**Requires jolt `v0.7.23-10-gc50a3717` or newer.** Before
+[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712), jolt's
+own boot-time libc zone probe set `TZ` and never restored it, leaving
+every jolt process in whichever zone it probed last — `"UTC"`, as it
+happened. That is process-global, so GLib read it too and
+`g_date_time_new_now_local` answered UTC as well: measured
+`[2026 8 23 21]` where the real local time was `[2026 8 24 7]`, and
+correct again the instant `TZ` was unset in-process. On an older jolt
+this route silently returns the UTC date, which is why both
+`glitter.ffi`'s binding comment and `local-today` say so at the call
+site. On a current jolt, `TZ` reads `nil` in a fresh process, survives
+being set by the caller, and survives a zone query.

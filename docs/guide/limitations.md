@@ -442,6 +442,33 @@ window. A deliberate v1 scope decision from the design spec, not an
 oversight; upstream's own viewer (`nexus.inspector`) is entangled with
 `dataspex.*` rendering protocols that have no glitter/GTK equivalent.
 
+## `(t/today)` is the UTC date, and glitter ships no general fix
+
+Not a glitter bug, but it will bite anything built on glitter that
+reaches for a local date, so it belongs on this list.
+`jolt-lang/time` hardcodes `ZoneId/systemDefault` and
+`Clock/systemDefaultZone` to `(zone-id "Z" 0)`, so tick's `(t/today)`
+answers the **UTC** date on every machine and ignores `TZ` even when it
+is explicitly set. Measured at 07:29 AEST on 2026-08-24, `(t/today)`
+answered `2026-08-23`, and answered `2026-08-23` again under
+`TZ=Australia/Sydney`.
+
+`examples/glitter/flights.clj` works around it with a demo-local
+`local-today` that asks GLib (`g_date_time_new_now_local`) instead.
+**That helper is deliberately not promoted into `glitter.*`.** Doing so
+would put a date API in a rendering library, and the honest fix is
+upstream — `systemDefault` should answer the machine's real zone
+(reading `TZ`, then `/etc/localtime`) rather than returning UTC as
+though it knew. The libc backend underneath already answers *named*
+zones correctly (`tz-offset-seconds "Australia/Sydney"` => `36000`);
+only zone discovery is missing. Copy the four-line helper if you need
+it; see [`nexus.md`](nexus.md#the-ttoday-is-utc-finding).
+
+Note the version floor that goes with it: on a jolt older than
+`v0.7.23-10-gc50a3717`, the GLib route is wrong too, because jolt's own
+boot-time zone probe used to leave `TZ=UTC` set process-globally
+([jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712)).
+
 ## Still a limitation: `:style`, and no animations
 
 `:style` is still diffed (`IRender/set-style`/`remove-style` are called)

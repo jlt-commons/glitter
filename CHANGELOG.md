@@ -80,6 +80,15 @@ pass.
   Temperature Converter and Timer. Between them they cover derived state,
   list-box selection, cross-field constraints, parse-on-input, and a demo whose
   state advances on its own via a background tick.
+- **Flight Booker reads today from GLib, not `(t/today)`.** `jolt-lang/time`
+  hardcodes `ZoneId/systemDefault` to UTC, so `(t/today)` answers the UTC date
+  on every machine and ignores `TZ` even when it is explicitly set — the demo
+  defaulted its departure field to *yesterday* for the first 10 hours of every
+  AEST day. It now asks GLib (`g_date_time_new_now_local`, a new binding) and
+  converts back to a tick date, so only the source of "today" changed. Needs
+  jolt `v0.7.23-10-gc50a3717` or newer: before
+  [jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712) jolt's own
+  zone probe left `TZ=UTC` set process-globally and GLib answered UTC too.
 - **Twenty-six automated live-GTK smokes** (`bb smokes`) that mount real
   windows and assert against real GTK state. These exist because GTK4 is a
   live, stateful system with a blocking main loop: the keyed reorder,

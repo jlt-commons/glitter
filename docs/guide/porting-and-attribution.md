@@ -53,7 +53,7 @@ Upstream ships no LICENSE file, so no grant has been made; this bucket
 records provenance, not a claimed permission. See `NOTICE`'s `## glimmer`
 section for the authoritative statement and its full reasoning:
 
-- `glitter.ffi`: forked from `glimmer.ffi`, plus **223 new bindings**
+- `glitter.ffi`: forked from `glimmer.ffi`, plus **224 new bindings**
   added across the widget rounds. `NOTICE`'s `src/glitter/ffi.clj` entry
   is the authoritative, exhaustive list; it is deliberately not repeated
   here, because this page's own rule is that `NOTICE` wins when the two
