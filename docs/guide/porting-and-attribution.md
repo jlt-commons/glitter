@@ -53,178 +53,82 @@ Upstream ships no LICENSE file, so no grant has been made; this bucket
 records provenance, not a claimed permission. See `NOTICE`'s `## glimmer`
 section for the authoritative statement and its full reasoning:
 
-- `glitter.ffi` — forked from `glimmer.ffi`, plus the original four new
-  bindings (`g-signal-handler-disconnect`, `gtk-box-insert-child-after`,
-  `gtk-label-get-text`, `gtk-widget-get-prev-sibling`), seven for `:scale`
-  (`gtk-scale-new-with-range`, `gtk-scale-set-digits`,
-  `gtk-scale-set-draw-value`, `gtk-range-set-value`, `gtk-range-get-value`,
-  `gtk-range-set-range`, `gtk-range-set-increments`), three for `:class`
-  (`gtk-widget-add-css-class`, `gtk-widget-remove-css-class`,
-  `gtk-widget-has-css-class`), thirteen for the display-only widgets
-  `:spinner`/`:progress-bar`/`:image` (`gtk-spinner-new`,
-  `gtk-spinner-set-spinning`, `gtk-spinner-get-spinning`,
-  `gtk-progress-bar-new`, `gtk-progress-bar-set-fraction`,
-  `gtk-progress-bar-set-text`, `gtk-progress-bar-set-show-text`,
-  `gtk-progress-bar-get-fraction`, `gtk-image-new`,
-  `gtk-image-new-from-icon-name`, `gtk-image-new-from-file`,
-  `gtk-image-set-from-icon-name`, `gtk-image-set-from-file`,
-  `gtk-image-set-pixel-size`, `gtk-image-get-icon-name`), ten more for
-  `:toggle-button`/`:level-bar` (`gtk-toggle-button-new`,
-  `gtk-toggle-button-new-with-label`, `gtk-toggle-button-set-active`,
-  `gtk-toggle-button-get-active`, `gtk-level-bar-new`,
-  `gtk-level-bar-set-value`, `gtk-level-bar-set-min-value`,
-  `gtk-level-bar-set-max-value`, `gtk-level-bar-set-inverted`,
-  `gtk-level-bar-get-value`), and eight more for `:link-button`/`:switch`
-  (`gtk-link-button-new`, `gtk-link-button-new-with-label`,
-  `gtk-link-button-set-uri`, `gtk-link-button-get-uri`,
-  `gtk-widget-activate`, `gtk-switch-new`, `gtk-switch-set-active`,
-  `gtk-switch-get-active`), and twenty-seven more for `:revealer`/
-  `:center-box`/`:spin-button`/`:list-box` (`gtk-widget-get-parent`,
-  `gtk-button-get-label`, `gtk-revealer-new`, `gtk-revealer-set-child`,
-  `gtk-revealer-set-reveal-child`, `gtk-revealer-get-reveal-child`,
-  `gtk-revealer-get-child-revealed`, `gtk-revealer-set-transition-type`,
-  `gtk-revealer-get-transition-type`, `gtk-revealer-set-transition-duration`,
-  `gtk-revealer-get-transition-duration`, `gtk-center-box-new`,
-  `gtk-center-box-set-start-widget`, `gtk-center-box-get-start-widget`,
-  `gtk-center-box-set-center-widget`, `gtk-center-box-get-center-widget`,
-  `gtk-center-box-set-end-widget`, `gtk-center-box-get-end-widget`,
-  `gtk-spin-button-new-with-range`, `gtk-spin-button-set-range`,
-  `gtk-spin-button-set-value`, `gtk-spin-button-get-value`,
-  `gtk-spin-button-set-digits`, `gtk-spin-button-set-increments`,
-  `gtk-list-box-new`, `gtk-list-box-append`, `gtk-list-box-remove`,
-  `gtk-list-box-insert`, `gtk-list-box-get-selected-row`,
-  `gtk-list-box-row-get-index`, `gtk-list-box-select-row`), and twenty
-  more for `:password-entry`/`:search-entry`/`:expander`/`:paned`
-  (`gtk-password-entry-new`, `gtk-password-entry-set-show-peek-icon`,
-  `gtk-password-entry-get-show-peek-icon`, `gtk-search-entry-new`,
-  `gtk-search-entry-set-search-delay`, `gtk-search-entry-get-search-delay`,
-  `gtk-expander-new`, `gtk-expander-set-label`, `gtk-expander-get-label`,
-  `gtk-expander-set-expanded`, `gtk-expander-get-expanded`,
-  `gtk-expander-set-child`, `gtk-paned-new`, `gtk-paned-set-start-child`,
-  `gtk-paned-get-start-child`, `gtk-paned-set-end-child`,
-  `gtk-paned-get-end-child`, `gtk-paned-set-position`,
-  `gtk-paned-get-position`), and twenty-nine more for
-  `:aspect-frame`/`:calendar`/`:overlay`/`:flow-box`
-  (`gtk-aspect-frame-new`, `gtk-aspect-frame-set-child`,
-  `gtk-aspect-frame-get-child`, `gtk-aspect-frame-set-xalign`,
-  `gtk-aspect-frame-get-xalign`, `gtk-aspect-frame-set-yalign`,
-  `gtk-aspect-frame-get-yalign`, `gtk-aspect-frame-set-ratio`,
-  `gtk-aspect-frame-get-ratio`, `gtk-aspect-frame-set-obey-child`,
-  `gtk-aspect-frame-get-obey-child`, `gtk-calendar-new`,
-  `gtk-calendar-select-day`, `gtk-calendar-get-date`,
-  `g-date-time-new-local`, `g-date-time-get-year`,
-  `g-date-time-get-month`, `g-date-time-get-day-of-month`,
-  `g-date-time-unref`, `gtk-overlay-new`, `gtk-overlay-set-child`,
-  `gtk-overlay-get-child`, `gtk-overlay-add-overlay`,
-  `gtk-overlay-remove-overlay`, `gtk-flow-box-new`,
-  `gtk-flow-box-append`, `gtk-flow-box-remove`, `gtk-flow-box-insert`,
-  `gtk-flow-box-child-get-index`), and twenty-three more for
-  `:picture`/`:editable-label`/`:notebook`/`:scale-button`
-  (`gtk-picture-new`, `gtk-picture-new-for-filename`,
-  `gtk-picture-set-filename`, `gtk-picture-set-content-fit`,
-  `gtk-picture-get-content-fit`, `gtk-picture-set-can-shrink`,
-  `gtk-picture-get-can-shrink`, `gtk-picture-set-alternative-text`,
-  `gtk-picture-get-alternative-text`, `gtk-editable-label-new`,
-  `gtk-editable-label-get-editing`, `gtk-editable-label-start-editing`,
-  `gtk-editable-label-stop-editing`, `gtk-notebook-new`,
-  `gtk-notebook-append-page`, `gtk-notebook-insert-page`,
-  `gtk-notebook-remove-page`, `gtk-notebook-page-num`,
-  `gtk-notebook-set-current-page`, `gtk-notebook-get-current-page`,
-  `gtk-scale-button-new`, `gtk-scale-button-set-value`,
-  `gtk-scale-button-get-value`), one more for `:popover`'s suppressing-
-  guard setter (`gtk-widget-get-visible`), and forty for
-  `:inscription`/`:search-bar`/`:header-bar`/`:action-bar`/
-  `:menu-button`/`:popover`
-  (`gtk-inscription-new`, `gtk-inscription-get-text`,
-  `gtk-inscription-set-text`, `gtk-inscription-get-text-overflow`,
-  `gtk-inscription-set-text-overflow`, `gtk-search-bar-new`,
-  `gtk-search-bar-set-child`, `gtk-search-bar-get-child`,
-  `gtk-search-bar-set-search-mode`, `gtk-search-bar-get-search-mode`,
-  `gtk-search-bar-set-show-close-button`,
-  `gtk-search-bar-get-show-close-button`, `gtk-header-bar-new`,
-  `gtk-header-bar-set-title-widget`, `gtk-header-bar-get-title-widget`,
-  `gtk-header-bar-pack-start`, `gtk-header-bar-remove`,
-  `gtk-header-bar-set-show-title-buttons`,
-  `gtk-header-bar-get-show-title-buttons`, `gtk-action-bar-new`,
-  `gtk-action-bar-pack-start`, `gtk-action-bar-set-center-widget`,
-  `gtk-action-bar-get-center-widget`, `gtk-action-bar-remove`,
-  `gtk-action-bar-set-revealed`, `gtk-action-bar-get-revealed`,
-  `gtk-menu-button-new`, `gtk-menu-button-set-label`,
-  `gtk-menu-button-get-label`, `gtk-menu-button-set-popover`,
-  `gtk-menu-button-get-popover`, `gtk-popover-new`,
-  `gtk-popover-set-child`, `gtk-popover-get-child`,
-  `gtk-popover-set-has-arrow`, `gtk-popover-get-has-arrow`,
-  `gtk-popover-set-autohide`, `gtk-popover-get-autohide`,
-  `gtk-popover-popup`, `gtk-popover-popdown`), and round 11 adds
-  twenty-four for `:window-handle`/`:stack`/`:drop-down`/`:grid`
-  (`gtk-window-handle-new`, `gtk-window-handle-set-child`,
-  `gtk-window-handle-get-child`, `gtk-stack-new`, `gtk-stack-add-child`,
-  `gtk-stack-add-named`, `gtk-stack-remove`,
-  `gtk-stack-get-child-by-name`, `gtk-stack-set-visible-child-name`,
-  `gtk-stack-get-visible-child-name`, `gtk-string-list-new`,
-  `gtk-string-list-append`, `gtk-drop-down-new`, `gtk-drop-down-set-model`,
-  `gtk-drop-down-set-selected`, `gtk-drop-down-get-selected`,
-  `gtk-grid-new`, `gtk-grid-attach`, `gtk-grid-remove`,
-  `gtk-grid-get-child-at`, `gtk-grid-set-row-spacing`,
-  `gtk-grid-get-row-spacing`, `gtk-grid-set-column-spacing`,
-  `gtk-grid-get-column-spacing`), plus eight bug-fix bindings for the
-  ctor/apply audit (`gtk-checkbutton-set-label`,
-  `gtk-scale-button-get-adjustment`, `gtk-adjustment-configure`,
-  `gtk-adjustment-get-lower`, `gtk-adjustment-get-upper`,
-  `gtk-adjustment-get-step-increment`, `gtk-range-get-adjustment`,
-  `gtk-spin-button-get-adjustment`) — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs),
-  and one more binding added while verifying `examples/glitter/crud.clj`
-  (`gtk-widget-get-sensitive` — every prior use of `:sensitive` only
-  ever set it; this is the first live check of its own read-back).
-- `glitter.widget` — forked from `glimmer.widget`, plus `insert-child-after!`,
-  `signal-name`, `signal-value-fn`, `suppressing?`, `set-scale-value!` and
-  the `:scale` widget spec (a first-party demonstration of the
-  value-bearing custom-signal path — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#scale--the-first-party-value-bearing-custom-signal)),
-  the display-only `:spinner`/`:progress-bar`/`:image`/`:level-bar` widget
-  specs (no signal wiring — driven entirely by re-applied props),
-  `set-toggle-button-active!` + the `:toggle-button` widget spec and
-  `link-button-spec`/`:link-button` (both reuse an existing `signals`
-  entry verbatim — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#toggle-button--reusing-toggled-for-a-second-gtk4-class)),
-  `set-switch-active!` + the `:switch` widget spec + the new
-  `:on-state-set` signal entry (the widget that needed
-  `glitter.gtk/set-event-handler` itself generalized — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#switch--generalizing-set-event-handler)),
-  `revealer-spec`/`:revealer` (display-only, single-child container — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#revealer--a-free-single-child-container-reuse-plus-a-props-driven-widget)),
-  `center-box-spec`/`:center-box` + `center-box-append-child!`/
-  `center-box-remove-child!`/`center-box-replace-child!`/
-  `center-box-insert-after!` (a genuinely new container strategy — 3 fixed
-  named slots, not an ordered list — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#center-box--a-genuinely-new-container-strategy-and-a-real-v1-gap)),
-  `set-spin-button-value!`/`spin-button-spec`/`:spin-button` (see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#spin-button--generalizing-signal-value-by-tag)),
-  and `list-box-spec`/`:list-box` + `list-box-row-of`/
-  `list-box-remove-child!`/`list-box-replace-child!`/
-  `list-box-index-after`/`list-box-insert-after!`/
-  `list-box-reorder-child!`/`list-box-selected-index` + the new
-  `:on-row-selected`/`:on-row-activated` signal entries (a third
-  generalized `set-event-handler` callable shape, plus two more real bugs
-  found and fixed along the way — see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md#list-box--a-third-callable-shape-and-two-more-real-bugs))
-  as new public accessors, and four behavioral deviations: (1)
-  `replace-child!`'s `:box` branch captures the old child's previous
-  sibling via `gtk_widget_get_prev_sibling` and re-inserts via
-  `gtk_box_insert_child_after`, where glimmer used `gtk_box_remove` +
-  `gtk_box_append` — `append` always lands at the *end* of the box, which
-  silently relocates any non-final child; (2) `signal-value` is keyed by
-  `[tag gtk-signal-name]`, not bare signal name — `:spin-button` and
-  `:scale` emit the identical `"value-changed"` signal but need different
-  getters; (3) `insert-child-after!`/`reorder-child!` are no longer
-  `:box`-only no-ops — `:list-box` needed both genuinely implemented,
-  `:center-box` gets `insert-child-after!` but `reorder-child!` stays a
-  structural no-op; (4) `list-box-remove-child!`/`list-box-replace-child!`/
-  `list-box-reorder-child!` suppress on the list-box widget around
-  `gtk_list_box_remove` — removing the currently-selected row fires a
-  real, synchronous `"row-selected(NULL)"` GTK signal that would
-  otherwise reach app dispatch.
+- `glitter.ffi` — forked from `glimmer.ffi`, plus **223 new bindings**
+  added across the widget rounds. `NOTICE`'s `src/glitter/ffi.clj` entry
+  is the authoritative, exhaustive list; it is deliberately not repeated
+  here, because this page's own rule is that `NOTICE` wins when the two
+  disagree — and a hand-maintained second copy is exactly how they come
+  to disagree.
+
+  What the bindings are for, in roughly the order they arrived:
+
+  - **The original port** — signal disconnect, box insert-after, label
+    read-back, prev-sibling lookup.
+  - **`:scale`, `:class`** — `GtkRange`/`GtkScale` value and range,
+    CSS-class add/remove/query.
+  - **Display-only widgets** — `:spinner`, `:progress-bar`, `:image`,
+    later `:picture` and `:inscription`.
+  - **Interaction widgets** — `:toggle-button`, `:level-bar`,
+    `:link-button`, `:switch`.
+  - **Container strategies** — `:revealer`, `:center-box`, `:list-box`,
+    `:paned`, `:overlay`, `:flow-box`, `:header-bar`, `:action-bar`,
+    `:grid`, `:stack`.
+  - **`GtkEditable` family** — `:password-entry`, `:search-entry`,
+    `:editable-label`.
+  - **Value / selection widgets** — `:spin-button`, `:scale-button`,
+    `:notebook`, `:drop-down`, `:calendar` (including refcounted
+    `GDateTime`).
+  - **Popup surfaces** — `:menu-button`, `:popover`, `:window-handle`.
+  - **The ctor/apply audit** — `GtkAdjustment` accessors plus
+    `gtk-checkbutton-set-label`, added to fix four previously-shipped
+    bugs.
+
+  One binding arrived outside any widget round: `gtk-widget-get-sensitive`,
+  added while verifying `examples/glitter/crud.clj`. Every prior use of
+  `:sensitive` only ever *set* it; that was the first live check of its
+  own read-back.
+
+- `glitter.widget` — forked from `glimmer.widget`. What was added, and
+  the four places its behaviour deliberately diverges from glimmer's.
+
+  **Added**, alongside the shared helpers `insert-child-after!`,
+  `signal-name`, `signal-value-fn`, `suppressing?`:
+
+  - [`:scale`](gtk-widget-layer.md) — the first-party demonstration of
+    the value-bearing custom-signal path.
+  - `:spinner`, `:progress-bar`, `:image`, `:level-bar` — display-only:
+    no signal wiring, driven entirely by re-applied props.
+  - `:toggle-button`, `:link-button` — both reuse an existing `signals`
+    entry verbatim.
+  - `:switch` — the widget that forced `glitter.gtk/set-event-handler`
+    itself to generalize.
+  - `:revealer` — display-only, and a free single-child-container reuse.
+  - `:center-box` — a genuinely new container strategy: three fixed
+    named slots, not an ordered list.
+  - `:spin-button` — forced `signal-value` to be keyed by tag as well as
+    signal name.
+  - `:list-box` — a third callable shape, plus two more real bugs found
+    and fixed.
+
+  **Four behavioural deviations from glimmer:**
+
+  1. `replace-child!`'s `:box` branch captures the old child's previous
+     sibling via `gtk_widget_get_prev_sibling` and re-inserts with
+     `gtk_box_insert_child_after`, where glimmer used `gtk_box_remove` +
+     `gtk_box_append`. `append` always lands at the *end* of the box,
+     silently relocating any non-final child.
+  2. `signal-value` is keyed by `[tag gtk-signal-name]`, not by bare
+     signal name — `:spin-button` and `:scale` emit the identical
+     `"value-changed"` signal but need different getters.
+  3. `insert-child-after!`/`reorder-child!` are no longer `:box`-only
+     no-ops. `:list-box` needed both genuinely implemented; `:center-box`
+     gets `insert-child-after!`, but its `reorder-child!` stays a
+     structural no-op (three fixed slots have no ordering to change).
+  4. `list-box-remove-child!`/`list-box-replace-child!`/
+     `list-box-reorder-child!` suppress on the list-box widget around
+     `gtk_list_box_remove` — removing the currently-selected row fires a
+     real, synchronous `"row-selected(NULL)"` signal that would
+     otherwise reach app dispatch.
 
   Round 7 adds `password-entry-spec`/`:password-entry` +
   `search-entry-spec`/`:search-entry` (both reuse `:entry`'s

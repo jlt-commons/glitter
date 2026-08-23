@@ -55,93 +55,67 @@ live GTK widget tree in sync.
 ### Dispatch
 - [`nexus.md`](nexus.md) — `glitter.nexus`, a port of
   [nexus](https://github.com/cjohansen/nexus)'s data-driven
-  action/effect/placeholder dispatch engine: the four concepts
-  (effects — the only place a `swap!` is allowed, placeholders —
-  resolving event data into action data, actions/expansions — pure
-  functions of state that decide what should happen, and interceptors —
-  the `before-*`/`after-*` mechanism the whole engine runs on), the two
-  glitter-specific wiring pieces every consumer registers itself
-  (`:glitter/value`, `:nexus/on-error` -> `clojure.tools.logging`) and
-  why they live in each demo rather than the ported files, the two
-  consumer shapes this project ships (`flights.clj`'s pure-effects-only
-  Flight Booker vs. `crud.clj`'s/`todo.clj`'s action-expansion
-  retrofits), the action-log's `:entries`/`:chronology` accumulation
-  tree (`(pr-str @log)`, no viewer yet), and the `t/parse-date`
-  leniency finding that makes Flight Booker's date validation actually
-  work.
+  action/effect/placeholder dispatch engine. It covers:
+
+  - **The four concepts.** Effects (the only place a `swap!` is
+    allowed), placeholders (resolving event data into action data),
+    actions/expansions (pure functions of state that decide what should
+    happen), and interceptors (the `before-*`/`after-*` mechanism the
+    engine itself runs on).
+  - **The two glitter-specific wiring pieces** every consumer registers
+    for itself — `:glitter/value` and `:nexus/on-error` →
+    `clojure.tools.logging` — and why they live in each demo rather than
+    in the ported files.
+  - **The two consumer shapes this project ships.** `flights.clj`'s
+    pure-effects-only Flight Booker, versus `crud.clj`'s and
+    `todo.clj`'s action-expansion retrofits.
+  - **The action log** and its `:entries`/`:chronology` accumulation
+    tree (`(pr-str @log)` — no viewer yet), plus the `t/parse-date`
+    leniency finding that makes Flight Booker's date validation
+    actually work.
 
 ### GTK integration
 - [`gtk-widget-layer.md`](gtk-widget-layer.md) — the hiccup-tag → widget
-  registry, the signal connect/disconnect lifecycle, the specific GTK4 API
-  traps this project hit and fixed (`insert-before`'s reorder-vs-insert
-  branch, `replace-child!`'s prev-sibling capture), `:scale`'s
-  value-bearing custom signal, `:class`'s real GTK CSS-class wiring, the
-  display-only `:spinner`/`:progress-bar`/`:image`/`:level-bar`/
-  `:revealer` widgets, `:toggle-button`'s and `:link-button`'s signal
-  reuse (including a real GTK4 button-activation timing gotcha), `:switch`
-  and `:list-box` — the two widgets that needed
-  `glitter.gtk/set-event-handler` itself generalized beyond the uniform
-  2-arg-void signal shape (to a third, distinct shape for `:list-box`),
-  `:spin-button` — the widget that needed `glitter.widget/signal-value`
-  re-keyed by `[tag signal]` after sharing `:scale`'s exact GTK signal
-  name, `:center-box` — a genuinely new 3-named-slot container
-  strategy that surfaced a real v1 gap (and, along the way, a real fix to
-  `insert-child-after!`/`reorder-child!` for every non-`:box` container),
-  `:password-entry`/`:search-entry` — free `GtkEditable`-delegate signal
-  reuse plus a `signal-value` miss caught live before it shipped, and
-  `:expander`/`:paned` — free reuse of `:list-box`'s generalized
-  3-arg-void shape for their `notify::*` signals, and `:paned`'s own
-  2-named-slot container with a structural gap verified to fail
-  differently from `:center-box`'s, `:aspect-frame`/`:calendar` — a
-  quick single-child-container win alongside this project's first
-  refcounted `GDateTime` marshalling, `:overlay`/`:flow-box` — a
-  THIRD, genuinely different container shape (one queryable main slot
-  plus an unenumerable overlay set) and a `:list-box` sibling verified
-  to NOT share its `gtk_list_box_remove` gotcha, not assumed to,
-  `:picture`/`:editable-label` — a quick display-only win, a THIRD
-  `GtkEditable`-delegate reuse, and a general (not glitter-specific)
-  `GtkEditable` finding that bulk text replacement fires `"changed"`
-  once or twice depending on the buffer's starting state, and
-  `:notebook`/`:scale-button` — a SIXTH callable shape
-  (`"switch-page"`, the first signal here that has to read its own raw
-  argument instead of re-reading a getter, since the getter would be
-  stale), a verified real mount-time auto-dispatch when a notebook's
-  first page is added, and a THIRD widget sharing `"value-changed"`'s
-  signal name that needed the first tag-aware (not just signal-name-
-  keyed) `set-event-handler` dispatch, `:inscription`/`:search-bar` —
-  two more quick, entirely no-signal wins (the first round where zero
-  widgets need any `glitter.gtk` changes at all), `:header-bar`/
-  `:action-bar` — a genuinely new hybrid container shape (one named
-  title/center-widget slot plus an ORDERED pack-start list) that
-  surfaced two real findings: `pack_end` silently reverses hiccup
-  order on both widgets (confirmed independently for each, not
-  assumed to carry over — v1 only wires `pack_start`), and toggling
-  `:show-title-buttons` prepends GTK's own native window-controls
-  widget into the SAME pack-start list glitter's children live in, and
-  `:menu-button`/`:popover` — the FIRST popup surface in this project
-  and the first hiccup relationship that isn't a normal
-  append-child!-managed tree child, with both signals turning out to
-  be free reuses of the default 2-arg-void shape, a ctor/apply prop-flow
-  audit that found and fixed four real, previously-shipped bugs
-  (`:checkbutton`'s never-applied `:label`, and three widgets'
-  `:min`/`:max`/`:step` silently clobbering each other across
-  single-key re-renders), a namespaced-keyword-props-are-silently-
-  dropped finding that shaped the whole design that followed, the new
-  `:glitter/structural-props` mechanism (a CHILD's props read by its
-  PARENT at attach time) that `:grid` and `:stack` both need,
-  `:window-handle` — a quick single-child win that also caught a bug
-  in this round's OWN new code, `:stack` — a THIRD mount-time-auto-
-  dispatch instance plus a real `:apply`-timing gap, `:drop-down` —
-  the first "choose from options" widget, built on an incrementally-
-  constructed `GtkStringList`, `:grid` — the first container whose
-  child placement is driven entirely by the child's own hiccup props,
-  `:scrolled`'s hidden `GtkViewport` auto-wrap around a non-
-  `GtkScrollable` child (found the first time `:scrolled` was ever
-  given real content), and a real use-after-dispose bug in
-  `list-box-reorder-child!`/`flow-box-reorder-child!` — both were
-  reusing a widget pointer GTK had already disposed as a side effect
-  of removing its old wrapping row, fixed via a `g_object_ref_sink`/
-  `g_object_unref` bracket.
+  registry and the signal connect/disconnect lifecycle. The long one: a
+  per-widget record of how each of the 43 supported tags was added and
+  what it taught. Grouped by what it covers:
+
+  - **Reconciler traps GTK forced.** `insert-before`'s
+    reorder-vs-insert branch and `replace-child!`'s prev-sibling
+    capture; `:scrolled`'s hidden `GtkViewport` auto-wrap around a
+    non-`GtkScrollable` child; and a use-after-dispose bug in
+    `list-box-reorder-child!`/`flow-box-reorder-child!`, both of which
+    reused a pointer GTK had already disposed while removing the old
+    wrapping row.
+  - **Signal shapes that forced `set-event-handler` to generalize.**
+    Most widgets reuse the uniform 2-arg-void shape for free. Four did
+    not: `:switch` (3-arg, non-void return), `:list-box` (a distinct
+    3-arg-void shape, later reused for free by `:expander`/`:paned`'s
+    `notify::*`), `:notebook` (4-arg `"switch-page"` — the first signal
+    that must read its own raw argument, because the getter is still
+    stale when it fires), and `:scale-button` (the first case where the
+    signal *name* alone can't determine the shape, making dispatch
+    tag-aware).
+  - **Container strategies beyond `:box`.** `:center-box`'s three named
+    slots, `:paned`'s two, `:overlay`'s single queryable main slot plus
+    an unenumerable overlay set, `:header-bar`/`:action-bar`'s hybrid
+    (one named slot plus an ordered pack-start list), and `:grid`, whose
+    child placement is driven entirely by the child's own props through
+    the `:glitter/structural-props` mechanism.
+  - **Findings that changed the design.** Namespaced keyword props never
+    reach `IRender/set-attribute` at all; `signal-value` had to be keyed
+    by `[tag signal]` rather than signal name; a ctor/apply audit found
+    four previously-shipped bugs; and — not glitter-specific — bulk
+    `GtkEditable` text replacement fires `"changed"` once or twice
+    depending on the buffer's starting state.
+  - **Free wins.** The display-only widgets (`:spinner`,
+    `:progress-bar`, `:image`, `:level-bar`, `:revealer`, `:picture`,
+    `:inscription`, `:search-bar`), the `GtkEditable`-delegate reuses
+    (`:password-entry`, `:search-entry`, `:editable-label`), and
+    `:menu-button`/`:popover` — the first popup surface here, and the
+    first hiccup relationship that isn't an ordinary
+    `append-child!`-managed tree child.
+
 - [`app-loop-and-threading.md`](app-loop-and-threading.md) — the
   `GtkApplication` bootstrap and cross-thread marshalling that lets a
   `swap!` from any thread safely reach the GTK main loop.
