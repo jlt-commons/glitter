@@ -44,6 +44,10 @@ live GTK widget tree in sync.
 ## Pages
 
 ### Orientation
+- [`examples.md`](examples.md) — the six interactive demos (four of them
+  [7GUIs](https://eugenkiss.github.io/7guis/) tasks) and the twenty-six
+  live-GTK smokes: what each one runs, and what it pins. `counter.clj` is
+  the 20-line version of the whole model and the fastest way in.
 - [`architecture.md`](architecture.md) — the reconcile → `IRender`/
   `IMemory` flow, `mount!`'s state-atom watcher, why elements are tracking
   atoms rather than raw GTK pointers.

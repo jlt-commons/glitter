@@ -143,6 +143,7 @@ bb lsp:diagnostics / lsp:check / lsp:fix  # diagnostics | all dry-run checks | a
 bb check:positional-args / :strict        # find fns with 3+ positional args
 bb verify                                 # pre-commit gate: lint (report) + test (must pass)
 bb hooks:install / :install:full / :uninstall  # git pre-commit hook: fast | +tests | remove
+bb docs-sync [--no-push]                  # maintainer: rebuild the docs site, mirror the guide
 ```
 
 `clj-kondo`/`clojure-lsp` both need `.clj-kondo/hooks/jolt_ffi.clj` (an
