@@ -1,0 +1,69 @@
+name: Widget request
+description: Propose a GTK4 widget that glitter doesn't map yet
+labels: [enhancement, widget]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        glitter maps a subset of GTK4 — see the status list in
+        [`README.md`](https://github.com/burinc/glitter/blob/main/README.md) for
+        what's currently supported, and
+        [`docs/guide/gtk-widget-layer.md`](https://github.com/burinc/glitter/blob/main/docs/guide/gtk-widget-layer.md)
+        for how each one was added.
+
+        Widgets are extensible from outside the library via
+        `glitter.widget/register-widget!`, so you may not need to wait for a
+        release — but a widget worth requesting is usually worth upstreaming.
+
+  - type: input
+    id: gtk-class
+    attributes:
+      label: Which GTK4 class?
+      description: e.g. `GtkColorDialogButton`, `GtkVideo`, `GtkGLArea`.
+    validations:
+      required: true
+
+  - type: input
+    id: hiccup-tag
+    attributes:
+      label: Proposed hiccup tag
+      description: e.g. `:color-button`, `:video`, `:gl-area`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What would you build with it?
+      description: A concrete use case helps rank this against other widgets.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: signal-shape
+    attributes:
+      label: Does it have an interaction signal, and what shape?
+      description: |
+        This is the single biggest factor in how much work a widget is. The
+        standard `void(widget, user_data)` shape is free. Anything else needs a
+        hand-written literal branch in `glitter.gtk/set-event-handler`, because
+        `jolt.ffi/foreign-callable` requires literal argtypes at the call site
+        and so signal shapes cannot be registered as data.
+      options:
+        - No signal — display/props only
+        - Standard 2-arg void, e.g. "clicked" / "toggled"
+        - A GObject "notify::<prop>" property-change signal
+        - Something else (extra args, or a non-void return)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: |
+        Particularly welcome: anything you've already read in GTK's C source
+        about how the widget behaves. This project verifies against real GTK
+        rather than reasoning about it, so a pointer to the relevant C body is a
+        genuine head start.

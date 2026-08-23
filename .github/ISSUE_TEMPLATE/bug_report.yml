@@ -1,0 +1,84 @@
+name: Bug report
+description: A widget renders wrong, a handler doesn't fire, or something crashes
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most reports here come down to three things: your jolt version, your GTK4
+        version, and whether the behaviour is a known v1 limitation.
+
+        **Please check [`docs/guide/limitations.md`](https://github.com/burinc/glitter/blob/main/docs/guide/limitations.md)
+        first.** Several behaviours that look like bugs are documented, deliberate
+        v1 scope calls with the reasoning recorded — for example, removing an
+        attribute entirely is a no-op (GTK has no generic "unset this property"),
+        and `:center-box`/`:paned`/`:overlay` can't safely swap a child's hiccup
+        *tag* while their fixed slots are full.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Paste the full error output if there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: hiccup
+    attributes:
+      label: Minimal hiccup that reproduces it
+      description: |
+        The smallest `view` function that shows the problem, plus the state
+        transition that triggers it. A reproduction that runs is worth far more
+        than a description.
+      render: clojure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Which layer does it look like?
+      description: A guess is fine — this just helps with triage.
+      options:
+        - A widget renders wrong or ignores a prop (glitter.widget)
+        - An event handler doesn't fire, or fires with the wrong value (glitter.gtk)
+        - The tree updates in the wrong order, or a child lands in the wrong place (glitter.core)
+        - Something threading-related (glitter.app / on-gui)
+        - Action/effect dispatch (glitter.nexus)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please paste the output of these commands.
+      value: |
+        ```
+        $ uname -sm
+        (paste here — OS and CPU architecture)
+
+        $ jolt --version
+        (paste here)
+
+        $ pkg-config --modversion gtk4
+        (paste here)
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: unit-suite
+    attributes:
+      label: Does the unit suite pass?
+      description: |
+        `bb test` runs headlessly against the in-memory test renderer — no
+        display needed. If it fails too, the problem is in the reconciler rather
+        than in the GTK layer, which is a useful thing to know up front.
+      value: |
+        ```
+        $ bb test
+        (paste here)
+        ```

@@ -1,6 +1,20 @@
 .cpcache/
 *.dylib
-.clj-kondo/.cache/
-.clj-kondo/imports/
-.lsp/.cache/
 .nrepl-port
+
+# clj-kondo's analysis cache. The config and the jolt.ffi/defcfn hook beside it
+# ARE tracked — they're what make `bb lint` usable on FFI-heavy sources.
+.clj-kondo/.cache/
+
+# clj-kondo configs clojure-lsp auto-imports from whatever's on its resolved
+# classpath — unrelated to this project's own config.
+.clj-kondo/imports/
+
+# clojure-lsp's analysis cache, created by any `bb lsp:*` run
+.lsp/.cache/
+
+# jolt's own classpath cache, created by any `jolt -M:<alias>` run
+.jolt/
+
+# macOS
+.DS_Store
