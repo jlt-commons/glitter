@@ -481,6 +481,21 @@
 (ffi/defcfn gtk-calendar-select-day       "gtk_calendar_select_day"       [:pointer :pointer] :void)
 (ffi/defcfn gtk-calendar-get-date         "gtk_calendar_get_date"         [:pointer] :pointer)
 (ffi/defcfn g-date-time-new-local         "g_date_time_new_local"         [:int :int :int :int :int :double] :pointer)
+;; g_date_time_new_now_local answers "what is the wall-clock date/time HERE",
+;; in the machine's own zone, and is caller-owned like the two above. It is
+;; bound for a reason that is NOT about GtkCalendar: jolt-lang/time hardcodes
+;; ZoneId/systemDefault and Clock/systemDefaultZone to UTC (zones.clj's
+;; `"systemDefault" (fn [] (zone-id "Z" 0))`, zoned.clj's systemDefaultZone),
+;; so tick's (t/today) answers the UTC date on every machine, ignoring TZ.
+;; GLib reads the real zone, so this is currently the only correct route to
+;; "what day is it" in a jolt process. examples/glitter/flights.clj uses it.
+;;
+;; This route only became correct in jolt v0.7.23-10-gc50a3717: before that,
+;; jolt's own boot-time libc zone probe left TZ=UTC set process-globally, so
+;; GLib answered UTC too (measured: [2026 8 23 21] against a real local
+;; [2026 8 24 7]). Fixed upstream in jolt-lang/jolt#712 — a jolt older than
+;; that fix will silently give this binding the UTC date back.
+(ffi/defcfn g-date-time-new-now-local     "g_date_time_new_now_local"     [] :pointer)
 (ffi/defcfn g-date-time-get-year          "g_date_time_get_year"          [:pointer] :int)
 (ffi/defcfn g-date-time-get-month         "g_date_time_get_month"         [:pointer] :int)
 (ffi/defcfn g-date-time-get-day-of-month  "g_date_time_get_day_of_month"  [:pointer] :int)

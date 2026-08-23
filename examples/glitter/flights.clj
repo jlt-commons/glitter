@@ -27,10 +27,16 @@
   - Dates use the OFFICIAL spec's DD.MM.YYYY format, not the reference
     port's ISO-ish YYYY-MM-DD (a deviation in that file from its own
     spec's screenshot, not something to replicate).
-  - Date parsing/formatting/comparison/'today' go through jolt.time/tick
-    (see deps.edn), not GTK/GLib FFI and not hand-rolled regex — cleaner
-    domain/presentation separation than reaching for a new GDateTime FFI
-    binding just to answer 'what is today's date.'
+  - Date parsing/formatting/comparison go through jolt.time/tick (see
+    deps.edn), not GTK/GLib FFI and not hand-rolled regex — cleaner
+    domain/presentation separation.
+  - 'Today', though, does NOT: see local-today below. This file
+    originally used (t/today) for it, on the reasoning that reaching for
+    a GDateTime FFI binding just to answer 'what is today's date' was
+    worse separation. That reasoning was wrong on a fact nobody had
+    checked: (t/today) answers the UTC date, so this demo defaulted its
+    departure field to YESTERDAY for the first 10 hours of every AEST
+    day. Reversed deliberately — correctness over layering.
   - `parse-date` below is NOT a bare `t/parse-date` call — verified live
     that `t/parse-date` is LENIENT under this Jolt port (doesn't throw
     on malformed input: '27.03.2014x' silently parsed to 2014-03-27
@@ -48,6 +54,7 @@
             [clojure.tools.logging :as log]
             [glitter.app :as app]
             [glitter.core :as core]
+            [glitter.ffi :as g]
             [glitter.gtk :as gtk]
             [glitter.nexus.registry :as nxr]
             [tick.core :as t]))
@@ -69,6 +76,34 @@
 (defn format-date [d]
   (t/format date-formatter d))
 
+;; Today's date in the machine's OWN zone, via GLib rather than (t/today).
+;;
+;; (t/today) would be the natural call and is wrong here: jolt-lang/time
+;; hardcodes ZoneId/systemDefault and Clock/systemDefaultZone to UTC
+;; (zones.clj's `"systemDefault" (fn [] (zone-id "Z" 0))`), so (t/today)
+;; answers the UTC date on every machine and ignores TZ even when it is
+;; explicitly set. Measured at 07:29 AEST on 2026-08-24: (t/today) =>
+;; 2026-08-23, and => 2026-08-23 again under TZ=Australia/Sydney. For a
+;; date-defaulting form that means the field opens on yesterday for the
+;; first 10 hours of every AEST day. GLib reads the real zone, so it is
+;; currently the only correct answer available in a jolt process.
+;;
+;; Needs jolt v0.7.23-10-gc50a3717 or newer: before jolt-lang/jolt#712,
+;; jolt's boot-time zone probe left TZ=UTC set process-globally and GLib
+;; answered UTC too. See src/glitter/ffi.clj's binding comment.
+;;
+;; The GDateTime is caller-owned and unref'd here, the same discipline
+;; :calendar's set-calendar-date!/signal-value entry already follow.
+;; Converted straight back to a tick date so every other date operation
+;; in this file (compare, format, parse) stays on one representation.
+(defn local-today []
+  (let [d (g/g-date-time-new-now-local)
+        date (t/new-date (g/g-date-time-get-year d)
+                         (g/g-date-time-get-month d)
+                         (g/g-date-time-get-day-of-month d))]
+    (g/g-date-time-unref d)
+    date))
+
 (defonce state
   (atom {:type :one-way
          :departure-date nil ;; nil = "use today's date"
@@ -77,11 +112,11 @@
 
 ;; Domain logic, kept pure — the "separation of domain and presentation
 ;; logic" the spec calls out by name. today is read fresh each render
-;; (t/today is cheap; no reason to cache it in state) rather than
-;; snapshotted once at namespace-load time, so the demo behaves
+;; (local-today is one FFI call; no reason to cache it in state) rather
+;; than snapshotted once at namespace-load time, so the demo behaves
 ;; correctly if left running across a real day boundary.
 (defn get-form-state [{:keys [type departure-date return-date]}]
-  (let [today (format-date (t/today))
+  (let [today (format-date (local-today))
         departure-value (or departure-date today)
         departure-parsed (parse-date departure-value)
         departure-invalid? (and departure-date (nil? departure-parsed))

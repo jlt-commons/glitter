@@ -50,9 +50,11 @@
      never ran, and the display never advanced past its initial paint.
      view instead reads System/nanoTime directly itself, the same
      live-fresh-read-at-render-time pattern flights.clj's
-     get-form-state already established for (t/today) — see that fn's
-     own comment ('today is read fresh each render... rather than
-     snapshotted once at namespace-load time'). :nexus/system->state's
+     get-form-state already established for today's date — see that
+     fn's own comment ('today is read fresh each render... rather than
+     snapshotted once at namespace-load time'). (That call was
+     (t/today) when this docstring was first written; it is
+     local-today now, for an unrelated reason — see flights.clj.) :nexus/system->state's
      :now registration stays exactly as it was for :action/tick's own
      sake — it's a dispatch-time mechanism, not a rendering one.
 
