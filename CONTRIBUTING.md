@@ -178,6 +178,11 @@ obscurely. If a new demo would benefit from a particular steering sequence,
 add an `:overrides` entry for it in the manifest and mention it in your PR,
 and a maintainer will record it.
 
+`docs/demos/montage.mp4` is a 3x2 grid of all six demos playing at once,
+for announcement posts. Rebuild it from the committed GIFs with
+`bash scripts/make_montage.sh` (ffmpeg + Python/PIL, no capture tool
+needed, so this part is not maintainer-only).
+
 Two things worth knowing if you do touch the manifest. Pointer actions
 (`:click`/`:move`/`:drag`) move the cursor but their press never reaches
 the app, so demos are steered by keyboard only. And `:type` repeats
