@@ -63,39 +63,26 @@ This one is structural, not a version to wait out: `jolt/time/fmt.clj`'s
 no `ResolverStyle`/`withResolverStyle` at all — `DateTimeFormatterBuilder`'s
 `parseLenient` and `parseCaseInsensitive` are `(fn [b] b)` no-ops.
 
-### `(t/today)` is the UTC date, so the demo doesn't call it
+### `(t/today)` answered the UTC date — found here, fixed upstream
 
-`(t/today)` answers the UTC date on every machine and ignores `TZ` even when
-it is explicitly set. Measured at 07:29 AEST on 2026-08-24:
+`flights.clj` defaults its departure field to today, and opened on
+*yesterday* for the first 10 hours of every AEST day. `(t/today)` answered
+the UTC date on every machine and ignored `TZ` even when it was set
+explicitly.
 
-```
-(t/today)                                  => 2026-08-23
-TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
-(LocalDate/now (ZoneId/of "Australia/Sydney")) => 2026-08-23   ; zone ignored
-(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24   ; correct
-```
+Two independent `jolt-lang/time` defects caused it — `ZoneId/systemDefault`
+hardcoded to UTC, *and* the `now` family ignoring a zone even when handed one
+— and fixing either alone was not enough. Both are fixed in
+[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
+v0.0.7, which is the SHA `deps.edn` pins. The demo calls plain `(t/today)`.
 
-Two independent defects in `jolt-lang/time` produce that, and fixing either
-one alone would not be enough: `ZoneId/systemDefault` and
-`Clock/systemDefaultZone` are hardcoded to UTC, so nothing ever asks the
-machine which zone it is in — *and* `LocalDate/now`, `LocalTime/now`,
-`LocalDateTime/now` and `OffsetDateTime/now` ignore a zone even when handed
-one explicitly. Only `ZonedDateTime/now` honors one, which is why the last
-line above is right while the first is not.
-
-The Flight Booker defaults its departure field to today, so it opened on
-*yesterday* for the first 10 hours of every AEST day. `flights.clj`'s
-`local-today` asks GLib instead (`g_date_time_new_now_local`, which reads
-the real zone) and converts straight back to a tick date, so every other
-date operation in the file stays on one representation. The `GDateTime`
-is caller-owned and unref'd, the same discipline `:calendar` follows.
-
-**This needs jolt `v0.7.23-10-gc50a3717` or newer.** Before
-[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712) jolt's own
-boot-time libc zone probe set `TZ=UTC` process-globally and never restored
-it, so GLib answered UTC too — measured `[2026 8 23 21]` against a real
-local `[2026 8 24 7]`, and correct again the moment `TZ` was unset
-in-process. On an older jolt this route silently returns the UTC date.
+The pin is load-bearing, and so is the toolchain: a correct local date also
+needs a jolt carrying
+[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712), because
+zone discovery reads `TZ` and an older jolt leaks `TZ=UTC` from its own boot
+probe. Full write-up, including why reaching for GLib instead does not dodge
+that:
+[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
 
 ## Live-GTK smokes
 

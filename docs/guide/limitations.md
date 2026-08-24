@@ -442,36 +442,24 @@ window. A deliberate v1 scope decision from the design spec, not an
 oversight; upstream's own viewer (`nexus.inspector`) is entangled with
 `dataspex.*` rendering protocols that have no glitter/GTK equivalent.
 
-## `(t/today)` is the UTC date, and glitter ships no general fix
+## No longer a limitation: `(t/today)` answering the UTC date
 
-Not a glitter bug, but it will bite anything built on glitter that
-reaches for a local date, so it belongs on this list.
-Tick's `(t/today)` answers the **UTC** date on every machine and ignores
-`TZ` even when it is explicitly set. Measured at 07:29 AEST on
-2026-08-24, `(t/today)` answered `2026-08-23`, and answered `2026-08-23`
-again under `TZ=Australia/Sydney`. Two independent `jolt-lang/time`
-defects cause it, and fixing either alone is not enough:
-`ZoneId/systemDefault`/`Clock/systemDefaultZone` are hardcoded to
-`(zone-id "Z" 0)`, *and* the `LocalDate`/`LocalTime`/`LocalDateTime`/
-`OffsetDateTime` `now` family ignores a zone even when given one
-explicitly (only `ZonedDateTime/now` honors it).
+Listed here because it was a limitation for exactly one day and the fix is
+a version floor, not code.
 
-`examples/glitter/flights.clj` works around it with a demo-local
-`local-today` that asks GLib (`g_date_time_new_now_local`) instead.
-**That helper is deliberately not promoted into `glitter.*`.** Doing so
-would put a date API in a rendering library, and the honest fix is
-upstream: `systemDefault` should answer the machine's real zone (reading
-`TZ`, then `/etc/localtime`) rather than returning UTC as though it
-knew, and `now` should apply whatever zone it ends up with. The libc
-backend underneath already answers *named* zones correctly
-(`tz-offset-seconds "Australia/Sydney"` => `36000`) — the offset math is
-there, nothing calls it on this path. Copy the four-line helper if you
-need it; see [`nexus.md`](nexus.md#the-ttoday-is-utc-finding).
+`jolt-lang/time` used to hardcode `ZoneId/systemDefault` to UTC *and* ignore
+a zone in `LocalDate`/`LocalTime`/`LocalDateTime`/`OffsetDateTime` `now`, so
+`(t/today)` answered the UTC date on every machine. Traced from
+`flights.clj` defaulting its departure field to yesterday, fixed upstream in
+[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
+v0.0.7 — the SHA `deps.edn` pins.
 
-Note the version floor that goes with it: on a jolt older than
-`v0.7.23-10-gc50a3717`, the GLib route is wrong too, because jolt's own
-boot-time zone probe used to leave `TZ=UTC` set process-globally
-([jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712)).
+glitter briefly carried a GLib `local-today` helper for it. That is gone:
+plain `(t/today)` is correct, and a rendering library has no business
+shipping a date API. **Do not reintroduce the helper** — if dates look wrong,
+check the two version floors in
+[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix) first,
+since the jolt half of the fix is what a stale toolchain will be missing.
 
 ## Still a limitation: `:style`, and no animations
 

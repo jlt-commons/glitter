@@ -75,9 +75,9 @@ live GTK widget tree in sync.
     `todo.clj`'s action-expansion retrofits.
   - **The action log** and its `:entries`/`:chronology` accumulation
     tree (`(pr-str @log)`, no viewer yet), plus the two date findings
-    Flight Booker had to work around: `t/parse-date`'s leniency (which
-    is what makes its date validation actually work) and `(t/today)`
-    answering the UTC date (which is why it asks GLib instead).
+    Flight Booker turned up: `t/parse-date`'s leniency, which its date
+    validation still works around, and `(t/today)` answering the UTC
+    date, which was fixed upstream and is now a version floor.
 
 ### GTK integration
 - [`gtk-widget-layer.md`](gtk-widget-layer.md): the hiccup-tag → widget

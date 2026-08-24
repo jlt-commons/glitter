@@ -27,16 +27,13 @@
   - Dates use the OFFICIAL spec's DD.MM.YYYY format, not the reference
     port's ISO-ish YYYY-MM-DD (a deviation in that file from its own
     spec's screenshot, not something to replicate).
-  - Date parsing/formatting/comparison go through jolt.time/tick (see
-    deps.edn), not GTK/GLib FFI and not hand-rolled regex — cleaner
-    domain/presentation separation.
-  - 'Today', though, does NOT: see local-today below. This file
-    originally used (t/today) for it, on the reasoning that reaching for
-    a GDateTime FFI binding just to answer 'what is today's date' was
-    worse separation. That reasoning was wrong on a fact nobody had
-    checked: (t/today) answers the UTC date, so this demo defaulted its
-    departure field to YESTERDAY for the first 10 hours of every AEST
-    day. Reversed deliberately — correctness over layering.
+  - Date parsing/formatting/comparison/'today' all go through
+    jolt.time/tick (see deps.edn), not GTK/GLib FFI and not hand-rolled
+    regex — cleaner domain/presentation separation. Note the pinned
+    jolt-lang/time SHA is load-bearing for (t/today): before v0.0.7 it
+    answered the UTC date, and this demo defaulted its departure field
+    to YESTERDAY for the first 10 hours of every AEST day. See
+    docs/guide/nexus.md.
   - `parse-date` below is NOT a bare `t/parse-date` call — verified live
     that `t/parse-date` is LENIENT under this Jolt port (doesn't throw
     on malformed input: '27.03.2014x' silently parsed to 2014-03-27
@@ -54,7 +51,6 @@
             [clojure.tools.logging :as log]
             [glitter.app :as app]
             [glitter.core :as core]
-            [glitter.ffi :as g]
             [glitter.gtk :as gtk]
             [glitter.nexus.registry :as nxr]
             [tick.core :as t]))
@@ -76,48 +72,6 @@
 (defn format-date [d]
   (t/format date-formatter d))
 
-;; Today's date in the machine's OWN zone, via GLib rather than (t/today).
-;;
-;; (t/today) would be the natural call and is wrong here: it answers the
-;; UTC date on every machine. Measured at 07:29 AEST on 2026-08-24,
-;; (t/today) => 2026-08-23, and => 2026-08-23 again under
-;; TZ=Australia/Sydney. For a date-defaulting form that means the field
-;; opens on yesterday for the first 10 hours of every AEST day.
-;;
-;; TWO independent defects in jolt-lang/time produce that, and fixing
-;; either one alone would not be enough:
-;;
-;;   1. No zone DISCOVERY. ZoneId/systemDefault and Clock/systemDefaultZone
-;;      are hardcoded to UTC — zones.clj's
-;;      `"systemDefault" (fn [] (zone-id "Z" 0))` and zoned.clj's match —
-;;      so nothing ever asks the machine which zone it is in.
-;;   2. `now` ignores a zone it IS given. LocalDate/now, LocalTime/now,
-;;      LocalDateTime/now and OffsetDateTime/now read epoch millis and
-;;      split them into fields with no offset applied, so even an explicit
-;;      (LocalDate/now (ZoneId/of "Australia/Sydney")) answered 2026-08-23.
-;;      Only ZonedDateTime/now honors a zone, which is why
-;;      (t/in (t/now) "Australia/Sydney") is correct while (t/today) is not.
-;;
-;; Note what is NOT broken: the libc backend answers NAMED zones correctly
-;; (tz-offset-seconds "Australia/Sydney" => 36000). GLib reads the real
-;; zone, so it is currently the only correct answer available here.
-;;
-;; Needs jolt v0.7.23-10-gc50a3717 or newer: before jolt-lang/jolt#712,
-;; jolt's boot-time zone probe left TZ=UTC set process-globally and GLib
-;; answered UTC too. See src/glitter/ffi.clj's binding comment.
-;;
-;; The GDateTime is caller-owned and unref'd here, the same discipline
-;; :calendar's set-calendar-date!/signal-value entry already follow.
-;; Converted straight back to a tick date so every other date operation
-;; in this file (compare, format, parse) stays on one representation.
-(defn local-today []
-  (let [d (g/g-date-time-new-now-local)
-        date (t/new-date (g/g-date-time-get-year d)
-                         (g/g-date-time-get-month d)
-                         (g/g-date-time-get-day-of-month d))]
-    (g/g-date-time-unref d)
-    date))
-
 (defonce state
   (atom {:type :one-way
          :departure-date nil ;; nil = "use today's date"
@@ -126,11 +80,11 @@
 
 ;; Domain logic, kept pure — the "separation of domain and presentation
 ;; logic" the spec calls out by name. today is read fresh each render
-;; (local-today is one FFI call; no reason to cache it in state) rather
-;; than snapshotted once at namespace-load time, so the demo behaves
+;; (t/today is cheap; no reason to cache it in state) rather than
+;; snapshotted once at namespace-load time, so the demo behaves
 ;; correctly if left running across a real day boundary.
 (defn get-form-state [{:keys [type departure-date return-date]}]
-  (let [today (format-date (local-today))
+  (let [today (format-date (t/today))
         departure-value (or departure-date today)
         departure-parsed (parse-date departure-value)
         departure-invalid? (and departure-date (nil? departure-parsed))

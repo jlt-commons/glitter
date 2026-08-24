@@ -70,10 +70,11 @@ to read current state before deciding what should happen. `jolt flights`
 needs only effects and placeholders; `jolt crud`/`jolt todo`/
 `jolt temperature`/`jolt timer` also use action-expansions. See
 [`docs/guide/nexus.md`](docs/guide/nexus.md) for the full model,
-including two live-verified date gotchas `jolt flights` had to work
-around: `t/parse-date` is lenient (so its date validation needs a
-round-trip check), and `(t/today)` answers the UTC date rather than the
-machine's (so it asks GLib for today instead).
+including two live-verified date gotchas `jolt flights` turned up:
+`t/parse-date` is lenient, so its date validation needs a round-trip
+check, and `(t/today)` used to answer the UTC date rather than the
+machine's — traced here and fixed upstream in `jolt-lang/time` v0.0.7,
+which `deps.edn` pins.
 
 `jolt test` runs the unit suite. The rest are 26 automated live-GTK
 smokes, each of which mounts a real window and exits non-zero on failure.

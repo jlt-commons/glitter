@@ -17,13 +17,15 @@ brew install gtk4        # macOS; on Linux use your distro's gtk4 + glib dev pac
 ```
 
 Everything except one demo works on any Jolt in that range. `jolt flights`
-wants **`v0.7.23-10-gc50a3717` or newer** to show the correct date: it reads
-today from GLib, and on an older Jolt the boot-time libc zone probe left
-`TZ=UTC` set process-globally, so GLib answered UTC too. Fixed upstream in
-[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712); see
-[`docs/guide/nexus.md`](docs/guide/nexus.md#the-ttoday-is-utc-finding) for the
-measurements. On an older Jolt the demo still runs, it just defaults its
-departure field to the UTC date.
+wants **`v0.7.23-10-gc50a3717` or newer** to show the correct date: Jolt's
+boot-time libc zone probe used to leave `TZ=UTC` set process-globally, and
+zone discovery reads `TZ`, so an older Jolt puts `(t/today)` back on the UTC
+date. Fixed upstream in
+[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712); the other
+half of the fix is `jolt-lang/time` v0.0.7, which `deps.edn` pins. See
+[`docs/guide/nexus.md`](docs/guide/nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix)
+for the measurements. On an older Jolt the demo still runs, it just defaults
+its departure field to the UTC date.
 
 `deps.edn`'s `:jolt/native` declares `glib-2.0`, `gobject-2.0`, `gio-2.0` and
 `gtk-4`, with Homebrew paths for darwin and `.so` names for linux.

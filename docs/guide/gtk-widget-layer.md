@@ -1140,21 +1140,9 @@ reference it must release:
       (g/g-date-time-unref gdt))))             ; release it
 ```
 
-A third `GDateTime` call site was added later, for a reason that has
-nothing to do with `:calendar`: `g_date_time_new_now_local` is bound
-because tick's `(t/today)` answers the UTC date on every machine (two
-independent `jolt-lang/time` defects, neither of which glitter can route
-around in-library), so GLib is currently the only correct route to "what
-day is it" in a jolt process.
-It's caller-owned and unref'd like the two above, and
-`examples/glitter/flights.clj`'s `local-today` is its one consumer. The
-finding itself is written up in
-[`nexus.md`](nexus.md#the-ttoday-is-utc-finding), since it's a date-library
-behavior rather than a GTK one — this is only the ownership note.
-
-Skipping any of these `unref`s would leak one `GDateTime` object per
-render or dispatch: small individually, but unbounded over a
-long-running app's lifetime. `aspect_frame_calendar_smoke.clj`'s round-trip (a real
+Skipping either `unref` would leak one `GDateTime` object per render or
+dispatch: small individually, but unbounded over a long-running app's
+lifetime. `aspect_frame_calendar_smoke.clj`'s round-trip (a real
 interaction dispatching a `[year month day]` value, then a programmatic
 `reset!` syncing the widget back with the suppressing guard proven to
 hold) is what actually exercises this discipline under repeated use, not
