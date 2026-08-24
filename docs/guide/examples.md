@@ -33,6 +33,22 @@ Every preview is a real recording of the demo running, not a mockup. They
 are committed under `docs/demos/`, and each thumbnail links to the
 full-size recording.
 
+## Widget galleries
+
+Runnable reference pages rather than tasks. Between them they use all 43
+registered tags, and each is written to be copied from —
+[`widgets.md`](widgets.md) quotes them per tag.
+
+| preview | gallery |
+|---|---|
+| [<img src="../demos/gallery-inputs.gif" width="170">](../demos/gallery-inputs.gif) | **`bb gallery-inputs`** — every value-bearing widget, all writing into one state atom, with a readout rendering that atom, so the signal → action → effect → `swap!` → re-render round trip is the visible subject. |
+| [<img src="../demos/gallery-layout.gif" width="170">](../demos/gallery-layout.gif) | **`bb gallery-layout`** — the containers, grouped by how each decides where a child goes: ordered lists, fixed named slots, child-driven placement, single-child wrappers. |
+| [<img src="../demos/gallery-display.gif" width="170">](../demos/gallery-display.gif) | **`bb gallery-display`** — the read-only widgets, with no signal of their own. One `:scale` drives all nine, so a single value flows into nine presentations of itself. |
+| [<img src="../demos/gallery-chrome.gif" width="170">](../demos/gallery-chrome.gif) | **`bb gallery-chrome`** — app chrome and navigation as controlled components: header/action bars, `:menu-button` + `:popover`, `:notebook`, `:stack`, `:search-bar`. |
+
+`gallery_smoke.clj` mounts all four against live GTK on every `bb smokes`
+run, so nothing quoted in the reference can quietly stop compiling.
+
 ## Why the demos are worth reading, not just running
 
 Each one is a deliberate contrast with how the same UI would be written

@@ -17,7 +17,8 @@ run, so nothing here can quietly stop compiling:
 | [`gallery_display.clj`](../../examples/glitter/gallery_display.clj) | `bb gallery-display` | the read-only widgets |
 | [`gallery_chrome.clj`](../../examples/glitter/gallery_chrome.clj) | `bb gallery-chrome` | app chrome and navigation |
 
-Recordings of all four are in [`../demos/`](../demos/README.md).
+Recordings of all four, with what each one shows, are in
+[`examples.md`](examples.md#widget-galleries).
 
 ## The three rules that apply to every tag
 
