@@ -620,8 +620,10 @@
 (defn- stack-spec []
   ;; A :notebook sibling with no tabs of its own — see stack-append-child!
   ;; (below, beside the other container-management fns) for how each
-  ;; child's OPTIONAL :stack/name prop reaches the container (the same
-  ;; set-attribute interception :grid uses). GTK auto-selects the first
+  ;; child's OPTIONAL :stack-name prop reaches the container (the same
+  ;; set-attribute interception :grid uses). NON-namespaced on purpose:
+  ;; glitter.core drops namespaced attributes upstream of every backend,
+  ;; so a :stack/name would silently never arrive. GTK auto-selects the first
   ;; added VISIBLE child as visible-child (confirmed via
   ;; gtk_stack_add_page's C body) — a THIRD instance of :notebook's
   ;; round-9 mount-time-dispatch finding, so mounting a :stack with
@@ -637,8 +639,10 @@
 
 (defn- grid-spec []
   ;; The first container here whose child placement data lives on the
-  ;; CHILD's own hiccup props (:grid/column/:grid/row/:grid/column-span/
-  ;; :grid/row-span), not a fixed slot or append order — see
+  ;; CHILD's own hiccup props (:grid-column/:grid-row/:grid-column-span/
+  ;; :grid-row-span — NON-namespaced on purpose: glitter.core drops
+  ;; namespaced attributes upstream of every backend, so a :grid/column
+  ;; would silently never arrive), not a fixed slot or append order — see
   ;; grid-attach! (below, beside the other container-management fns) and
   ;; glitter.gtk's set-attribute for the full threading story. No signal
   ;; of its own.
@@ -734,7 +738,13 @@
   {:ctor  (fn [_] (g/gtk-password-entry-new))
    :apply (fn [w p]
             (when (contains? p :text)           (set-entry-text! w (:text p)))
-            (when (contains? p :placeholder)    (g/gtk-editable-set-placeholder-text w (:placeholder p)))
+            ;; NO :placeholder here, deliberately. It used to route through
+            ;; gtk_entry_set_placeholder_text, which asserts GTK_IS_ENTRY —
+            ;; GtkPasswordEntry is not a GtkEntry, it implements GtkEditable
+            ;; via a delegate — so the prop only ever emitted a Gtk-CRITICAL
+            ;; and did nothing. GTK exposes no C setter to replace it with
+            ;; (placeholder-text is property-only on this widget), so the
+            ;; honest fix is to not accept the prop. See ffi.clj's comment.
             (when (contains? p :show-peek-icon) (g/gtk-password-entry-set-show-peek-icon w (->bool (:show-peek-icon p))))
             (when (contains? p :sensitive)      (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})
@@ -746,7 +756,8 @@
   {:ctor  (fn [_] (g/gtk-search-entry-new))
    :apply (fn [w p]
             (when (contains? p :text)          (set-entry-text! w (:text p)))
-            (when (contains? p :placeholder)   (g/gtk-editable-set-placeholder-text w (:placeholder p)))
+            ;; Its own setter, for the same reason :password-entry needs one.
+            (when (contains? p :placeholder)   (g/gtk-search-entry-set-placeholder-text w (:placeholder p)))
             (when (contains? p :search-delay)  (g/gtk-search-entry-set-search-delay w (:search-delay p)))
             (when (contains? p :sensitive)     (g/gtk-widget-set-sensitive w (->bool (:sensitive p)))))
    :container :none})

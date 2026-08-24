@@ -45,7 +45,7 @@ live GTK widget tree in sync.
 
 ### Orientation
 - [`examples.md`](examples.md): the six interactive demos (four of them
-  [7GUIs](https://eugenkiss.github.io/7guis/) tasks) and the twenty-six
+  [7GUIs](https://eugenkiss.github.io/7guis/) tasks) and the twenty-seven
   live-GTK smokes: what each one runs, and what it pins. `counter.clj` is
   the 20-line version of the whole model and the fastest way in.
 - [`architecture.md`](architecture.md): the reconcile → `IRender`/
@@ -80,6 +80,11 @@ live GTK widget tree in sync.
     date, which was fixed upstream and is now a version floor.
 
 ### GTK integration
+- [`widgets.md`](widgets.md): **the widget reference** — every one of the 43
+  tags, its props, its signals, and what `[:glitter/value]` resolves to for
+  each. Start here to build something. Every snippet is lifted from one of
+  the four runnable galleries under `examples/glitter/`, which
+  `gallery_smoke.clj` mounts against live GTK on every `bb smokes` run.
 - [`gtk-widget-layer.md`](gtk-widget-layer.md): the hiccup-tag → widget
   registry and the signal connect/disconnect lifecycle. The long one: a
   per-widget record of how each of the 43 supported tags was added and
@@ -127,7 +132,7 @@ live GTK widget tree in sync.
 
 ### Verify
 - [`testing-and-tasks.md`](testing-and-tasks.md) (the unit suite, the
-  headless fake-`IRender` test renderer, the twenty-six automated live-GTK
+  headless fake-`IRender` test renderer, the twenty-seven automated live-GTK
   smokes, and the `jolt`/`bb` task surfaces that run them.
 - [`limitations.md`](limitations.md)) every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.

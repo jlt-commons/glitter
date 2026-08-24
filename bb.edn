@@ -54,6 +54,11 @@
           (row "flights" "interactive demo: 7GUIs Flight Booker — constraints between/within widgets")
           (row "temperature" "interactive demo: 7GUIs Temperature Converter — linked Celsius/Fahrenheit fields")
           (row "timer" "interactive demo: 7GUIs Timer — duration slider, self-advancing elapsed time, Reset")
+          (hdr "Widget galleries (runnable reference — all 43 tags; see docs/guide/widgets.md)")
+          (row "gallery-inputs" "every value-bearing widget, all writing into one state atom")
+          (row "gallery-layout" "the containers, and how each decides where a child goes")
+          (row "gallery-display" "the read-only widgets, all driven by one value")
+          (row "gallery-chrome" "header/action bars, menu+popover, notebook, stack, search bar")
           (hdr "Smoke (live GTK, each exits non-zero on failure)")
           (row "smoke" "mount a tree and run the loop without an exception escaping")
           (row "keyed" "keyed reorder lands in the right GTK order")
@@ -81,6 +86,7 @@
           (row "window-handle-stack-smoke" ":window-handle's single-child reuse; :stack's name-addressed pages + mount-time auto-select dispatch")
           (row "drop-down-grid-smoke" ":drop-down's GtkStringList-backed selection; :grid's child-props-driven 2D placement")
           (row "list-box-reorder-smoke" "pins the g-object-ref-sink fix for list-box/flow-box's keyed-reorder use-after-dispose bug")
+          (row "gallery-smoke" "all four widget galleries mount and round-trip; pins the :placeholder fix and the notebook/stack mount-time dispatch")
           (row "smokes" "run every smoke above in sequence; stops at the first failure")
           (hdr "Quality — lint/format/checks")
           (row "lint" "clj-kondo over glitter-authored code (report only)")
@@ -162,6 +168,17 @@
   spin-button-list-box-smoke {:doc "Live-GTK smoke: :spin-button's tag-safe value-fn; :list-box's row-selected + container-management fixes"
                               :task (shell "jolt" "-M:spin-button-list-box-smoke")}
 
+  gallery-inputs {:doc "Widget gallery: every value-bearing widget, all writing into one state atom"
+                  :task (shell "jolt" "-M:gallery-inputs")}
+  gallery-layout {:doc "Widget gallery: the containers, and how each decides where a child goes"
+                  :task (shell "jolt" "-M:gallery-layout")}
+  gallery-display {:doc "Widget gallery: the read-only widgets, all driven by one value"
+                   :task (shell "jolt" "-M:gallery-display")}
+  gallery-chrome {:doc "Widget gallery: header/action bars, menu+popover, notebook, stack, search bar"
+                  :task (shell "jolt" "-M:gallery-chrome")}
+  gallery-smoke {:doc "Live-GTK smoke: all four widget galleries mount and round-trip"
+                 :task (shell "jolt" "-M:gallery-smoke")}
+
   password-search-entry-smoke {:doc "Live-GTK smoke: :password-entry/:search-entry reuse :entry's GtkEditable-delegate \"changed\" signal"
                                :task (shell "jolt" "-M:password-search-entry-smoke")}
 
@@ -227,7 +244,8 @@
                     (shell "jolt" "-M:ctor-apply-regression-smoke")
                     (shell "jolt" "-M:window-handle-stack-smoke")
                     (shell "jolt" "-M:drop-down-grid-smoke")
-                    (shell "jolt" "-M:list-box-reorder-smoke"))}
+                    (shell "jolt" "-M:list-box-reorder-smoke")
+                    (shell "jolt" "-M:gallery-smoke"))}
 
   ;; --- Quality: lint / format / positional-args ---------------------------
   ;; clj-kondo's exit code is a severity ladder: 0 = clean, 2 = warnings
@@ -390,7 +408,11 @@
                         ["crud"        "7guis"  "live prefix filter, list-box selection, create/update/delete"]
                         ["flights"     "7guis"  "constraints between widgets and within one"]
                         ["temperature" "7guis"  "two linked fields, each updating the other"]
-                        ["timer"       "7guis"  "elapsed time that advances on its own, plus Reset"]]]
+                        ["timer"       "7guis"  "elapsed time that advances on its own, plus Reset"]
+                        ["gallery-inputs"  "gallery" "every value-bearing widget, all writing into one state atom"]
+                        ["gallery-layout"  "gallery" "the containers, and how each decides where a child goes"]
+                        ["gallery-display" "gallery" "the read-only widgets, all driven by one value"]
+                        ["gallery-chrome"  "gallery" "header/action bars, menu+popover, notebook, stack, search bar"]]]
                {:id (nth row 0)
                 :group (nth row 1)
                 :desc (nth row 2)

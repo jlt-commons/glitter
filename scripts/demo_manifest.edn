@@ -18,8 +18,9 @@
  :title   "Demos"
  :preamble "Animated previews of glitter's interactive demos. Regenerate with `bb record` (maintainer-only: it needs an internal capture tool that is not publicly released). The GIFs here are committed, so you do not need it to browse them."
 
- :groups [{:key "basics" :title "basics"}
-          {:key "7guis"  :title "7GUIs tasks"}]
+ :groups [{:key "basics"  :title "basics"}
+          {:key "7guis"   :title "7GUIs tasks"}
+          {:key "gallery" :title "widget gallery"}]
 
  :defaults {:duration 8 :fps 10 :width 520 :warmup 12}
 
@@ -59,4 +60,40 @@
   ;; Needs no input at all: the elapsed bar advances on its own. This is the
   ;; only demo whose state changes without a user, so it is the one item here
   ;; that would animate even with an empty timeline.
-  "timer"       {:duration 10}}}
+  "timer"       {:duration 10}
+
+  ;; --- widget galleries ----------------------------------------------------
+  ;; These are reference pages more than tasks, so the steering just walks the
+  ;; focus chain: Tab to the next widget, Space/typing to work it. Same two
+  ;; constraints as above — a click never reaches GTK, and :type repeats
+  ;; characters, so single characters only.
+
+  ;; Tab lands in the entry first. Type into it, then Tab on through the
+  ;; password and search fields so the state readout at the bottom visibly
+  ;; recomputes on every keystroke.
+  "gallery-inputs"  {:input [[1.5 :key "tab"] [2.0 :type "a"] [3.0 :key "tab"]
+                             [3.5 :type "b"] [4.5 :key "tab"] [5.0 :type "c"]
+                             [6.5 :key "tab"] [7.0 :key "space"]]
+                     :duration 10 :width 560}
+
+  ;; Tab to the divider scale and drive it with the arrow keys — the paned
+  ;; divider moves because state moved, which is the point of the page.
+  "gallery-layout"  {:input [[1.5 :key "tab"] [2.5 :key "right"] [3.0 :key "right"]
+                             [3.5 :key "right"] [4.5 :key "left"] [5.0 :key "left"]
+                             [6.0 :key "tab"] [6.5 :key "space"]]
+                     :duration 10 :width 620}
+
+  ;; One scale drives nine widgets. Arrow keys walk it up and back down so the
+  ;; progress bar, level bar, icon size and inscription all move together.
+  "gallery-display" {:input [[1.5 :key "tab"] [2.5 :key "right"] [3.0 :key "right"]
+                             [3.5 :key "right"] [4.0 :key "right"] [5.0 :key "left"]
+                             [5.5 :key "left"] [6.5 :key "tab"] [7.0 :key "space"]]
+                     :duration 10 :width 560}
+
+  ;; Tab to the menu button and Space to open the popover, then on to the
+  ;; stack buttons. The notebook and stack have already dispatched once each
+  ;; by the time the first frame is captured — see gallery_smoke.clj.
+  "gallery-chrome"  {:input [[1.5 :key "tab"] [2.0 :key "space"] [3.5 :key "escape"]
+                             [4.5 :key "tab"] [5.0 :key "space"] [6.5 :key "tab"]
+                             [7.0 :key "space"]]
+                     :duration 10 :width 560}}}

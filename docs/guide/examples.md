@@ -6,7 +6,11 @@ kinds:
 - **Six interactive demos** you open and click. Four of them are
   [7GUIs](https://eugenkiss.github.io/7guis/) tasks, so they can be
   compared against implementations in other toolkits.
-- **Twenty-six live-GTK smokes** that mount a real window, assert against
+- **Four widget galleries** — reference pages you can run. Between them
+  they use all 43 registered tags, and each is written to be copied from;
+  [`widgets.md`](widgets.md) quotes them. Run `bb gallery-inputs`,
+  `bb gallery-layout`, `bb gallery-display`, `bb gallery-chrome`.
+- **Twenty-seven live-GTK smokes** that mount a real window, assert against
   real GTK state, and exit non-zero on failure. These are the project's
   actual regression suite for the GTK layer; the headless unit suite
   can't reach it.
@@ -87,7 +91,7 @@ instead does not dodge any of it:
 
 ## Live-GTK smokes
 
-`bb smokes` runs all twenty-six in sequence and stops at the first
+`bb smokes` runs all twenty-seven in sequence and stops at the first
 failure. Each is also a standalone `bb <name>`.
 
 These exist because GTK4 is a live, stateful system with a blocking main
@@ -105,6 +109,7 @@ behaviour that was once broken.
 | `aliased` | Aliases expand through the real renderer, on mount and update |
 | `main-thread-smoke` | An off-main-thread `swap!` renders **on** the GTK main thread |
 | `list-box-reorder-smoke` | The `g_object_ref_sink` fix for the keyed-reorder use-after-dispose bug |
+| `gallery-smoke` | All four widget galleries mount and round-trip; the `:placeholder` fix; `:grid` placement; the notebook/stack mount-time dispatch |
 | `ctor-apply-regression-smoke` | Four real ctor/apply bugs found in the round-11 audit stay fixed |
 
 ## Smokes: signals and value delivery

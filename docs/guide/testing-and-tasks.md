@@ -1,7 +1,7 @@
 # Testing and tasks
 
 glitter has two layers of verification: a headless unit suite against a
-fake renderer, and twenty-six automated smokes that drive a *real* GTK4 window
+fake renderer, and twenty-seven automated smokes that drive a *real* GTK4 window
 and assert on its actual live state. Both matter; several of this
 project's real bugs (keyed reorder, `replace-child!`'s position, cross-
 thread render) were each "obviously correct" against the fake renderer's
@@ -54,7 +54,7 @@ below), or `bb test`.
 
 ## Live-GTK smokes
 
-Twenty-six examples under `examples/glitter/` each open a real GTK window,
+Twenty-seven examples under `examples/glitter/` each open a real GTK window,
 exercise one specific behavior, read back *actual GTK state* (not
 glitter's own Clojure-side tracking), and call `(System/exit 1)` directly
 on mismatch:
@@ -155,12 +155,12 @@ bb inscription-search-bar-smoke | header-bar-action-bar-smoke | menu-button-popo
 bb ctor-apply-regression-smoke | window-handle-stack-smoke | drop-down-grid-smoke
 bb list-box-reorder-smoke
                         # individual live-GTK smokes
-bb smokes               # all twenty-six smokes in sequence; stops at first failure
+bb smokes               # all twenty-seven smokes in sequence; stops at first failure
 ```
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly (never the
 `jolt <task>` shorthand), so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all twenty-six smokes with a plain
+CI gate on their own. `bb smokes` chains all twenty-seven smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.

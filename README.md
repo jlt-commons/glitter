@@ -76,11 +76,18 @@ check, and `(t/today)` used to answer the UTC date rather than the
 machine's — traced here and fixed upstream in `jolt-lang/time` v0.0.7,
 which `deps.edn` pins.
 
-`jolt test` runs the unit suite. The rest are 26 automated live-GTK
+Four **widget galleries** (`jolt gallery-inputs`, `gallery-layout`,
+`gallery-display`, `gallery-chrome`) are runnable reference pages rather
+than tasks: between them they use all 43 widget tags, each is written to be
+copied from, and [`docs/guide/widgets.md`](docs/guide/widgets.md) — the
+per-tag reference of props, signals and what `[:glitter/value]` resolves to
+— quotes them directly.
+
+`jolt test` runs the unit suite. The rest are 27 automated live-GTK
 smokes, each of which mounts a real window and exits non-zero on failure.
 
 <details>
-<summary><strong>All 26 live-GTK smokes, and what each one pins</strong></summary>
+<summary><strong>All 27 live-GTK smokes, and what each one pins</strong></summary>
 
 | task | pins |
 |---|---|
@@ -110,6 +117,7 @@ smokes, each of which mounts a real window and exits non-zero on failure.
 | `jolt window-handle-stack-smoke` | `:window-handle`'s single-child wrap lands correctly; `:stack`'s mount-time auto-select-first-page dispatch, a real page switch, and a programmatic sync-back all work |
 | `jolt drop-down-grid-smoke` | `:drop-down`'s `GtkStringList`-backed selection round-trips through a real interaction and a programmatic sync-back; `:grid`'s child-props-driven cell placement (including a column-span cell) lands at the right coordinates |
 | `jolt list-box-reorder-smoke` | `list-box-reorder-child!`/`flow-box-reorder-child!`'s `g_object_ref_sink`/`g_object_unref` fix stays fixed: a keyed `:list-box` and a keyed `:flow-box` both survive a genuine reorder without the use-after-dispose crash found while building the CRUD demo |
+| `jolt gallery-smoke` | all four widget galleries mount and round-trip through the real reconciler; pins the `:placeholder` fix on `:entry`/`:search-entry`, `:grid` cell placement from the child's own props, and the two mount-time dispatches GTK emits while populating a `:notebook` and a `:stack` |
 
 </details>
 

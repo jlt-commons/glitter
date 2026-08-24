@@ -65,6 +65,16 @@
 
  :aliases {:list-box-reorder-smoke {:extra-paths ["examples"]
                                     :main-opts ["-m" "glitter.list-box-reorder-smoke"]}
+           :gallery-inputs {:extra-paths ["examples"]
+                            :main-opts ["-m" "glitter.gallery-inputs"]}
+           :gallery-layout {:extra-paths ["examples"]
+                            :main-opts ["-m" "glitter.gallery-layout"]}
+           :gallery-display {:extra-paths ["examples"]
+                             :main-opts ["-m" "glitter.gallery-display"]}
+           :gallery-chrome {:extra-paths ["examples"]
+                            :main-opts ["-m" "glitter.gallery-chrome"]}
+           :gallery-smoke {:extra-paths ["examples"]
+                           :main-opts ["-m" "glitter.gallery-smoke"]}
            :crud {:extra-paths ["examples"] :main-opts ["-m" "glitter.crud"]}
            :flights {:extra-paths ["examples"] :main-opts ["-m" "glitter.flights"]}
            :temperature {:extra-paths ["examples"] :main-opts ["-m" "glitter.temperature"]}
