@@ -457,9 +457,10 @@ v0.0.7 — the SHA `deps.edn` pins.
 glitter briefly carried a GLib `local-today` helper for it. That is gone:
 plain `(t/today)` is correct, and a rendering library has no business
 shipping a date API. **Do not reintroduce the helper** — if dates look wrong,
-check the two version floors in
-[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix) first,
-since the jolt half of the fix is what a stale toolchain will be missing.
+check the two version floors first (`jolt-lang/time` v0.0.7, which
+`deps.edn` pins, and **jolt v0.7.24**), since the jolt half is what a stale
+toolchain will be missing, and the GLib route never dodged it anyway. See
+[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
 
 ## Still a limitation: `:style`, and no animations
 

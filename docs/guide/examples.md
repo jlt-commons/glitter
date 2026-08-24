@@ -77,11 +77,12 @@ hardcoded to UTC, *and* the `now` family ignoring a zone even when handed one
 v0.0.7, which is the SHA `deps.edn` pins. The demo calls plain `(t/today)`.
 
 The pin is load-bearing, and so is the toolchain: a correct local date also
-needs a jolt carrying
-[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712), because
-zone discovery reads `TZ` and an older jolt leaks `TZ=UTC` from its own boot
-probe. Full write-up, including why reaching for GLib instead does not dodge
-that:
+needs **jolt v0.7.24 or newer**, because zone discovery reads `TZ` and an
+older jolt leaks `TZ=UTC` from its own boot probe
+([#712](https://github.com/jolt-lang/jolt/pull/712)). v0.7.24 also carries
+[#716](https://github.com/jolt-lang/jolt/pull/716), which takes `(t/today)`
+from ~1.15ms to ~13.6us. Full write-up, including why reaching for GLib
+instead does not dodge any of it:
 [`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
 
 ## Live-GTK smokes

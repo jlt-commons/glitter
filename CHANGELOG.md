@@ -86,8 +86,11 @@ pass.
   `jolt-lang/time` defects caused it and fixing either alone was not enough;
   both are fixed in
   [jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
-  v0.0.7, which `deps.edn` now pins. A correct local date also needs a jolt
-  carrying [jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712).
+  v0.0.7, which `deps.edn` now pins. A correct local date also needs **jolt
+  v0.7.24 or newer**, which carries both
+  [#712](https://github.com/jolt-lang/jolt/pull/712) (the `TZ` leak that
+  would otherwise put `(t/today)` back on UTC) and
+  [#716](https://github.com/jolt-lang/jolt/pull/716) (~1.15ms → ~13.6us).
 - **Twenty-six automated live-GTK smokes** (`bb smokes`) that mount real
   windows and assert against real GTK state. These exist because GTK4 is a
   live, stateful system with a blocking main loop: the keyed reorder,

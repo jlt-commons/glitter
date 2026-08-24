@@ -496,7 +496,7 @@ whose own comment calls itself "good enough for tick's parse-* with a
 custom formatter"; the library has no `ResolverStyle` or
 `withResolverStyle` anywhere, and `DateTimeFormatterBuilder`'s
 `parseLenient`/`parseCaseInsensitive` are `(fn [b] b)` no-ops. Re-verified
-against jolt `v0.7.23-10-gc50a3717` with `jolt-lang/time` at the SHA
+against jolt v0.7.24 with `jolt-lang/time` at the SHA
 `deps.edn` pins: all four bad inputs above still parse without throwing,
 and the round-trip wrapper still rejects every one of them.
 
@@ -557,11 +557,12 @@ A correct local date needs **both** halves, and the second is not
 jolt-lang/time's:
 
 - `jolt-lang/time` **v0.0.7 or newer** — the fix above.
-- a jolt carrying [jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712).
-  Before it, jolt's own boot-time libc zone probe set `TZ` and never restored
-  it, leaving every process in whichever zone it probed last — `"UTC"`, as it
-  happened. Zone discovery reads `TZ` first, so a leaked `TZ=UTC` makes
-  `systemDefault` answer `Z` and puts `(t/today)` straight back on the UTC date.
+- **jolt v0.7.24 or newer.** Before
+  [#712](https://github.com/jolt-lang/jolt/pull/712), jolt's own boot-time
+  libc zone probe set `TZ` and never restored it, leaving every process in
+  whichever zone it probed last — `"UTC"`, as it happened. Zone discovery
+  reads `TZ` first, so a leaked `TZ=UTC` makes `systemDefault` answer `Z` and
+  puts `(t/today)` straight back on the UTC date.
 
 Reaching for GLib instead does not dodge that second requirement: `TZ` is
 process-global, so `g_date_time_new_now_local` answered UTC too — measured
@@ -571,7 +572,14 @@ for exactly one day, between finding the bug and the upstream fix landing; it
 came out once `(t/today)` was correct, because a rendering library has no
 business shipping a date API.
 
-One measurement worth knowing if dates ever feel slow: on a jolt without
-[#716](https://github.com/jolt-lang/jolt/pull/716), `(t/today)` costs ~1.25ms,
-because #712's restore means every zone lookup pays two real `tzset` reloads.
-#716 memoizes that probe and brings it back to microseconds.
+One measurement worth knowing, and the reason v0.7.24 is the floor rather
+than the release that merely carried #712: fixing the `TZ` leak made every
+zone lookup pay two real `tzset` reloads, since the leak had been leaving
+libc pre-loaded with the last zone probed. That put `(t/today)` at ~1.15ms.
+[#716](https://github.com/jolt-lang/jolt/pull/716) memoizes the probe, and
+v0.7.24 carries both:
+
+```
+(t/today), jolt v0.7.23-12 (#712, no memo)  ~1.15 ms
+(t/today), jolt v0.7.24    (#712 + #716)    ~13.6 us
+```

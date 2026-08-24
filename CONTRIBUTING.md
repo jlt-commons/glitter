@@ -12,17 +12,18 @@ The deep documentation lives in [`docs/guide/`](docs/guide/index.md).
 You need Jolt and a native GTK4:
 
 ```sh
-jolt --version           # developed against v0.6.3; re-verified on v0.7.23-10-gc50a3717
+jolt --version           # developed against v0.6.3; re-verified on v0.7.24
 brew install gtk4        # macOS; on Linux use your distro's gtk4 + glib dev packages
 ```
 
 Everything except one demo works on any Jolt in that range. `jolt flights`
-wants **`v0.7.23-10-gc50a3717` or newer** to show the correct date: Jolt's
-boot-time libc zone probe used to leave `TZ=UTC` set process-globally, and
-zone discovery reads `TZ`, so an older Jolt puts `(t/today)` back on the UTC
-date. Fixed upstream in
+wants **v0.7.24 or newer** to show the correct date: Jolt's boot-time libc
+zone probe used to leave `TZ=UTC` set process-globally, and zone discovery
+reads `TZ`, so an older Jolt puts `(t/today)` back on the UTC date. Fixed in
 [jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712); the other
-half of the fix is `jolt-lang/time` v0.0.7, which `deps.edn` pins. See
+half is `jolt-lang/time` v0.0.7, which `deps.edn` pins. v0.7.24 also carries
+[#716](https://github.com/jolt-lang/jolt/pull/716), which takes `(t/today)`
+from ~1.15ms to ~13.6us. See
 [`docs/guide/nexus.md`](docs/guide/nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix)
 for the measurements. On an older Jolt the demo still runs, it just defaults
 its departure field to the UTC date.
