@@ -80,7 +80,30 @@ pass.
   Temperature Converter and Timer. Between them they cover derived state,
   list-box selection, cross-field constraints, parse-on-input, and a demo whose
   state advances on its own via a background tick.
-- **Twenty-six automated live-GTK smokes** (`bb smokes`) that mount real
+- **Flight Booker's date defaulting was wrong, and the fix went upstream.**
+  `(t/today)` answered the UTC date on every machine, so the demo opened on
+  *yesterday* for the first 10 hours of every AEST day. Two independent
+  `jolt-lang/time` defects caused it and fixing either alone was not enough;
+  both are fixed in
+  [jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
+  v0.0.7, which `deps.edn` now pins. A correct local date also needs **jolt
+  v0.7.24 or newer**, which carries both
+  [#712](https://github.com/jolt-lang/jolt/pull/712) (the `TZ` leak that
+  would otherwise put `(t/today)` back on UTC) and
+  [#716](https://github.com/jolt-lang/jolt/pull/716) (~1.15ms → ~13.6us).
+- **Four widget galleries** (`bb gallery-inputs` / `gallery-layout` /
+  `gallery-display` / `gallery-chrome`): runnable reference pages that
+  between them use all 43 widget tags. Each is a real `state -> hiccup` view
+  over one atom, written to be copied from, and
+  `docs/guide/widgets.md` — a new per-tag reference of props, signals and
+  what `[:glitter/value]` resolves to — quotes them directly.
+- **`:placeholder` now works on `:search-entry`, and is refused on
+  `:password-entry`.** All three `GtkEditable` widgets routed it through
+  `gtk_entry_set_placeholder_text`, which asserts `GTK_IS_ENTRY`, so on two
+  of them it emitted a `Gtk-CRITICAL` and did nothing. `:search-entry` has
+  its own setter; `GtkPasswordEntry` has no setter in the C API at all, so
+  glitter no longer accepts a prop it cannot honour.
+- **Twenty-seven automated live-GTK smokes** (`bb smokes`) that mount real
   windows and assert against real GTK state. These exist because GTK4 is a
   live, stateful system with a blocking main loop: the keyed reorder,
   `replace-child!`'s position and the cross-thread render were each "obviously
@@ -97,7 +120,7 @@ pass.
 ### Tooling
 
 - `bb info` prints a grouped cheat-sheet of every task. `bb test` runs the unit
-  suite headlessly; `bb smokes` runs all twenty-six live-GTK smokes in sequence;
+  suite headlessly; `bb smokes` runs all twenty-seven live-GTK smokes in sequence;
   `bb verify` is the pre-commit gate. `bb hooks:install` writes a fast (~2s)
   local pre-commit hook.
 - **`.clj-kondo/hooks/jolt_ffi.clj` rewrites `jolt.ffi/defcfn` into an

@@ -27,10 +27,13 @@
   - Dates use the OFFICIAL spec's DD.MM.YYYY format, not the reference
     port's ISO-ish YYYY-MM-DD (a deviation in that file from its own
     spec's screenshot, not something to replicate).
-  - Date parsing/formatting/comparison/'today' go through jolt.time/tick
-    (see deps.edn), not GTK/GLib FFI and not hand-rolled regex — cleaner
-    domain/presentation separation than reaching for a new GDateTime FFI
-    binding just to answer 'what is today's date.'
+  - Date parsing/formatting/comparison/'today' all go through
+    jolt.time/tick (see deps.edn), not GTK/GLib FFI and not hand-rolled
+    regex — cleaner domain/presentation separation. Note the pinned
+    jolt-lang/time SHA is load-bearing for (t/today): before v0.0.7 it
+    answered the UTC date, and this demo defaulted its departure field
+    to YESTERDAY for the first 10 hours of every AEST day. See
+    docs/guide/nexus.md.
   - `parse-date` below is NOT a bare `t/parse-date` call — verified live
     that `t/parse-date` is LENIENT under this Jolt port (doesn't throw
     on malformed input: '27.03.2014x' silently parsed to 2014-03-27

@@ -12,7 +12,7 @@ state atom + action dispatch, the whole model in 20 lines
 
 ### todo
 
-derived counts, an entry, checkbutton toggles
+checkbutton toggles driving derived counts
 
 ![todo](todo.gif)
 
@@ -41,4 +41,30 @@ two linked fields, each updating the other
 elapsed time that advances on its own, plus Reset
 
 ![timer](timer.gif)
+
+## widget gallery
+
+### gallery-inputs
+
+every value-bearing widget, all writing into one state atom
+
+![gallery-inputs](gallery-inputs.gif)
+
+### gallery-layout
+
+the containers, and how each decides where a child goes
+
+![gallery-layout](gallery-layout.gif)
+
+### gallery-display
+
+the read-only widgets, all driven by one value
+
+![gallery-display](gallery-display.gif)
+
+### gallery-chrome
+
+header/action bars, menu+popover, notebook, stack, search bar
+
+![gallery-chrome](gallery-chrome.gif)
 

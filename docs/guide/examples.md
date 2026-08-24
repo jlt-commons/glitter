@@ -6,7 +6,11 @@ kinds:
 - **Six interactive demos** you open and click. Four of them are
   [7GUIs](https://eugenkiss.github.io/7guis/) tasks, so they can be
   compared against implementations in other toolkits.
-- **Twenty-six live-GTK smokes** that mount a real window, assert against
+- **Four widget galleries** — reference pages you can run. Between them
+  they use all 43 registered tags, and each is written to be copied from;
+  [`widgets.md`](widgets.md) quotes them. Run `bb gallery-inputs`,
+  `bb gallery-layout`, `bb gallery-display`, `bb gallery-chrome`.
+- **Twenty-seven live-GTK smokes** that mount a real window, assert against
   real GTK state, and exit non-zero on failure. These are the project's
   actual regression suite for the GTK layer; the headless unit suite
   can't reach it.
@@ -29,6 +33,22 @@ Every preview is a real recording of the demo running, not a mockup. They
 are committed under `docs/demos/`, and each thumbnail links to the
 full-size recording.
 
+## Widget galleries
+
+Runnable reference pages rather than tasks. Between them they use all 43
+registered tags, and each is written to be copied from —
+[`widgets.md`](widgets.md) quotes them per tag.
+
+| preview | gallery |
+|---|---|
+| [<img src="../demos/gallery-inputs.gif" width="170">](../demos/gallery-inputs.gif) | **`bb gallery-inputs`** — every value-bearing widget, all writing into one state atom, with a readout rendering that atom, so the signal → action → effect → `swap!` → re-render round trip is the visible subject. |
+| [<img src="../demos/gallery-layout.gif" width="170">](../demos/gallery-layout.gif) | **`bb gallery-layout`** — the containers, grouped by how each decides where a child goes: ordered lists, fixed named slots, child-driven placement, single-child wrappers. |
+| [<img src="../demos/gallery-display.gif" width="170">](../demos/gallery-display.gif) | **`bb gallery-display`** — the read-only widgets, with no signal of their own. One `:scale` drives all nine, so a single value flows into nine presentations of itself. |
+| [<img src="../demos/gallery-chrome.gif" width="170">](../demos/gallery-chrome.gif) | **`bb gallery-chrome`** — app chrome and navigation as controlled components: header/action bars, `:menu-button` + `:popover`, `:notebook`, `:stack`, `:search-bar`. |
+
+`gallery_smoke.clj` mounts all four against live GTK on every `bb smokes`
+run, so nothing quoted in the reference can quietly stop compiling.
+
 ## Why the demos are worth reading, not just running
 
 Each one is a deliberate contrast with how the same UI would be written
@@ -46,7 +66,9 @@ under this model. `flights.clj` and `crud.clj` are the interesting pair:
 same engine, and one needs no action expansions while the other's
 interactions can't be expressed without them.
 
-## One finding worth knowing: lenient date parsing
+## Two findings worth knowing, both from `flights.clj`
+
+### Lenient date parsing
 
 `flights.clj` needed its own `parse-date`. `t/parse-date` from
 `jolt-lang/time` is **lenient**, not strict: verified live that
@@ -56,9 +78,36 @@ the same formatter, reject unless the result matches the trimmed input),
 which is the only way the spec's "T is coloured red when ill-formatted"
 requirement actually works.
 
+This one is structural, not a version to wait out: `jolt/time/fmt.clj`'s
+`parse-with-pattern` is a hand-rolled field scanner, and the library has
+no `ResolverStyle`/`withResolverStyle` at all — `DateTimeFormatterBuilder`'s
+`parseLenient` and `parseCaseInsensitive` are `(fn [b] b)` no-ops.
+
+### `(t/today)` answered the UTC date — found here, fixed upstream
+
+`flights.clj` defaults its departure field to today, and opened on
+*yesterday* for the first 10 hours of every AEST day. `(t/today)` answered
+the UTC date on every machine and ignored `TZ` even when it was set
+explicitly.
+
+Two independent `jolt-lang/time` defects caused it — `ZoneId/systemDefault`
+hardcoded to UTC, *and* the `now` family ignoring a zone even when handed one
+— and fixing either alone was not enough. Both are fixed in
+[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
+v0.0.7, which is the SHA `deps.edn` pins. The demo calls plain `(t/today)`.
+
+The pin is load-bearing, and so is the toolchain: a correct local date also
+needs **jolt v0.7.24 or newer**, because zone discovery reads `TZ` and an
+older jolt leaks `TZ=UTC` from its own boot probe
+([#712](https://github.com/jolt-lang/jolt/pull/712)). v0.7.24 also carries
+[#716](https://github.com/jolt-lang/jolt/pull/716), which takes `(t/today)`
+from ~1.15ms to ~13.6us. Full write-up, including why reaching for GLib
+instead does not dodge any of it:
+[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
+
 ## Live-GTK smokes
 
-`bb smokes` runs all twenty-six in sequence and stops at the first
+`bb smokes` runs all twenty-seven in sequence and stops at the first
 failure. Each is also a standalone `bb <name>`.
 
 These exist because GTK4 is a live, stateful system with a blocking main
@@ -76,6 +125,7 @@ behaviour that was once broken.
 | `aliased` | Aliases expand through the real renderer, on mount and update |
 | `main-thread-smoke` | An off-main-thread `swap!` renders **on** the GTK main thread |
 | `list-box-reorder-smoke` | The `g_object_ref_sink` fix for the keyed-reorder use-after-dispose bug |
+| `gallery-smoke` | All four widget galleries mount and round-trip; the `:placeholder` fix; `:grid` placement; the notebook/stack mount-time dispatch |
 | `ctor-apply-regression-smoke` | Four real ctor/apply bugs found in the round-11 audit stay fixed |
 
 ## Smokes: signals and value delivery

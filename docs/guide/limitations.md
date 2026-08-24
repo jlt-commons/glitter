@@ -442,6 +442,73 @@ window. A deliberate v1 scope decision from the design spec, not an
 oversight; upstream's own viewer (`nexus.inspector`) is entangled with
 `dataspex.*` rendering protocols that have no glitter/GTK equivalent.
 
+## No longer a limitation: `(t/today)` answering the UTC date
+
+Listed here because it was a limitation for exactly one day and the fix is
+a version floor, not code.
+
+`jolt-lang/time` used to hardcode `ZoneId/systemDefault` to UTC *and* ignore
+a zone in `LocalDate`/`LocalTime`/`LocalDateTime`/`OffsetDateTime` `now`, so
+`(t/today)` answered the UTC date on every machine. Traced from
+`flights.clj` defaulting its departure field to yesterday, fixed upstream in
+[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
+v0.0.7 — the SHA `deps.edn` pins.
+
+glitter briefly carried a GLib `local-today` helper for it. That is gone:
+plain `(t/today)` is correct, and a rendering library has no business
+shipping a date API. **Do not reintroduce the helper** — if dates look wrong,
+check the two version floors first (`jolt-lang/time` v0.0.7, which
+`deps.edn` pins, and **jolt v0.7.24**), since the jolt half is what a stale
+toolchain will be missing, and the GLib route never dodged it anyway. See
+[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
+
+## A state change during `mount!`'s first render does not repaint
+
+`mount!` renders once and *then* installs its `add-watch`
+(`glitter/gtk.clj`: `render!`, then `add-watch`). Anything that changes
+state during that first render therefore updates the atom with no watcher
+listening, and nothing repaints until the next unrelated change.
+
+This is not hypothetical: GTK auto-selects the first page of a `:notebook`
+or `:stack` as it is populated, which dispatches through glitter during that
+very first render. Verified live — the atom holds 2 the instant `mount!`
+returns, while the label rendered moments earlier still shows 0.
+
+**What to do about it:** nothing, in most apps. The state is correct; only
+the first paint is stale, and the first interaction fixes it. If a view
+genuinely must show a mount-time-derived value immediately, swap the atom
+once after `mount!` returns to force a second render.
+`examples/glitter/gallery_chrome.clj` deliberately does *not* do that, so
+the behaviour is visible on screen.
+
+## `:password-entry` cannot have placeholder text
+
+`:entry` and `:search-entry` both accept `:placeholder`. `:password-entry`
+does not, and glitter refuses the prop rather than accepting one it cannot
+honour.
+
+**Why:** GTK exposes no C setter for it on that widget. `GtkPasswordEntry`
+has a `placeholder-text` GObject *property*, but no
+`gtk_password_entry_set_placeholder_text` function — verified on GTK 4.22.4
+by calling it, which fails with `no entry for
+"gtk_password_entry_set_placeholder_text"`. Reaching a property with no
+setter needs `g_object_set_property` plus `GValue` marshalling, a complexity
+class this project has not needed anywhere else yet.
+
+This was worse before: all three `GtkEditable` widgets routed `:placeholder`
+through `gtk_entry_set_placeholder_text`, which asserts `GTK_IS_ENTRY`. On
+`:password-entry` and `:search-entry` that produced one `Gtk-CRITICAL` each
+and did nothing — no exception, and nothing visibly wrong in a screenshot.
+Found while writing `gallery_inputs.clj`. `:search-entry` now uses its own
+setter and works; `gallery_smoke.clj` reads both back as its regression gate.
+
+**A caution about verifying this kind of thing:** both cheap checks lie
+here. `jolt.ffi/dlsym-native` reports `gtk_editable_set_placeholder_text` as
+present, and the call then fails with `no entry`. Building a
+foreign-procedure via `__cfn` reports every one of these symbols callable
+even with no GTK loaded at all. Only calling the function inside a running
+app tells the truth.
+
 ## Still a limitation: `:style`, and no animations
 
 `:style` is still diffed (`IRender/set-style`/`remove-style` are called)

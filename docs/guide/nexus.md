@@ -489,3 +489,97 @@ parsing (a `tick`/`jolt-lang/time` library behavior), not to any GTK
 widget, so it's documented here rather than in
 [`gtk-widget-layer.md`](gtk-widget-layer.md); this is its one and only
 write-up in this project's docs.
+
+It is also structural rather than a version to wait out.
+`jolt/time/fmt.clj`'s `parse-with-pattern` is a hand-rolled field scanner
+whose own comment calls itself "good enough for tick's parse-* with a
+custom formatter"; the library has no `ResolverStyle` or
+`withResolverStyle` anywhere, and `DateTimeFormatterBuilder`'s
+`parseLenient`/`parseCaseInsensitive` are `(fn [b] b)` no-ops. Re-verified
+against jolt v0.7.24 with `jolt-lang/time` at the SHA
+`deps.edn` pins: all four bad inputs above still parse without throwing,
+and the round-trip wrapper still rejects every one of them.
+
+## The `(t/today)` is-UTC finding, and its upstream fix
+
+A second, unrelated date finding from the same file. Unlike the parse
+leniency above, this one is fixed: it was traced here, fixed upstream in
+[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), and released
+as v0.0.7 — the SHA `deps.edn` pins. `flights.clj` calls plain `(t/today)`
+again. It stays written up because the pin is load-bearing, and because how
+it was found is the useful part.
+
+`(t/today)` used to answer the **UTC** date on every machine, ignoring `TZ`
+even when set explicitly. Measured at 07:29 AEST on 2026-08-24, before the fix:
+
+```
+(t/today)                                  => 2026-08-23
+TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
+(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24   ; correct
+```
+
+Flight Booker defaults its departure field to today, so it opened on
+*yesterday* for the first 10 hours of every AEST day — a bug you only notice
+if you happen to look before 10am, in a demo whose whole subject is date
+constraints.
+
+**Two independent defects produced it, and fixing either alone was not
+enough.** That mattered: the first is the one you find immediately, and a
+patch fixing only it left the library *less* self-consistent than the
+uniformly-UTC status quo, failing two of tick's own vendored tests on any
+non-UTC machine.
+
+*No zone discovery.* `ZoneId/systemDefault` and `Clock/systemDefaultZone`
+were two separate hardcoded `(zone-id "Z" 0)` literals, so nothing ever asked
+the machine which zone it was in. They now read what libc reads, in libc's
+order: `TZ`, then `/etc/localtime`, then `/etc/timezone`, still answering
+`"Z"` when none of them says.
+
+*`now` ignored a zone it was given.* The value types live in jolt core, which
+has no zone layer, so core's `now` read epoch millis and split them into
+fields with no offset applied — an explicit zone argument changed nothing:
+
+```
+(LocalDate/now (ZoneId/of "Australia/Sydney"))      => 2026-08-23
+(LocalDateTime/now (ZoneId/of "Australia/Sydney"))  => 2026-08-23T21:47
+(OffsetDateTime/now (ZoneId/of "Australia/Sydney")) => 2026-08-23T21:48Z
+(ZonedDateTime/now (Clock/system (ZoneId/of "…")))  => 2026-08-24T07:48+10:00
+```
+
+`ZonedDateTime/now` was the only member of the family that honoured a zone,
+which is why `(t/in (t/now) …)` was correct while `(t/today)` was not. The
+`Local*` and `OffsetDateTime` ones are now re-registered over core's, the way
+`fmt.clj` already re-registers the formatter-aware `LocalDate/parse`.
+
+### The version floor this leaves behind
+
+A correct local date needs **both** halves, and the second is not
+jolt-lang/time's:
+
+- `jolt-lang/time` **v0.0.7 or newer** — the fix above.
+- **jolt v0.7.24 or newer.** Before
+  [#712](https://github.com/jolt-lang/jolt/pull/712), jolt's own boot-time
+  libc zone probe set `TZ` and never restored it, leaving every process in
+  whichever zone it probed last — `"UTC"`, as it happened. Zone discovery
+  reads `TZ` first, so a leaked `TZ=UTC` makes `systemDefault` answer `Z` and
+  puts `(t/today)` straight back on the UTC date.
+
+Reaching for GLib instead does not dodge that second requirement: `TZ` is
+process-global, so `g_date_time_new_now_local` answered UTC too — measured
+`[2026 8 23 21]` against a real local `[2026 8 24 7]`, and correct again the
+instant `TZ` was unset in-process. glitter carried a GLib `local-today` helper
+for exactly one day, between finding the bug and the upstream fix landing; it
+came out once `(t/today)` was correct, because a rendering library has no
+business shipping a date API.
+
+One measurement worth knowing, and the reason v0.7.24 is the floor rather
+than the release that merely carried #712: fixing the `TZ` leak made every
+zone lookup pay two real `tzset` reloads, since the leak had been leaving
+libc pre-loaded with the last zone probed. That put `(t/today)` at ~1.15ms.
+[#716](https://github.com/jolt-lang/jolt/pull/716) memoizes the probe, and
+v0.7.24 carries both:
+
+```
+(t/today), jolt v0.7.23-12 (#712, no memo)  ~1.15 ms
+(t/today), jolt v0.7.24    (#712 + #716)    ~13.6 us
+```

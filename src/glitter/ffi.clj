@@ -137,6 +137,9 @@
 (ffi/defcfn gtk-editable-get-text       "gtk_editable_get_text"       [:pointer] :string)
 (ffi/defcfn gtk-editable-set-text       "gtk_editable_set_text"       [:pointer :string] :void)
 (ffi/defcfn gtk-editable-set-placeholder-text "gtk_entry_set_placeholder_text" [:pointer :string] :void)
+;; Getters, for gallery_smoke.clj's assertion that :placeholder reaches all
+;; three GtkEditable widgets rather than warning and doing nothing on two.
+(ffi/defcfn gtk-entry-get-placeholder-text "gtk_entry_get_placeholder_text" [:pointer] :string)
 
 (ffi/defcfn gtk-checkbutton-new               "gtk_check_button_new"               [] :pointer)
 (ffi/defcfn gtk-checkbutton-new-with-label    "gtk_check_button_new_with_label"    [:string] :pointer)
@@ -392,6 +395,25 @@
 ;; set-entry-text!/:entry "changed" signal entry work directly on a
 ;; GtkPasswordEntry pointer with no new plumbing.
 (ffi/defcfn gtk-password-entry-new                "gtk_password_entry_new"                [] :pointer)
+;; Placeholder text is NOT a GtkEditable operation, despite three widgets here
+;; implementing GtkEditable. There is no gtk_editable_set_placeholder_text in
+;; the ABI, and gtk_entry_set_placeholder_text asserts GTK_IS_ENTRY — so
+;; pointing :password-entry and :search-entry at it, as this file used to,
+;; made :placeholder a silent no-op on both: one Gtk-CRITICAL each, no
+;; exception, nothing wrong-looking in a screenshot.
+;;
+;; :search-entry has its own setter (below). GtkPasswordEntry does NOT: on
+;; GTK 4.22.4 its placeholder-text is a GObject property with no C setter
+;; function, so reaching it would need g_object_set_property + GValue
+;; marshalling, a complexity class this project has not needed yet.
+;; :password-entry therefore does not support :placeholder at all — see
+;; docs/guide/limitations.md.
+;;
+;; Each of those three facts was established by CALLING the function inside a
+;; running app. Both cheaper checks lie here: jolt.ffi/dlsym-native reports
+;; gtk_editable_set_placeholder_text as present and the call then fails with
+;; `no entry`, and building a foreign-procedure via __cfn reports every one of
+;; these symbols callable even with no GTK loaded at all.
 (ffi/defcfn gtk-password-entry-set-show-peek-icon "gtk_password_entry_set_show_peek_icon" [:pointer :int] :void)
 (ffi/defcfn gtk-password-entry-get-show-peek-icon "gtk_password_entry_get_show_peek_icon" [:pointer] :int)
 
@@ -404,6 +426,8 @@
 ;; :search-delay ms of no typing), unlike "changed" which fires on every
 ;; keystroke.
 (ffi/defcfn gtk-search-entry-new              "gtk_search_entry_new"              [] :pointer)
+(ffi/defcfn gtk-search-entry-set-placeholder-text "gtk_search_entry_set_placeholder_text" [:pointer :string] :void)
+(ffi/defcfn gtk-search-entry-get-placeholder-text "gtk_search_entry_get_placeholder_text" [:pointer] :string)
 (ffi/defcfn gtk-search-entry-set-search-delay "gtk_search_entry_set_search_delay" [:pointer :uint] :void)
 (ffi/defcfn gtk-search-entry-get-search-delay "gtk_search_entry_get_search_delay" [:pointer] :uint)
 

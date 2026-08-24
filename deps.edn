@@ -10,6 +10,11 @@
  ;; just JVM Clojure) as of when they were pinned — re-verify live
  ;; before bumping either.
  ;;
+ ;; The time SHA is v0.0.7, and it is a FLOOR, not just a snapshot: it is
+ ;; the release that made (t/today) answer the machine's zone instead of
+ ;; UTC. Pinning anything older silently puts flights.clj's departure
+ ;; field back on the UTC date. See docs/guide/nexus.md.
+ ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
  ;; org.clojure/tools.logging deliberately SHADOWS the real upstream
@@ -21,7 +26,7 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "9c0d6b6c98acb78e26751d55cfc61fca2ad63191"}
+         :git/sha "b11798fb597a0b685c960056e03f1bd2fee229c2"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}}
@@ -60,6 +65,16 @@
 
  :aliases {:list-box-reorder-smoke {:extra-paths ["examples"]
                                     :main-opts ["-m" "glitter.list-box-reorder-smoke"]}
+           :gallery-inputs {:extra-paths ["examples"]
+                            :main-opts ["-m" "glitter.gallery-inputs"]}
+           :gallery-layout {:extra-paths ["examples"]
+                            :main-opts ["-m" "glitter.gallery-layout"]}
+           :gallery-display {:extra-paths ["examples"]
+                             :main-opts ["-m" "glitter.gallery-display"]}
+           :gallery-chrome {:extra-paths ["examples"]
+                            :main-opts ["-m" "glitter.gallery-chrome"]}
+           :gallery-smoke {:extra-paths ["examples"]
+                           :main-opts ["-m" "glitter.gallery-smoke"]}
            :crud {:extra-paths ["examples"] :main-opts ["-m" "glitter.crud"]}
            :flights {:extra-paths ["examples"] :main-opts ["-m" "glitter.flights"]}
            :temperature {:extra-paths ["examples"] :main-opts ["-m" "glitter.temperature"]}
