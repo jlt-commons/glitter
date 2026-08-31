@@ -10,6 +10,8 @@ application-state atom, a pure `state -> hiccup` view function, top-down
 re-render on every state change, and data-driven action-dispatch event
 handlers instead of closures. No component-local state anywhere.
 
+**Documentation:** <https://jlt-commons.github.io/glitter/>
+
 ## Quick start
 
 ```clojure
@@ -159,12 +161,12 @@ bb lsp:diagnostics / lsp:check / lsp:fix  # diagnostics | all dry-run checks | a
 bb check:positional-args / :strict        # find fns with 3+ positional args
 bb verify                                 # pre-commit gate: lint (report) + test (must pass)
 bb hooks:install / :install:full / :uninstall  # git pre-commit hook: fast | +tests | remove
-bb docs-sync [--no-push]                  # maintainer: rebuild the docs site, mirror the guide
+bb site:build / site:serve [port] / site:clean # local preview of the docs site
 ```
 
 `clj-kondo`/`clojure-lsp` both need `.clj-kondo/hooks/jolt_ffi.clj` (an
 `analyze-call` hook rewriting `jolt.ffi/defcfn` into an equivalent `defn`,
-adapted from [b12n-raylib-jlt](https://github.com/burinc/b12n-raylib-jlt)) to see
+adapted from [b12n-raylib-jlt](https://github.com/jlt-commons/raylib-jlt)) to see
 through the FFI-binding macro: without it every `gtk-*`/`g-*` name in
 `glitter.ffi` and every call site through the `g/` alias reports as
 unresolved. `.clj-kondo/config.edn`'s `:output {:exclude-files [...]}`

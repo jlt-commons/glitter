@@ -177,5 +177,5 @@ A smoke must exit non-zero on failure. Do **not** gate it on `jolt <task>`:
 a `deps.edn` `:tasks` entry doesn't propagate its child's exit status, so
 `jolt smoke` prints failures and still exits 0. Use `jolt -M:<alias>` or a
 `bb.edn` task. See [`testing-and-tasks.md`](testing-and-tasks.md) for the
-full rationale and [`CONTRIBUTING.md`](https://github.com/burinc/glitter/blob/main/CONTRIBUTING.md)
+full rationale and [`CONTRIBUTING.md`](https://github.com/jlt-commons/glitter/blob/main/CONTRIBUTING.md)
 for the invariant list.

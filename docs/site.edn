@@ -1,0 +1,21 @@
+;; Configuration for the documentation site, read by the jlt-commons
+;; docs-engine (https://github.com/jlt-commons/docs-engine).
+;;
+;; Build it locally with `bb site:serve`. CI builds and publishes it from
+;; .github/workflows/site.yml.
+{;; :base-path is what makes this a project site rather than an org one.
+ ;; The site is served at https://jlt-commons.github.io/glitter/, so every
+ ;; URL the engine emits needs that prefix. Leave it out and the pages
+ ;; still render, but each one loads the ORGANIZATION site's stylesheet
+ ;; and every image 404s.
+ :base-path   "/glitter"
+
+ :title       "glitter"
+ :description "A Replicant-style GTK4 renderer for Jolt: one application-state atom, a pure state -> hiccup view function, and event handlers as data. Native Clojure on Chez Scheme, no JVM."
+
+ ;; docs/demos holds the recorded GIFs the guide pages embed, referenced as
+ ;; ../demos/*.gif. Without this the pages render with every image broken.
+ :asset-dirs  ["demos"]}
+
+;; No :home-template. The engine renders docs/guide/index.md as the homepage,
+;; which is what this project's site has always done.

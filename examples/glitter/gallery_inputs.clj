@@ -128,7 +128,7 @@
    [:hbox {:spacing 12}
     [:label {:label "buttons" :width-chars 11 :xalign 0.0}]
     [:button {:label "click me" :on {:click [[:action/click]]}}]
-    [:link-button {:label "glitter" :uri "https://github.com/burinc/glitter"}]]
+    [:link-button {:label "glitter" :uri "https://github.com/jlt-commons/glitter"}]]
 
    ;; --- a real value type: GDateTime round-tripped as [y m d] ---------------
    [:expander {:label "calendar" :expanded false}

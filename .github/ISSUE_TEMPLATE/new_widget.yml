@@ -6,9 +6,9 @@ body:
     attributes:
       value: |
         glitter maps a subset of GTK4 — see the status list in
-        [`README.md`](https://github.com/burinc/glitter/blob/main/README.md) for
+        [`README.md`](https://github.com/jlt-commons/glitter/blob/main/README.md) for
         what's currently supported, and
-        [`docs/guide/gtk-widget-layer.md`](https://github.com/burinc/glitter/blob/main/docs/guide/gtk-widget-layer.md)
+        [`docs/guide/gtk-widget-layer.md`](https://github.com/jlt-commons/glitter/blob/main/docs/guide/gtk-widget-layer.md)
         for how each one was added.
 
         Widgets are extensible from outside the library via
