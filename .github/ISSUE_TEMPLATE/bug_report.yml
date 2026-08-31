@@ -8,7 +8,7 @@ body:
         Most reports here come down to three things: your jolt version, your GTK4
         version, and whether the behaviour is a known v1 limitation.
 
-        **Please check [`docs/guide/limitations.md`](https://github.com/burinc/glitter/blob/main/docs/guide/limitations.md)
+        **Please check [`docs/guide/limitations.md`](https://github.com/jlt-commons/glitter/blob/main/docs/guide/limitations.md)
         first.** Several behaviours that look like bugs are documented, deliberate
         v1 scope calls with the reasoning recorded — for example, removing an
         attribute entirely is a no-op (GTK has no generic "unset this property"),

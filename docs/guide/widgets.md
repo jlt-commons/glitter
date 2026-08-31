@@ -172,7 +172,7 @@ it:
 
 [:button {:label "click me" :tooltip "does a thing"
           :on {:click [[:action/click]]}}]
-[:link-button {:label "glitter" :uri "https://github.com/burinc/glitter"}]
+[:link-button {:label "glitter" :uri "https://github.com/jlt-commons/glitter"}]
 ```
 
 ## Containers

@@ -3,7 +3,7 @@ name: CI
 # ---------------------------------------------------------------------------
 # Runs on pull requests and pushes to main, plus manual dispatch.
 #
-# Scope note: this gate is HEADLESS ONLY. glitter's twenty-six live-GTK smokes
+# Scope note: this gate is HEADLESS ONLY. glitter's twenty-seven live-GTK smokes
 # (`bb smokes`) open real GTK4 windows and need a display, so they are a local
 # / maintainer gate rather than a CI one — see CONTRIBUTING.md. What CI proves
 # is that the unit suite passes and the tree is lint-, format- and ns-clean on

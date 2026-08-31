@@ -21,7 +21,7 @@ d.rectangle([(0,GRID_H),(W,H)], fill=RAISED+(255,))
 d.line([(0,GRID_H),(W,GRID_H)], fill=BORDER+(255,), width=2)
 d.text((40, GRID_H+22), "(glitter)", font=f(30,True), fill=ACCENT)
 d.text((215, GRID_H+28), "a Replicant-style GTK4 renderer for Jolt", font=f(21), fill=TEXT)
-msg="github.com/burinc/glitter"
+msg="github.com/jlt-commons/glitter"
 w=d.textbbox((0,0),msg,font=f(21))[2]
 d.text((W-40-w, GRID_H+28), msg, font=f(21), fill=DIM)
 import sys

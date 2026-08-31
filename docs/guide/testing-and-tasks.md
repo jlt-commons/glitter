@@ -179,7 +179,7 @@ bb hooks:install / :install:full / :uninstall   git pre-commit hook (fast | +tes
 
 Adapted from sibling Jolt/FFI projects by the same author (`b12n-adk-clj`,
 a private repo, for the positional-args script;
-[`b12n-raylib-jlt`](https://github.com/burinc/b12n-raylib-jlt) for the
+[`b12n-raylib-jlt`](https://github.com/jlt-commons/raylib-jlt) for the
 clj-kondo hook; see `NOTICE`), not written from scratch, because both
 needed the same fix for the same underlying problem: **`jolt.ffi/defcfn`
 is a macro clj-kondo cannot see through.**
@@ -189,11 +189,13 @@ is a macro clj-kondo cannot see through.**
 ```
 
 Without a hook, clj-kondo has no idea `gtk-box-new` is a defined var: every
-one of `glitter.ffi`'s ~90 bindings reports as `Unresolved symbol`, and
+one of `glitter.ffi`'s 294 bindings reports as `Unresolved symbol`, and
 every call site through the `g/` alias (`glitter.widget`, `glitter.gtk`,
 `glitter.app`, `glitter.genum`) reports as `Unresolved var`. Scoped to just
-the forked+new source files plus `test`/`examples`, that's 75 errors + 83
-warnings; enough noise to make the linter worthless as a signal.
+the forked+new source files plus `test`/`examples`, that's 295 errors and 406
+warnings on top of the 2 the tree carries anyway; enough noise to make the
+linter worthless as a signal. Measured 2026-08-31 by blanking the hook entry
+in `.clj-kondo/config.edn`, clearing `.clj-kondo/.cache`, and re-running.
 `.clj-kondo/hooks/jolt_ffi.clj` fixes this by rewriting each `defcfn` call
 into an equivalent `defn` of the same name, same arity (derived from the
 declared C argument-type vector), and an inferred return type (derived from

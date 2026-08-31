@@ -3,8 +3,9 @@
 ;; jolt.ffi/defcfn defines a var per bound C symbol. clj-kondo cannot see
 ;; through the macro, so hooks/jolt_ffi.clj rewrites each call into an
 ;; equivalent `defn` — see that file for why. Without it the suite reports
-;; ~190 false positives (every gtk-*/g-* binding in glitter.ffi, plus every
-;; call site through the g/ alias) and the linter is unusable as a gate.
+;; 295 errors and 406 extra warnings (every gtk-*/g-* binding in glitter.ffi,
+;; plus every call site through the g/ alias) and the linter is unusable as a
+;; gate. Measured 2026-08-31 over `src test examples`.
 {:hooks {:analyze-call {jolt.ffi/defcfn hooks.jolt-ffi/defcfn}}
 
  ;; glitter.alias/defalias registers `name` to a keyword AND defs it, with

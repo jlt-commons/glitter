@@ -5,7 +5,16 @@ Thanks for taking an interest. glitter is a
 [Jolt](https://github.com/jolt-lang/jolt) (native Clojure on a Chez Scheme
 host, no JVM) talking to real GTK4 over its C ABI through `glitter.ffi`.
 
-The deep documentation lives in [`docs/guide/`](docs/guide/index.md).
+The deep documentation lives in [`docs/guide/`](docs/guide/index.md) and is
+published at <https://jlt-commons.github.io/glitter/>. Edit the Markdown here,
+never the site.
+
+Publishing is automatic. `.github/workflows/site.yml` builds the site on every
+pull request and deploys it when your change lands on `main`, so a docs change
+goes live on merge without anyone running anything. You can preview it locally
+with `bb site:serve` if you clone
+[jlt-commons/docs-engine](https://github.com/jlt-commons/docs-engine) alongside
+this repo, but the pull request build is the authority.
 
 ## Setting up
 

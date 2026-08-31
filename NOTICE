@@ -126,7 +126,8 @@ is why this is its own bucket.
 
 Same author as glitter. Neither carries a license file, so there is no
 attribution obligation; both are listed here for provenance only.
-b12n-raylib-jlt is public (https://github.com/burinc/b12n-raylib-jlt);
+b12n-raylib-jlt is public, and has since moved to
+(https://github.com/jlt-commons/raylib-jlt);
 b12n-adk-clj is private, so its copy cannot be linked from here.
 
 - `scripts/check_positional_args.clj` — `scripts/check_positional_args.clj`
