@@ -62,14 +62,35 @@
   (let [namespaces '[glitter.hiccup-test glitter.assert-test glitter.asserts-test
                      glitter.core-test glitter.alias-test glitter.nexus-test
                      glitter.nexus.registry-test glitter.nexus.action-log-test
-                     glitter.temperature-test glitter.timer-test]]
+                     glitter.temperature-test glitter.timer-test]
+        broken (atom [])]
+    ;; A namespace that fails to REQUIRE used to be printed and then forgotten.
+    ;; run-tests only ever sees what loaded, so its counters cannot tell a
+    ;; namespace that does not exist from one that would not compile, and the
+    ;; suite reported zero failures on a fraction of itself.
+    ;;
+    ;; Not hypothetical, and found by a fleet build rather than here: on jolt
+    ;; v0.7.29, whose ffi/write takes its last two arguments the other way
+    ;; round, glitter-uikit's runner exited 0 on 19 of its 37 tests because two
+    ;; namespaces failed to load. This runner has the same shape, so it has the
+    ;; same hole whether or not this project can currently trip it.
     (doseq [ns namespaces]
       (try (require ns :reload)
            (catch Exception e
+             (swap! broken conj ns)
              (println "ERROR requiring" ns ":" (ex-message e)))))
-    (let [results (apply t/run-tests namespaces)
-          failed (+ (:fail results 0) (:error results 0))]
+    (let [loaded  (remove (set @broken) namespaces)
+          ;; (apply t/run-tests '()) is (t/run-tests), which tests the CURRENT
+          ;; namespace and reports a cheerful zero. Guard the empty case.
+          results (if (seq loaded)
+                    (apply t/run-tests loaded)
+                    {:test 0 :pass 0 :fail 0 :error 0})
+          failed  (+ (:fail results 0) (:error results 0) (count @broken))]
       (println "----")
+      (when (seq @broken)
+        (println "FAILED TO LOAD:" (count @broken) "of" (count namespaces)
+                 "namespaces:" (pr-str @broken))
+        (println "  a namespace that will not load is a failure, not an absence"))
       (println "tests:" (:test results 0)
                "assertions:" (:pass results 0) "passed /"
                failed "failed")
