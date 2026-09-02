@@ -1,5 +1,57 @@
 {:paths ["src"]
 
+ ;; The oldest jolt glitter runs on, declared so a runtime below it refuses
+ ;; to load rather than run wrong (jolt #804). glitter is a library, and a
+ ;; library is the natural declarer here: it knows what its bindings need
+ ;; and the app pulling it in does not.
+ ;;
+ ;; 0.7.24 is the release that made (t/today) answer the machine's zone
+ ;; instead of UTC: the TZ-restore fix and the memoization that makes it
+ ;; affordable. Both are absent from v0.7.23. Without them
+ ;; examples/glitter/flights.clj opens its departure field on YESTERDAY for
+ ;; the first 10 hours of every AEST day, silently. That is the exact shape
+ ;; of failure this key turns into a message. See docs/guide/nexus.md.
+ ;;
+ ;; This does NOT fire today, and it is worth being honest about why. The key
+ ;; is only honoured by a jolt that reads it, and the runtime that reads it
+ ;; (#804) first shipped in v0.8.0, far above this floor. So every jolt that
+ ;; can enforce the floor already clears it, and every jolt old enough to have
+ ;; the date bug ignores the key the way it ignores any key it does not know.
+ ;; Until v0.8.0 shipped on 2026-09-01 the sharper form was "no released jolt
+ ;; reads the key at all"; that is no longer true, and the conclusion is
+ ;; unchanged. The declaration is forward protection, in place for the next
+ ;; break, which is the whole reason upstream shipped the key before needing
+ ;; it rather than after.
+ ;;
+ ;; Think twice before RAISING this, because a floor is enforced on consumers,
+ ;; not just here. A project that declares no floor of its own still gets
+ ;; refused at resolve-project when a dependency declares one it cannot meet,
+ ;; and the message names the dependency (:jolt/required-by). Measured against
+ ;; a :local/root dep declaring "0.9.0": the consumer is stopped before any of
+ ;; its code runs. So whatever glitter declares becomes a hard stop for
+ ;; glitter-gl, glitter-uikit and anyone else downstream, over a constraint
+ ;; they never chose. Raise it only for something glitter genuinely needs, and
+ ;; only to a version that is actually released.
+ ;;
+ ;; Deliberately NOT raised to 0.7.29 for jolt #802's ffi/write argument-order
+ ;; break: glitter has no ffi/write call site and no [:array ...] layout
+ ;; descriptor, so that break cannot reach it. Raising the floor for a change
+ ;; glitter does not use would refuse working runtimes for nothing, and a
+ ;; library's floor propagates to every consumer.
+ ;;
+ ;; And a correction worth keeping, because jolt's own changelog invites the
+ ;; opposite conclusion by using ffi/write as this key's motivating example:
+ ;; NO floor value protects an ffi/write consumer. Not "0.7.29", not "0.8.0",
+ ;; none. The populations are disjoint by construction, and that is provable
+ ;; rather than merely likely: #804 (which added the code that READS this key)
+ ;; has #802's merge commit as its SOLE parent, ahead by exactly one, so no
+ ;; jolt exists that reads the key and still carries the old write order. A
+ ;; runtime with the old order predates the reader and skips the key. Measured
+ ;; elsewhere: released v0.7.29 against a project declaring "0.8.0" ran 19 of
+ ;; 37 tests, dropped two namespaces silently, and exited clean. The key
+ ;; guards breaks from #804 FORWARD, and nothing before it.
+ :jolt/min-version "0.7.24"
+
  ;; jolt-lang/time provides the java.time.* surface as a pure-Clojure
  ;; host shim, with juxt/tick (pulled transitively via jolt-lang/time's
  ;; own deps.edn) as the idiomatic date/time API on top — used by
@@ -10,10 +62,20 @@
  ;; just JVM Clojure) as of when they were pinned — re-verify live
  ;; before bumping either.
  ;;
- ;; The time SHA is v0.0.7, and it is a FLOOR, not just a snapshot: it is
- ;; the release that made (t/today) answer the machine's zone instead of
- ;; UTC. Pinning anything older silently puts flights.clj's departure
- ;; field back on the UTC date. See docs/guide/nexus.md.
+ ;; The time SHA is a FLOOR, not just a snapshot, and it now sits two commits
+ ;; PAST the v0.0.7 tag rather than on it. Two separate reasons, both of which
+ ;; break silently if the pin moves back:
+ ;;
+ ;; v0.0.7 itself is what made (t/today) answer the machine's zone instead of
+ ;; UTC. Pinning older puts flights.clj's departure field back on the UTC date.
+ ;;
+ ;; 33c5e98 is jolt-lang/time#11, which declares the java.time classes the
+ ;; library provides (jolt #813 / RFC 0014). Without it, a jolt carrying #813
+ ;; cannot resolve java.time.ZoneId at all: `jolt flights` dies, and
+ ;; glitter.nexus.action-log-test is silently dropped from the suite, 29 tests
+ ;; down to 26 with a clean exit. It is untagged because no release carries it
+ ;; yet, so this pin is ahead of v0.0.7 deliberately. Move it to the tag once
+ ;; one ships. See docs/guide/nexus.md.
  ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
@@ -26,7 +88,7 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "b11798fb597a0b685c960056e03f1bd2fee229c2"}
+         :git/sha "33c5e9831c046cfcbe68bc0c9c33e92568eaebb1"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}}

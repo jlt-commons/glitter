@@ -583,3 +583,46 @@ v0.7.24 carries both:
 (t/today), jolt v0.7.23-12 (#712, no memo)  ~1.15 ms
 (t/today), jolt v0.7.24    (#712 + #716)    ~13.6 us
 ```
+
+### The floor is declared, not just written down
+
+`deps.edn` carries `:jolt/min-version "0.7.24"`, so the floor above is
+machine-readable and not only prose. The key comes from
+[jolt#804](https://github.com/jolt-lang/jolt/pull/804): a runtime below the
+declared floor refuses to load the project instead of running it, and the
+floor is read from every dependency's `deps.edn` as well as the project's. A
+library is the natural place to declare one, because it knows what its
+bindings need and the app pulling it in does not.
+
+Be clear about what this buys today, though, because it is less than it
+sounds. The key is honoured only by a jolt that reads it, and the runtime
+that reads it first shipped in v0.8.0, which sits far above 0.7.24, so every
+jolt able to enforce the floor already clears it, and every jolt old enough to
+carry the UTC-date bug ignores the key the way it ignores any key it does not
+recognise. Nothing
+changes for an older Jolt: `jolt flights` still runs there and still defaults
+its departure field to the UTC date.
+
+So the declaration is forward protection rather than a guard that fires now.
+That is the same reason upstream shipped the key before it was needed instead
+of at the next break, and it is why the value here is the floor glitter
+actually has rather than the newest version around.
+
+One limit of the mechanism is worth stating, because jolt's own changelog
+points the other way by using `ffi/write`'s moved argument order as the
+motivating example for the key. **No floor value protects an `ffi/write`
+consumer.** The code that reads `:jolt/min-version` arrived in
+[#804](https://github.com/jolt-lang/jolt/pull/804), whose sole parent is the
+merge commit of [#802](https://github.com/jolt-lang/jolt/pull/802), the change
+that flipped the argument order. One commit, no siblings. So the two
+populations are disjoint by construction: no jolt reads the key and still
+carries the old order, and any runtime that does carry it predates the reader
+and skips the key in silence. A sibling project measured it: released v0.7.29 against a
+project declaring `"0.8.0"` ran 19 of 37 tests, dropped two namespaces
+silently, and exited clean.
+
+That does not weaken the floor above, because the TZ-restore boundary is the
+case the mechanism does handle: runtimes on both sides of v0.7.24 can read the
+key. It only means a floor cannot be used to guard a break older than the
+reader, which is worth knowing before reaching for one to solve a
+write-order-shaped problem.

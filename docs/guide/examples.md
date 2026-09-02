@@ -173,9 +173,11 @@ invisible to something:
 4. **If it's a smoke**, add it to `bb.edn`'s `smokes` list: otherwise
    `bb smokes` won't run it and CI-by-hand won't catch a regression in it.
 
-A smoke must exit non-zero on failure. Do **not** gate it on `jolt <task>`:
-a `deps.edn` `:tasks` entry doesn't propagate its child's exit status, so
-`jolt smoke` prints failures and still exits 0. Use `jolt -M:<alias>` or a
+A smoke must exit non-zero on failure. Do **not** gate it on `jolt <task>`.
+On jolt before v0.7.28 a `deps.edn` `:tasks` entry didn't propagate its
+child's exit status, so `jolt smoke` printed failures and still exited 0. That
+is fixed now, but glitter's floor is v0.7.24, so the task form still can't be
+trusted across every version this project supports. Use `jolt -M:<alias>` or a
 `bb.edn` task. See [`testing-and-tasks.md`](testing-and-tasks.md) for the
 full rationale and [`CONTRIBUTING.md`](https://github.com/jlt-commons/glitter/blob/main/CONTRIBUTING.md)
 for the invariant list.

@@ -126,14 +126,49 @@ pass.
 - **`.clj-kondo/hooks/jolt_ffi.clj` rewrites `jolt.ffi/defcfn` into an
   equivalent `defn`** so clj-kondo and clojure-lsp can see through the FFI
   macro. Without it every `gtk-*`/`g-*` binding reports as unresolved.
-- **Never gate CI on `jolt <task>`**: a `deps.edn` `:tasks` entry does not
-  propagate its child process's exit status (verified against jolt v0.6.3), so
-  `jolt test` prints failures and still exits 0. Use `jolt -M:<alias>` or a
-  `bb.edn` task.
+- **Never gate CI on `jolt <task>`**: on jolt v0.6.3 a `deps.edn` `:tasks`
+  entry did not propagate its child process's exit status, so `jolt test`
+  printed failures and still exited 0. Jolt fixed this in v0.7.28 and the task
+  form now exits with the command's status (measured as 7 on v0.7.29), but the
+  advice stands for a different reason: glitter's floor is v0.7.24, so the task
+  form is unreliable on part of the range it supports. Use `jolt -M:<alias>` or
+  a `bb.edn` task.
 - The codebase is uniformly `clojure-lsp`-formatted, including the ten files
   ported verbatim from Replicant. An earlier decision exempted those to
   preserve upstream diffability; it was reversed in favour of one project-wide
   style.
+- **`deps.edn` declares `:jolt/min-version "0.7.24"`**, the oldest Jolt glitter
+  runs on, so the floor that was already documented in prose is now
+  machine-readable. The key is
+  [jolt#804](https://github.com/jolt-lang/jolt/pull/804), and a runtime below a
+  declared floor refuses to load rather than run. It does not fire today: the
+  Jolt that reads the key is v0.8.0 or newer, well above the floor, so a Jolt
+  old enough to have the UTC-date bug ignores it. It is declared for the next
+  break, which is why upstream shipped the key ahead of needing it.
+- **Jolt's `jolt.ffi` arena release ([#802](https://github.com/jolt-lang/jolt/pull/802))
+  does not affect glitter, checked rather than assumed.** That release moved
+  `ffi/write`'s value ahead of its offset, a change no runtime check can
+  distinguish since both spellings are integers, and flipped a fixed array
+  descriptor to `[:array element-type count]`. glitter has no `ffi/write` call
+  site and no `[:array ...]` descriptor anywhere in `src`, `test` or
+  `examples`, so neither can reach it. Nothing was renamed or removed in that
+  release either, so all 223 `defcfn` bindings, `foreign-callable` and the
+  `free-callable` retain/release bookkeeping stand unchanged; the new
+  arena-owned `ffi/callback` is an option, not a replacement. Verified against
+  `jolt v0.7.29-25-gd4e92a43`, and again on `v0.8.0-45-g5e0e7a96`, with the
+  unit suite and all twenty-seven live-GTK smokes green.
+- **The pinned `jolt-lang/time` SHA moves two commits past `v0.0.7`, to pick up
+  its `:jolt/provides` declaration.** jolt
+  [#813](https://github.com/jolt-lang/jolt/pull/813) (RFC 0014) moved the
+  host-class provider table out of the runtime: a library now declares the JDK
+  classes it implements in its own `deps.edn`, and a class nobody claims fails
+  to resolve. Until
+  [jolt-lang/time#11](https://github.com/jolt-lang/time/pull/11) landed, nothing
+  claimed `java.time.ZoneId`, so on a jolt carrying #813 `jolt flights` died
+  outright and `glitter.nexus.action-log-test` was silently dropped from the
+  suite: 29 tests down to 26, 78 assertions to 67, exit 0. A green `bb test`
+  did not catch that; only the changed count did. The pin is deliberately ahead
+  of the `v0.0.7` tag because no release carries the declaration yet.
 
 ### Known gaps
 
