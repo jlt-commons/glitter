@@ -124,11 +124,13 @@ smokes, each of which mounts a real window and exits non-zero on failure.
 </details>
 
 **In CI, invoke the alias form, not the task form**: `jolt -M:test`,
-`jolt -M:keyed`, and so on. Verified against jolt v0.6.3: a
-deps.edn `:tasks` entry does not propagate its child process's exit status, so
-`jolt test` reports failures on stdout and still exits 0, while `jolt -M:test`
-correctly exits 1. The task shorthand is fine interactively; it cannot gate a
-build.
+`jolt -M:keyed`, and so on. On jolt v0.6.3 a deps.edn `:tasks` entry did not
+propagate its child process's exit status, so `jolt test` reported failures on
+stdout and still exited 0. Jolt fixed that in v0.7.28 and the task form now
+exits with the command's status, measured as 7 on v0.7.29. The alias form is
+still what CI should use, because glitter supports jolt from v0.7.24 and the
+fix only arrives at v0.7.28, so the task form is unreliable across part of the
+range this project runs on.
 
 ### Or via `bb`
 

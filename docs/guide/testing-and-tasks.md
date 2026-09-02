@@ -119,12 +119,21 @@ hanging, no manual window-close needed to run these in CI.
 
 ## The exit-code trap: `jolt <task>` vs `jolt -M:<alias>`
 
-**Verified against jolt v0.6.3**: a deps.edn `:tasks` entry does not
+**Verified against jolt v0.6.3**: a deps.edn `:tasks` entry did not
 propagate its child process's exit status. `jolt test` (the task form)
-prints failures to stdout and still exits 0; `jolt -M:test` (the alias
-form) correctly exits non-zero. This isn't a glitter-specific quirk to
-work around; it's how the `:tasks` wrapper behaves, and it applies to
-every task in `deps.edn`, not just `test`.
+printed failures to stdout and still exited 0; `jolt -M:test` (the alias
+form) correctly exited non-zero. This was never a glitter-specific quirk;
+it was how the `:tasks` wrapper behaved, for every task in `deps.edn`.
+
+**Jolt fixed it in v0.7.28**, under "A failing `:tasks` shell command
+exited 0". Re-measured on v0.7.29-25-gd4e92a43 with a task whose command
+exits 7: both `jolt -M:fail` and `jolt fail` answer 7.
+
+The alias form is still the right thing for a gate, for a narrower reason
+than the original one. glitter declares `:jolt/min-version "0.7.24"`, and
+the fix only arrives at v0.7.28, so anyone running a supported jolt in
+between still gets a task form that swallows the failure. The alias form
+is correct across the whole supported range, which is what a gate needs.
 
 **Always use `-M:<alias>` (or a `bb.edn` task, which already does this) to
 gate a build.** The task shorthand (`jolt test`, `jolt keyed`, ...) is fine

@@ -21,7 +21,7 @@ this repo, but the pull request build is the authority.
 You need Jolt and a native GTK4:
 
 ```sh
-jolt --version           # developed against v0.6.3; re-verified on v0.7.24
+jolt --version           # developed against v0.6.3; re-verified on v0.7.24 and v0.7.29
 brew install gtk4        # macOS; on Linux use your distro's gtk4 + glib dev packages
 ```
 
@@ -36,6 +36,13 @@ from ~1.15ms to ~13.6us. See
 [`docs/guide/nexus.md`](docs/guide/nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix)
 for the measurements. On an older Jolt the demo still runs, it just defaults
 its departure field to the UTC date.
+
+`deps.edn` states that floor as `:jolt/min-version "0.7.24"`, so it is
+machine-readable rather than only written down here. A Jolt below a declared
+floor refuses to load the project instead of running it. Note this does not
+change anything for an older Jolt today: the runtime that reads the key is
+v0.8.0 or newer, comfortably above the floor, so a Jolt old enough to have the
+date bug ignores the key entirely. It is there for the next breaking change.
 
 `deps.edn`'s `:jolt/native` declares `glib-2.0`, `gobject-2.0`, `gio-2.0` and
 `gtk-4`, with Homebrew paths for darwin and `.so` names for linux.
@@ -101,10 +108,13 @@ Each of these was a real bug at some point. Most are explained at length in
 [`docs/guide/`](docs/guide/index.md); the short forms are here so a reviewer
 can point at a number.
 
-1. **Never gate CI on `jolt <task>`.** A `deps.edn` `:tasks` entry doesn't
-   propagate its child process's exit status (verified against jolt v0.6.3),
-   so `jolt test` prints failures and still exits 0. Use `jolt -M:<alias>`, or
-   a `bb.edn` task; those already do it correctly.
+1. **Never gate CI on `jolt <task>`.** On jolt v0.6.3 a `deps.edn` `:tasks`
+   entry didn't propagate its child process's exit status, so `jolt test`
+   printed failures and still exited 0. Jolt fixed that in v0.7.28, and on
+   v0.7.29 the task form exits correctly (measured as 7). Keep using
+   `jolt -M:<alias>` or a `bb.edn` task anyway: glitter runs on jolt from
+   v0.7.24, and the fix only lands at v0.7.28, so the task form can still
+   swallow a failure on a supported version.
 
 2. **`insert-before` covers two different cases**: a genuinely new child, and
    repositioning an *already-parented* child (a keyed reorder).
