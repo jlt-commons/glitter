@@ -557,3 +557,17 @@ Each one is a deliberate scope call with the reasoning recorded in
   narrow (initial-sizing-only).
 
 </details>
+
+## Licence
+
+Copyright (c) 2026 Burin Choomnuan.
+
+glitter's own code is distributed under the [Eclipse Public License 2.0](LICENSE),
+matching the rest of jlt-commons and jolt itself. SPDX identifier: `EPL-2.0`. It
+was MIT until 2026-09-05.
+
+That covers what was written here. The code ported from Replicant, glimmer and
+nexus keeps the licence it came with, and [`NOTICE`](NOTICE) is the file-by-file
+record of what came from where, carrying each upstream licence text. EPL 2.0
+relicenses none of it: the whole is EPL 2.0 and each part keeps what it came
+with, as long as those notices travel with it.

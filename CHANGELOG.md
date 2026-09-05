@@ -12,6 +12,14 @@ pass.
 
 ## Unreleased
 
+### Licensing
+
+- **Relicensed from MIT to the Eclipse Public License 2.0** on 2026-09-05,
+  matching the rest of jlt-commons and jolt itself. glitter's own code is EPL
+  2.0; the code ported from Replicant, glimmer and nexus keeps the terms it came
+  with, recorded file by file in `NOTICE`, and nothing that arrived under another
+  licence is relicensed.
+
 ### Rendering model
 
 - **A Replicant-style renderer for GTK4 on [Jolt](https://github.com/jolt-lang/jolt).**

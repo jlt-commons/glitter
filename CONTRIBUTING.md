@@ -232,8 +232,9 @@ child's hiccup *tag* while their fixed slots are full.
 
 ## Licensing
 
-glitter is released under the MIT License; see [`LICENSE`](LICENSE). By
-contributing, you agree your contribution is licensed under those terms.
+glitter is released under the Eclipse Public License 2.0 (`EPL-2.0`); see
+[`LICENSE`](LICENSE). It was MIT until 2026-09-05. By contributing, you agree
+your contribution is licensed under those terms.
 
 The project vendors substantial ported and forked code (from Replicant, from
 [glimmer](https://github.com/jolt-lang/glimmer), and from

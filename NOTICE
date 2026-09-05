@@ -1,10 +1,11 @@
 # Third-party code
 
-glitter is MIT licensed (see LICENSE, Copyright 2026 Burin Choomnuan) and
-vendors third-party code under that same license. This file is the
-authoritative, file-by-file record of what came from where, and carries the
-full text of each upstream license, which applies to those files in addition
-to glitter's own.
+glitter's own code is licensed under the Eclipse Public License 2.0 (see
+LICENSE, Copyright 2026 Burin Choomnuan); it was MIT until 2026-09-05. The
+vendored third-party code keeps the license it came with, which EPL 2.0 does
+not change. This file is the authoritative, file-by-file record of what came
+from where, and carries the full text of each upstream license, which applies
+to those files in addition to glitter's own.
 
 ## Replicant
 
