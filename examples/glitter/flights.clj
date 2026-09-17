@@ -52,7 +52,7 @@
             [glitter.app :as app]
             [glitter.core :as core]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]
+            [nexus.registry :as nxr]
             [tick.core :as t]))
 
 (def ^:private date-formatter (t/formatter "dd.MM.yyyy"))

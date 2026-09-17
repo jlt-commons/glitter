@@ -30,7 +30,7 @@
             [glitter.app :as app]
             [glitter.core :as core]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]))
+            [nexus.registry :as nxr]))
 
 (defonce state
   (atom {:tasks [{:text "Try the glitter counter demo" :done true}

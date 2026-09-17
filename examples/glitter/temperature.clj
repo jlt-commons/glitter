@@ -35,7 +35,7 @@
             [glitter.app :as app]
             [glitter.core :as core]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]))
+            [nexus.registry :as nxr]))
 
 (defn fahrenheit->celsius [f]
   (* (- f 32) (/ 5.0 9)))

@@ -1,8 +1,15 @@
 (ns glitter.test-runner
   "Entry point for `jolt -M:test`. Requires each glitter test namespace and
-  runs clojure.test against it. Prints a summary; exits non-zero if anything
-  failed (so the :test task fails CI). Adapted from glimmer's
-  test/glimmer/test_runner.clj — identical shape, glitter's own namespace list."
+  runs clojure.test against it. Prints a summary; exits non-zero if
+  anything failed (so the :test task fails CI). Adapted from glimmer's
+  test/glimmer/test_runner.clj — identical shape, glitter's own namespace
+  list.
+
+  As of the glitter-core/nexus extraction, this suite covers only the
+  example-app tests (glitter.temperature-test, glitter.timer-test) — the
+  reconciler/hiccup/assert/alias/nexus.action-log tests moved to
+  glitter-core, and the nexus.core/nexus.registry tests moved to the
+  standalone nexus package. See both repos' own test_runner.clj."
   (:require [clojure.test :as t]))
 
 (defmethod t/report :error [m]
@@ -39,30 +46,8 @@
 (defn -main [& _]
   ;; deps.edn's :test alias puts examples/ on this process's classpath
   ;; (needed so glitter.temperature-test can require glitter.temperature —
-  ;; see deps.edn's own comment). Requiring glitter.temperature-test
-  ;; therefore transitively requires glitter.temperature itself, whose
-  ;; top-level (core/set-dispatch! ...) and nxr/register-*! calls mutate
-  ;; genuinely global, process-wide state (glitter.core/*dispatch*,
-  ;; glitter.nexus.registry/!registry) for the rest of THIS test process —
-  ;; not scoped to glitter.temperature-test's own deftests. Any future
-  ;; example-backed test namespace added here does the same. This is safe
-  ;; today only because glitter.nexus.registry-test's own `use-fixtures
-  ;; :each` resets !registry to {} before/after each of ITS deftests — a
-  ;; future test that relies on global dispatch/registry state some other
-  ;; way could break in an order-dependent way (namespaces run in the
-  ;; order listed below). Verified live: after glitter.nexus.registry-test's
-  ;; deftests run, !registry no longer contains glitter.temperature's
-  ;; require-time registrations at all (its :each fixture's before-only
-  ;; reset leaves !registry holding whatever its OWN last deftest put
-  ;; there) — so a hypothetical test reaching into the shared registry
-  ;; from glitter.temperature-test (listed after registry-test below)
-  ;; would see none of glitter.temperature's registrations. Test
-  ;; glitter.temperature's placeholder/expansion LOGIC via its own named
-  ;; functions instead of the shared registry, for exactly this reason.
-  (let [namespaces '[glitter.hiccup-test glitter.assert-test glitter.asserts-test
-                     glitter.core-test glitter.alias-test glitter.nexus-test
-                     glitter.nexus.registry-test glitter.nexus.action-log-test
-                     glitter.temperature-test glitter.timer-test]
+  ;; see deps.edn's own comment).
+  (let [namespaces '[glitter.temperature-test glitter.timer-test]
         broken (atom [])]
     ;; A namespace that fails to REQUIRE used to be printed and then forgotten.
     ;; run-tests only ever sees what loaded, so its counters cannot tell a

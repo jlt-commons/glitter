@@ -38,7 +38,7 @@
             [glitter.app :as app]
             [glitter.core :as core]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]))
+            [nexus.registry :as nxr]))
 
 (def ^:private planets ["Mercury" "Venus" "Earth" "Mars"])
 

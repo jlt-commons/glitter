@@ -43,7 +43,7 @@
             [glitter.app :as app]
             [glitter.core :as core]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]))
+            [nexus.registry :as nxr]))
 
 (defonce state
   (atom {:page 0 :stack-page "one" :menu-open? false :searching? true :dispatches 0}))

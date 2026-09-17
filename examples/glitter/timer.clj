@@ -89,7 +89,7 @@
             [glitter.core :as core]
             [glitter.ffi :as g]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]
+            [nexus.registry :as nxr]
             [glitter.widget :as w]
             [jolt.ffi :as ffi]))
 

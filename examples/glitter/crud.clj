@@ -100,7 +100,7 @@
             [glitter.app :as app]
             [glitter.core :as core]
             [glitter.gtk :as gtk]
-            [glitter.nexus.registry :as nxr]))
+            [nexus.registry :as nxr]))
 
 (defonce state
   (atom {:people [{:id 1 :given-name "Hans" :family-name "Emil"}
