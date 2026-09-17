@@ -4,6 +4,13 @@ glitter's source falls into four buckets. `NOTICE` (repo root) is the
 authoritative, maintained ledger; this page explains what the buckets mean
 and summarizes the deviations; if the two ever disagree, `NOTICE` wins.
 
+**Note (as of the glitter-core/nexus extraction):** the files described
+below in Bucket 1 (Replicant) and Bucket 4 (nexus) moved to `glitter-core`
+and `nexus-jolt` respectively. `glitter-core`'s and `nexus-jolt`'s own
+`NOTICE` files are now the authoritative record for those buckets
+specifically — this page has not been updated yet and still describes
+the pre-extraction layout.
+
 ## Bucket 1: ported from Replicant
 
 Mechanical rename port (`replicant.* → glitter.*`, including the

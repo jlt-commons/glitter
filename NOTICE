@@ -12,8 +12,8 @@ the sibling repos' own NOTICE files.
 The Replicant-ported reconciler and glitter-agnostic nexus port that used
 to be recorded here moved to
 [glitter-core](https://github.com/jlt-commons/glitter-core) and
-[nexus](https://github.com/jlt-commons/nexus) respectively — see their own
-`NOTICE` files.
+[nexus-jolt](https://github.com/jlt-commons/nexus-jolt) respectively — see
+their own `NOTICE` files.
 
 ## glimmer
 

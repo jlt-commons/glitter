@@ -89,9 +89,9 @@
             [glitter.core :as core]
             [glitter.ffi :as g]
             [glitter.gtk :as gtk]
-            [nexus.registry :as nxr]
             [glitter.widget :as w]
-            [jolt.ffi :as ffi]))
+            [jolt.ffi :as ffi]
+            [nexus.registry :as nxr]))
 
 (defn format-seconds [s]
   (let [s10 (int (* 10 s))]

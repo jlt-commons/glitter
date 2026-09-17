@@ -17,7 +17,7 @@
   DATA — an action tuple carrying whatever the closure used to
   close over (the row index, the new entry text) — dispatched through one
   global handler, never a closure. That global handler is
-  glitter.nexus (now nexus.core in the glitter-core dependency), not a hand-written `case`
+  glitter.nexus (now nexus.core in the separate nexus-jolt dependency), not a hand-written `case`
   form: :action/toggle/:action/add-task are ACTION-EXPANSIONS (they read
   current state to decide what should happen), the same layer
   examples/glitter/crud.clj's select-row/create/update/delete use;

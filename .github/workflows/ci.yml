@@ -92,10 +92,11 @@ jobs:
         with:
           clojure-lsp-version: "2026.05.05-12.58.26"
 
-      # The unit suite runs entirely against glitter.test-renderer, the
-      # in-memory IRender/IMemory fake — no window, no display. Failure output
-      # is re-emitted as an annotation plus a job summary, both readable
-      # without downloading the log archive.
+      # The unit suite (glitter.temperature-test/glitter.timer-test) tests
+      # example-app logic headlessly — no window, no display. The
+      # reconciler/renderer's own tests moved to glitter-core's suite.
+      # Failure output is re-emitted as an annotation plus a job summary,
+      # both readable without downloading the log archive.
       - name: Unit suite
         run: |
           set +e

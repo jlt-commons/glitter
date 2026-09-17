@@ -10,6 +10,12 @@ hand it, `glitter.nexus` decides *what to do* with that data once
 [`porting-and-attribution.md`](porting-and-attribution.md)'s Bucket 4
 for the exact file-by-file porting ledger.
 
+**Note (as of the glitter-core/nexus extraction):** the code this page
+describes, `glitter.nexus`, moved to the standalone
+[nexus-jolt](https://github.com/jlt-commons/nexus-jolt) repo and was
+renamed `nexus.core`. This page describes the pre-extraction layout and
+has not been updated yet — treat namespace names below as historical.
+
 ## Why
 
 Every glitter demo before this arc (`counter.clj`, `todo.clj`, `crud.clj`)

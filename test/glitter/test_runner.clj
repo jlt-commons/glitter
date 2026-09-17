@@ -5,11 +5,17 @@
   test/glimmer/test_runner.clj — identical shape, glitter's own namespace
   list.
 
-  As of the glitter-core/nexus extraction, this suite covers only the
+  As of the glitter-core/nexus-jolt extraction, this suite covers only the
   example-app tests (glitter.temperature-test, glitter.timer-test) — the
   reconciler/hiccup/assert/alias/nexus.action-log tests moved to
   glitter-core, and the nexus.core/nexus.registry tests moved to the
-  standalone nexus package. See both repos' own test_runner.clj."
+  standalone nexus-jolt package. See both repos' own test_runner.clj.
+
+  Note: requiring glitter.temperature-test transitively requires
+  glitter.temperature, whose top-level calls mutate glitter.core's and
+  nexus.registry's global state for the rest of this test process. Test
+  glitter.temperature's own logic via its named functions rather than
+  relying on shared global state."
   (:require [clojure.test :as t]))
 
 (defmethod t/report :error [m]

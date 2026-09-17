@@ -20,7 +20,7 @@
   static `[:button ...]` text with no click handlers at all. This port
   completes the full interaction the spec actually describes.
 
-  Retrofitted onto `glitter.nexus` (now `nexus.core` in the glitter-core dependency) in this
+  Retrofitted onto `glitter.nexus` (now `nexus.core` in the separate `nexus-jolt` dependency) in this
   commit — dispatch previously went through a hand-written
   `execute-actions` `case` form. `:action/set-filter`/
   `:action/set-given-name`/`:action/set-family-name` are pure

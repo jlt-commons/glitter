@@ -76,7 +76,10 @@ including two live-verified date gotchas `jolt flights` turned up:
 `t/parse-date` is lenient, so its date validation needs a round-trip
 check, and `(t/today)` used to answer the UTC date rather than the
 machine's — traced here and fixed upstream in `jolt-lang/time` v0.0.7,
-which `deps.edn` pins.
+which `deps.edn` pins. (Since this arc, `glitter.nexus`/
+`glitter.nexus.registry` have moved to `nexus.core`/`nexus.registry` in
+the separate `nexus-jolt` package — see Architecture below — the
+dispatch mechanism described above is unchanged, only its location.)
 
 Four **widget galleries** (`jolt gallery-inputs`, `gallery-layout`,
 `gallery-display`, `gallery-chrome`) are runnable reference pages rather
@@ -214,8 +217,8 @@ Where the code came from:
   own `NOTICE`.
 - `glitter.nexus`/`glitter.nexus.registry` (now `nexus.core`/
   `nexus.registry`) moved to the standalone
-  [nexus](https://github.com/jlt-commons/nexus) package, a plain Jolt port
-  of upstream cjohansen/nexus.
+  [nexus-jolt](https://github.com/jlt-commons/nexus-jolt) package, a
+  plain Jolt port of upstream cjohansen/nexus.
 - `glitter.ffi`, `glitter.widget`, `glitter.genum`: forked from
   [glimmer](https://github.com/jolt-lang/glimmer). `glitter.app` is adapted
   from the non-reactive app-loop slice of `glimmer.core`.
@@ -232,8 +235,8 @@ Where the code came from:
   not to regress (each one was a real bug at some point).
 - **[`NOTICE`](NOTICE)**) file-by-file provenance for what's forked from
   glimmer and still lives here — the Replicant-ported reconciler and
-  nexus's own provenance now live in `glitter-core`'s and `nexus`'s own
-  NOTICE files, respectively.
+  nexus-jolt's own provenance now live in `glitter-core`'s and
+  `nexus-jolt`'s own NOTICE files, respectively.
 - Design spec and implementation plan are not part of this repo; they live in
   a private planning store.
 
@@ -247,8 +250,9 @@ directly to glitter.
 `glitter-core` now exists as a separate dependency (see Architecture
 above) and carries the reconciler, every Replicant-ported namespace,
 and the nexus action-log accumulator. `glitter.nexus`/
-`glitter.nexus.registry` moved to the separate `nexus` package instead.
-This repo depends on both and still owns the GTK4 widget layer itself.
+`glitter.nexus.registry` moved to the separate `nexus-jolt` package
+instead. This repo depends on both and still owns the GTK4 widget layer
+itself.
 
 | Group | Tags |
 |---|---|
@@ -586,7 +590,7 @@ was MIT until 2026-09-05.
 That covers what was written here. The code forked from glimmer keeps the
 licence it came with, and [`NOTICE`](NOTICE) is the file-by-file record of
 what came from where for everything still vendored in this repo — the
-Replicant-ported reconciler and nexus's own provenance moved along with
-the code itself, recorded in `glitter-core`'s and `nexus`'s own NOTICE
-files. EPL 2.0 relicenses none of it: the whole is EPL 2.0 and each part
-keeps what it came with, as long as those notices travel with it.
+Replicant-ported reconciler and nexus-jolt's own provenance moved along
+with the code itself, recorded in `glitter-core`'s and `nexus-jolt`'s own
+NOTICE files. EPL 2.0 relicenses none of it: the whole is EPL 2.0 and
+each part keeps what it came with, as long as those notices travel with it.
