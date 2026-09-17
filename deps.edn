@@ -93,13 +93,16 @@
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}
 
-        ;; :local/root, not a git coordinate: neither repo is pushed to
-        ;; GitHub yet (both are local-only, per the extraction plan).
-        ;; Once pushed, switch both to a pinned :git/url + :git/sha,
-        ;; mirroring how glitter-uikit/glitter-gl pin glitter itself
-        ;; today.
+        ;; :local/root, not a git coordinate: a GitHub remote exists for
+        ;; each (both jlt-commons/glitter-core and jlt-commons/nexus-jolt,
+        ;; private) but neither has been pushed to yet — still local-only
+        ;; per the extraction plan. Once pushed, switch both to a pinned
+        ;; :git/url + :git/sha, mirroring how glitter-uikit/glitter-gl pin
+        ;; glitter itself today. Symbol/path both renamed nexus ->
+        ;; nexus-jolt to match the checkout's actual rename and the
+        ;; GitHub repo name it was created under.
         io.github.jlt-commons/glitter-core {:local/root "../glitter-core"}
-        io.github.jlt-commons/nexus {:local/root "../nexus"}}
+        io.github.jlt-commons/nexus-jolt {:local/root "../nexus-jolt"}}
 
  ;; GTK4 and its GLib dependencies, bound natively via jolt.ffi. Identical
  ;; declarations to glimmer's own deps.edn (jolt-lang/glimmer) — glitter
