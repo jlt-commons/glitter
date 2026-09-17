@@ -230,8 +230,10 @@ Where the code came from:
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** (how to set up, which gates to
   run before a PR, how to add a widget, and the numbered list of invariants
   not to regress (each one was a real bug at some point).
-- **[`NOTICE`](NOTICE)**) file-by-file provenance for everything ported from
-  Replicant, forked from glimmer, or ported from nexus.
+- **[`NOTICE`](NOTICE)**) file-by-file provenance for what's forked from
+  glimmer and still lives here — the Replicant-ported reconciler and
+  nexus's own provenance now live in `glitter-core`'s and `nexus`'s own
+  NOTICE files, respectively.
 - Design spec and implementation plan are not part of this repo; they live in
   a private planning store.
 
@@ -243,9 +245,10 @@ Where the code came from:
 directly to glitter.
 
 `glitter-core` now exists as a separate dependency (see Architecture
-above) and carries the reconciler and every Replicant/nexus-ported
-namespace. This repo depends on it and still owns the GTK4 widget layer
-itself.
+above) and carries the reconciler, every Replicant-ported namespace,
+and the nexus action-log accumulator. `glitter.nexus`/
+`glitter.nexus.registry` moved to the separate `nexus` package instead.
+This repo depends on both and still owns the GTK4 widget layer itself.
 
 | Group | Tags |
 |---|---|
@@ -580,8 +583,10 @@ glitter's own code is distributed under the [Eclipse Public License 2.0](LICENSE
 matching the rest of jlt-commons and jolt itself. SPDX identifier: `EPL-2.0`. It
 was MIT until 2026-09-05.
 
-That covers what was written here. The code ported from Replicant, glimmer and
-nexus keeps the licence it came with, and [`NOTICE`](NOTICE) is the file-by-file
-record of what came from where, carrying each upstream licence text. EPL 2.0
-relicenses none of it: the whole is EPL 2.0 and each part keeps what it came
-with, as long as those notices travel with it.
+That covers what was written here. The code forked from glimmer keeps the
+licence it came with, and [`NOTICE`](NOTICE) is the file-by-file record of
+what came from where for everything still vendored in this repo — the
+Replicant-ported reconciler and nexus's own provenance moved along with
+the code itself, recorded in `glitter-core`'s and `nexus`'s own NOTICE
+files. EPL 2.0 relicenses none of it: the whole is EPL 2.0 and each part
+keeps what it came with, as long as those notices travel with it.

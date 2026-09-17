@@ -3,9 +3,11 @@
 glitter's own code is licensed under the Eclipse Public License 2.0 (see
 LICENSE, Copyright 2026 Burin Choomnuan); it was MIT until 2026-09-05. The
 vendored third-party code keeps the license it came with, which EPL 2.0 does
-not change. This file is the authoritative, file-by-file record of what came
-from where, and carries the full text of each upstream license, which applies
-to those files in addition to glitter's own.
+not change. For the code still vendored directly in this repo (the glimmer
+fork), this file is the file-by-file record of what came from where, and
+carries the full text of the upstream license, which applies to those files
+in addition to glitter's own. For what moved out, see the note below and
+the sibling repos' own NOTICE files.
 
 The Replicant-ported reconciler and glitter-agnostic nexus port that used
 to be recorded here moved to
