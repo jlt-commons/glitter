@@ -12,6 +12,28 @@ pass.
 
 ## Unreleased
 
+### Dependencies
+
+- **Extracted the natives-free reconciler into `glitter-core`, and the
+  glitter-agnostic `glitter.nexus`/`glitter.nexus.registry` into a
+  standalone `nexus` package.** `glitter.core`, `glitter.protocols`,
+  `glitter.hiccup*`, `glitter.vdom`, `glitter.alias`, `glitter.errors`,
+  `glitter.assert*`, `glitter.console-logger`, `glitter.env`,
+  `glitter.test-renderer`, and `glitter.nexus.action-log` now live in
+  [glitter-core](https://github.com/jlt-commons/glitter-core), which
+  declares no `:jolt/native` at all. `glitter.nexus`/
+  `glitter.nexus.registry` moved to
+  [nexus](https://github.com/jlt-commons/nexus), a plain Jolt port of
+  upstream cjohansen/nexus, renamed to `nexus.core`/`nexus.registry`.
+  `glitter` itself is unaffected at the API level — `glitter.gtk`,
+  `glitter.widget`, `glitter.ffi`, `glitter.genum`, and `glitter.app`
+  are untouched, and every namespace `glitter-core` carries kept its
+  original `glitter.*` name, so this is a dependency change, not a
+  breaking one, for anyone requiring `glitter.core`/`glitter.protocols`
+  directly. Fixes the `glitter-uikit`/`glitter-gl` "GTK4 required even
+  though it's never called" limitation both of those repos' own READMEs
+  already named as future work.
+
 ### Licensing
 
 - **Relicensed from MIT to the Eclipse Public License 2.0** on 2026-09-05,

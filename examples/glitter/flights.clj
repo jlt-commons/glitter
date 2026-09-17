@@ -7,7 +7,7 @@
   challenge lies on modelling constraints between widgets... and within
   a widget.'
 
-  First real consumer of glitter.nexus (see src/glitter/nexus.clj) —
+  First real consumer of glitter.nexus (now nexus.core in the glitter-core dependency) —
   every interaction below dispatches at most two effects, never an
   action expansion (zero hand-written case-dispatch code): every field
   is a pure :effect/assoc-in plus a registered placeholder, except the

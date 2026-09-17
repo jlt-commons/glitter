@@ -189,10 +189,10 @@ reversed in favor of one uniform style project-wide)) see
 ```mermaid
 flowchart TD
   hiccup["hiccup<br/><i>(state -&gt; view fn)</i>"] --> reconcile
-  reconcile["<b>glitter.core/reconcile</b><br/><i>ported from replicant.core,<br/>diff algorithm unchanged</i>"] --> proto
-  proto["<b>glitter.protocols</b><br/>IRender + IMemory"] --> gtk & testrend
+  reconcile["<b>glitter.core/reconcile</b><br/><i>now lives in glitter-core,<br/>diff algorithm unchanged</i>"] --> proto
+  proto["<b>glitter.protocols</b><br/><i>also in glitter-core</i><br/>IRender + IMemory"] --> gtk & testrend
   gtk["<b>glitter.gtk</b><br/><i>real GTK4, via<br/>glitter.widget + glitter.ffi</i>"]
-  testrend["<b>glitter.test-renderer</b><br/><i>headless, in-memory</i>"]
+  testrend["<b>glitter.test-renderer</b><br/><i>headless, in-memory,<br/>also in glitter-core</i>"]
 ```
 
 `glitter.core` drives *when*: it diffs old hiccup against new and calls
@@ -203,14 +203,23 @@ in-memory fake for headless tests.
 Where the code came from:
 
 - `glitter.core`, `glitter.protocols`, `glitter.hiccup*`, `glitter.vdom`,
-  `glitter.alias`, `glitter.errors`, `glitter.assert*`, `glitter.console-logger`
- ; ported from [Replicant](https://github.com/cjohansen/replicant) (MIT,
-  Christian Johansen). See `NOTICE`.
+  `glitter.alias`, `glitter.errors`, `glitter.assert*`, `glitter.console-logger`,
+  `glitter.env`, `glitter.test-renderer`, and the nexus action-log accumulator
+  (`glitter.nexus.action-log`) now live in the
+  [glitter-core](https://github.com/jlt-commons/glitter-core) dependency,
+  which declares no `:jolt/native` at all. Originally ported from
+  [Replicant](https://github.com/cjohansen/replicant) (MIT, Christian
+  Johansen) and, for the action-log piece,
+  [nexus](https://github.com/cjohansen/nexus) (MIT). See `glitter-core`'s
+  own `NOTICE`.
+- `glitter.nexus`/`glitter.nexus.registry` (now `nexus.core`/
+  `nexus.registry`) moved to the standalone
+  [nexus](https://github.com/jlt-commons/nexus) package, a plain Jolt port
+  of upstream cjohansen/nexus.
 - `glitter.ffi`, `glitter.widget`, `glitter.genum`: forked from
   [glimmer](https://github.com/jolt-lang/glimmer). `glitter.app` is adapted
   from the non-reactive app-loop slice of `glimmer.core`.
-- `glitter.gtk`, `glitter.test-renderer`, `glitter.env`: new code specific
-  to glitter.
+- `glitter.gtk`: new code specific to glitter, unmoved. See `NOTICE`.
 
 ## Documentation
 
@@ -232,6 +241,11 @@ Where the code came from:
 `:box`. Nine of them came across in the original fork from
 [glimmer](https://github.com/jolt-lang/glimmer); the rest were added
 directly to glitter.
+
+`glitter-core` now exists as a separate dependency (see Architecture
+above) and carries the reconciler and every Replicant/nexus-ported
+namespace. This repo depends on it and still owns the GTK4 widget layer
+itself.
 
 | Group | Tags |
 |---|---|
