@@ -33,24 +33,28 @@
  ;; they never chose. Raise it only for something glitter genuinely needs, and
  ;; only to a version that is actually released.
  ;;
- ;; Deliberately NOT raised to 0.7.29 for jolt #802's ffi/write argument-order
- ;; break: glitter has no ffi/write call site and no [:array ...] layout
- ;; descriptor, so that break cannot reach it. Raising the floor for a change
- ;; glitter does not use would refuse working runtimes for nothing, and a
- ;; library's floor propagates to every consumer.
+ ;; For glitter's OWN needs, none of that argues past 0.7.24: glitter has no
+ ;; ffi/write call site and no [:array ...] layout descriptor, so jolt #802's
+ ;; argument-order break (fixed alongside #804 in 0.8.0) cannot reach it
+ ;; either way. (Historical note, since it contradicts a claim jolt's own
+ ;; changelog invites: NO floor value protects an ffi/write consumer, not
+ ;; "0.7.29", not "0.8.0" — #804, which added the code that READS this key,
+ ;; has #802's merge commit as its SOLE parent, so no jolt exists that reads
+ ;; the key and still carries the old write order. Measured: released v0.7.29
+ ;; against a project declaring "0.8.0" ran 19 of 37 tests, dropped two
+ ;; namespaces silently, and exited clean.)
  ;;
- ;; And a correction worth keeping, because jolt's own changelog invites the
- ;; opposite conclusion by using ffi/write as this key's motivating example:
- ;; NO floor value protects an ffi/write consumer. Not "0.7.29", not "0.8.0",
- ;; none. The populations are disjoint by construction, and that is provable
- ;; rather than merely likely: #804 (which added the code that READS this key)
- ;; has #802's merge commit as its SOLE parent, ahead by exactly one, so no
- ;; jolt exists that reads the key and still carries the old write order. A
- ;; runtime with the old order predates the reader and skips the key. Measured
- ;; elsewhere: released v0.7.29 against a project declaring "0.8.0" ran 19 of
- ;; 37 tests, dropped two namespaces silently, and exited clean. The key
- ;; guards breaks from #804 FORWARD, and nothing before it.
- :jolt/min-version "0.7.24"
+ ;; Raised to 0.8.0 on 2026-09-20 anyway, for a reason outside glitter's own
+ ;; code: glitter now depends on glitter-core (see :deps below), whose own
+ ;; deps.edn independently declares :jolt/min-version "0.8.0" (to keep one
+ ;; floor across the glitter-core/nexus-jolt/glitter-uikit/glitter-gl family
+ ;; rather than a hybrid split). Floors combine as the max across the
+ ;; dependency graph, so glitter's EFFECTIVE floor was already 0.8.0
+ ;; transitively regardless of what this file declared — leaving "0.7.24"
+ ;; here wouldn't have restored a lower floor for consumers, it would only
+ ;; have made the declared value misleading. Raising it to match keeps one
+ ;; honest number instead of a stale one.
+ :jolt/min-version "0.8.0"
 
  ;; jolt-lang/time provides the java.time.* surface as a pure-Clojure
  ;; host shim, with juxt/tick (pulled transitively via jolt-lang/time's
