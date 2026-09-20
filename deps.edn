@@ -1,59 +1,20 @@
 {:paths ["src"]
 
  ;; The oldest jolt glitter runs on, declared so a runtime below it refuses
- ;; to load rather than run wrong (jolt #804). glitter is a library, and a
- ;; library is the natural declarer here: it knows what its bindings need
- ;; and the app pulling it in does not.
+ ;; to load rather than run wrong (jolt #804) — a library is the natural
+ ;; declarer, since it knows what its bindings need and the app pulling it
+ ;; in does not. Think twice before RAISING this: the floor is enforced on
+ ;; every consumer too (:jolt/required-by), not just here, so raise it only
+ ;; for something glitter genuinely needs. (Why 0.7.24 was the original
+ ;; floor, before this: git blame, or docs/guide/nexus.md.)
  ;;
- ;; 0.7.24 is the release that made (t/today) answer the machine's zone
- ;; instead of UTC: the TZ-restore fix and the memoization that makes it
- ;; affordable. Both are absent from v0.7.23. Without them
- ;; examples/glitter/flights.clj opens its departure field on YESTERDAY for
- ;; the first 10 hours of every AEST day, silently. That is the exact shape
- ;; of failure this key turns into a message. See docs/guide/nexus.md.
- ;;
- ;; This does NOT fire today, and it is worth being honest about why. The key
- ;; is only honoured by a jolt that reads it, and the runtime that reads it
- ;; (#804) first shipped in v0.8.0, far above this floor. So every jolt that
- ;; can enforce the floor already clears it, and every jolt old enough to have
- ;; the date bug ignores the key the way it ignores any key it does not know.
- ;; Until v0.8.0 shipped on 2026-09-01 the sharper form was "no released jolt
- ;; reads the key at all"; that is no longer true, and the conclusion is
- ;; unchanged. The declaration is forward protection, in place for the next
- ;; break, which is the whole reason upstream shipped the key before needing
- ;; it rather than after.
- ;;
- ;; Think twice before RAISING this, because a floor is enforced on consumers,
- ;; not just here. A project that declares no floor of its own still gets
- ;; refused at resolve-project when a dependency declares one it cannot meet,
- ;; and the message names the dependency (:jolt/required-by). Measured against
- ;; a :local/root dep declaring "0.9.0": the consumer is stopped before any of
- ;; its code runs. So whatever glitter declares becomes a hard stop for
- ;; glitter-gl, glitter-uikit and anyone else downstream, over a constraint
- ;; they never chose. Raise it only for something glitter genuinely needs, and
- ;; only to a version that is actually released.
- ;;
- ;; For glitter's OWN needs, none of that argues past 0.7.24: glitter has no
- ;; ffi/write call site and no [:array ...] layout descriptor, so jolt #802's
- ;; argument-order break (fixed alongside #804 in 0.8.0) cannot reach it
- ;; either way. (Historical note, since it contradicts a claim jolt's own
- ;; changelog invites: NO floor value protects an ffi/write consumer, not
- ;; "0.7.29", not "0.8.0" — #804, which added the code that READS this key,
- ;; has #802's merge commit as its SOLE parent, so no jolt exists that reads
- ;; the key and still carries the old write order. Measured: released v0.7.29
- ;; against a project declaring "0.8.0" ran 19 of 37 tests, dropped two
- ;; namespaces silently, and exited clean.)
- ;;
- ;; Raised to 0.8.0 on 2026-09-20 anyway, for a reason outside glitter's own
- ;; code: glitter now depends on glitter-core (see :deps below), whose own
- ;; deps.edn independently declares :jolt/min-version "0.8.0" (to keep one
- ;; floor across the glitter-core/nexus-jolt/glitter-uikit/glitter-gl family
- ;; rather than a hybrid split). Floors combine as the max across the
- ;; dependency graph, so glitter's EFFECTIVE floor was already 0.8.0
- ;; transitively regardless of what this file declared — leaving "0.7.24"
- ;; here wouldn't have restored a lower floor for consumers, it would only
- ;; have made the declared value misleading. Raising it to match keeps one
- ;; honest number instead of a stale one.
+ ;; 0.8.0 is not one of those "genuinely needs" cases — glitter's own code
+ ;; has never needed more than 0.7.24. It's raised to 0.8.0 because glitter
+ ;; now depends on glitter-core (see :deps below), whose own deps.edn
+ ;; independently declares that floor. Jolt floors combine as the max across
+ ;; the dependency graph, so glitter's EFFECTIVE floor was already 0.8.0
+ ;; transitively — declaring anything lower here would only be misleading,
+ ;; not protective.
  :jolt/min-version "0.8.0"
 
  ;; jolt-lang/time provides the java.time.* surface as a pure-Clojure
