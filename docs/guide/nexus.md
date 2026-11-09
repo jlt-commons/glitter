@@ -1,20 +1,23 @@
-# glitter.nexus: data-driven action/effect dispatch
+# nexus (nexus-jolt): data-driven action/effect dispatch
 
-`glitter.nexus` is a port of [nexus](https://github.com/cjohansen/nexus)
+`nexus.core` is a port of [nexus](https://github.com/cjohansen/nexus)
 (same author as Replicant), a small, toolkit-agnostic action/effect/
 placeholder dispatch engine. It sits directly downstream of
 `core/set-dispatch!` (see [`architecture.md`](architecture.md)): where
 `glitter.core` decides *when* to call a dispatch fn and *what data* to
-hand it, `glitter.nexus` decides *what to do* with that data once
+hand it, `nexus.core` decides *what to do* with that data once
 `set-dispatch!`'s registered fn receives it. See
 [`porting-and-attribution.md`](porting-and-attribution.md)'s Bucket 4
 for the exact file-by-file porting ledger.
 
-**Note (as of the glitter-core/nexus extraction):** the code this page
-describes, `glitter.nexus`, moved to the standalone
-[nexus-jolt](https://github.com/jlt-commons/nexus-jolt) repo and was
-renamed `nexus.core`. This page describes the pre-extraction layout and
-has not been updated yet — treat namespace names below as historical.
+The engine lives in the standalone
+[nexus-jolt](https://github.com/jlt-commons/nexus-jolt) dependency as
+`nexus.core` (dispatch, interpolation, effect execution) and
+`nexus.registry` (the global registry and its `register-*!` fns, required
+as `nxr` in every demo). `glitter.nexus.action-log` stayed with glitter's
+reactive core in [glitter-core](https://github.com/jlt-commons/glitter-core).
+Before that extraction these were `glitter.nexus` and
+`glitter.nexus.registry` inside glitter itself.
 
 ## Why
 
@@ -45,7 +48,7 @@ button is clicked," is data a pure function computes.
 ### Effects: the only place a `swap!` is allowed
 
 An effect handler is a plain function registered under an action-kind
-keyword. `glitter.nexus.registry/register-effect!` stores it under
+keyword. `nexus.registry/register-effect!` stores it under
 `[:nexus/effects effect-k]`:
 
 ```clojure
@@ -62,7 +65,7 @@ Every demo in this project registers exactly one effect,
                       (fn [_ system path v] (swap! system assoc-in path v)))
 ```
 
-`glitter.nexus/execute-effect` is what actually calls it: it threads
+`nexus.core/execute-effect` is what actually calls it: it threads
 the effect fn through `run-interceptors` (below), then invokes
 `(apply effect-f (->execute-ctx ctx*) system (next effect))`. The first
 argument (an execute-ctx, ignored by every effect registered in this
@@ -76,7 +79,7 @@ Hiccup `:on` data is fixed at the moment `view` runs (see CONTRIBUTING.md
 invariant #8); it can't carry a value that only exists once the user
 types. nexus's placeholder mechanism is the generic version of the
 `:glitter/value`-in-the-event-map trick every demo already needs:
-`glitter.nexus/interpolate-walk` walks an action's data, and any nested
+`nexus.core/interpolate-walk` walks an action's data, and any nested
 vector whose head matches a registered placeholder keyword gets replaced
 by calling that placeholder's function with `dispatch-data` (and the
 placeholder's own trailing args):
@@ -124,7 +127,7 @@ first (innermost), then `:fmt/nth` indexes into the literal
 
 An action that needs to *decide* what should happen (not just pass an
 event value through) registers as an expansion:
-`glitter.nexus.registry/register-action!` and `register-expansion!` are
+`nexus.registry/register-action!` and `register-expansion!` are
 literally the same function body, both writing to
 `[:nexus/expansions action-k]`:
 
@@ -136,9 +139,9 @@ literally the same function body, both writing to
   (swap! !registry assoc-in [:nexus/expansions action-k] f))
 ```
 
-(Verified by reading `glitter.nexus.registry` directly; this isn't a
+(Verified by reading `nexus.registry` directly; this isn't a
 glitter deviation, it's how upstream `nexus.registry` ships too, kept
-byte-for-byte.) `glitter.nexus/dispatch-action` checks `:nexus/expansions`
+byte-for-byte.) `nexus.core/dispatch-action` checks `:nexus/expansions`
 before `:nexus/effects` when resolving an action kind, so an
 action-expansion fn takes priority over a same-named effect if both
 happen to be registered (none of this project's demos register both
@@ -208,7 +211,7 @@ interceptor in this codebase is `glitter.nexus.action-log`'s
 
 ## The glitter-specific wiring convention
 
-`glitter.nexus`/`glitter.nexus.registry` stay 100% toolkit-agnostic,
+`nexus.core`/`nexus.registry` stay 100% toolkit-agnostic,
 faithful to upstream's own separation: `nexus.core` doesn't know about
 the DOM any more than it should know about GTK. Two pieces are
 glitter-specific and deliberately live in **each consuming demo**, not
@@ -231,7 +234,7 @@ in the ported files, mirroring how upstream's own dev example,
   of a hand-written dispatch fn and into data.
 - **`:nexus/on-error` → `clojure.tools.logging`**: every demo registers
   `(nxr/on-error (fn [_ctx {:keys [err] :as error}] (log/error err
-  "glitter.nexus dispatch error" (dissoc error :err))))`. `glitter.nexus/
+  "glitter.nexus dispatch error" (dissoc error :err))))`. `nexus.core/
   log-error` calls this on ANY caught exception anywhere in the dispatch
   pipeline (a bad effect, a bad expansion, an unresolved effect
   handler); without it, errors are silently swallowed into
@@ -241,14 +244,14 @@ in the ported files, mirroring how upstream's own dev example,
 
 Both are toolkit-specific choices a Reagent/glimmer app or a
 `nexus.core`-only web app wouldn't share, which is exactly why they
-don't belong in `glitter.nexus`/`glitter.nexus.registry` themselves.
+don't belong in `nexus.core`/`nexus.registry` themselves.
 
 ## Two consumer shapes
 
 ### `flights.clj`: pure effects only
 
 `examples/glitter/flights.clj` (the 7GUIs Flight Booker) is the first
-real consumer of `glitter.nexus`, and every interaction in it
+real consumer of `nexus.core`, and every interaction in it
 dispatches at most two effects, never an action expansion: every
 field is a pure `:effect/assoc-in` plus a registered placeholder,
 except the "Try again" button, which dispatches two `:effect/assoc-in`
@@ -263,7 +266,7 @@ and no `:nexus/actions`/`:nexus/expansions` registered at all:
 
 `flights.clj` never calls `nxr/register-system->state!` at all: unlike
 `crud.clj`/`todo.clj` (both call `(nxr/register-system->state! deref)`),
-it doesn't need to. `glitter.nexus/dispatch`'s own assert
+it doesn't need to. `nexus.core/dispatch`'s own assert
 (`(when (:nexus/expansions nexus) (assert (or (ifn? (:nexus/system->state
 nexus)) (ifn? (:nexus/system+dispatch-data->state nexus))) "Either ...
 must be a function"))`) only fires when `:nexus/expansions` is
@@ -274,10 +277,10 @@ state back through nexus.
 
 ### `crud.clj`/`todo.clj`/`temperature.clj`/`timer.clj`: action-expansions
 
-`crud.clj` and `todo.clj` were both retrofitted onto `glitter.nexus` in
+`crud.clj` and `todo.clj` were both retrofitted onto `nexus.core` in
 this arc (replacing a hand-written `execute-actions` `case` form);
 `temperature.clj` (the 7GUIs Temperature Converter) and `timer.clj`
-(the 7GUIs Timer) were both written against `glitter.nexus` from the
+(the 7GUIs Timer) were both written against `nexus.core` from the
 start, like `flights.clj` before them. All four register
 `:nexus/expansions` (via `register-action!`/`register-expansion!`
 (see above), the layer `flights.clj` never needs at all), but for a few
@@ -303,7 +306,7 @@ arg): it branches on which key is present in the DISPATCH DATA (has
 `:celsius` come through, or `:fahrenheit`?) to decide which field is
 the source and which is derived, something a single bare
 `:effect/assoc-in` can't express either, just for a different reason
-than `crud.clj`/`todo.clj`'s state-reads. Because `glitter.nexus/dispatch`'s
+than `crud.clj`/`todo.clj`'s state-reads. Because `nexus.core/dispatch`'s
 assert (quoted above) fires whenever `:nexus/expansions` is non-nil
 at all (regardless of whether the specific expansion that runs
 actually touches state) `temperature.clj` still has to call
@@ -340,14 +343,14 @@ by `:action/tick`'s own action-expansion; a dispatch-time read; NOT
 by `view` (a render-time call).** `glitter.gtk/mount!`'s `add-watch`
 re-renders `view` directly off the raw new value of the watched state
 atom (`src/glitter/gtk.clj`), entirely independent of
-`glitter.nexus`'s dispatch machinery, and unaware
+`nexus.core`'s dispatch machinery, and unaware
 `:nexus/system->state` even exists; since the atom itself never
 stores a `:now` key
 (only `:started`/`:duration`/`:last-tick` are ever written via
 `:effect/assoc-in`), an early version of `timer.clj`'s `view` that
 tried to read `(:now state)` directly threw a live
 `NullPointerException` on every tick (verified live: 63 occurrences
-over an 8-second run): swallowed by `glitter.nexus`'s own
+over an 8-second run): swallowed by `nexus.core`'s own
 `try-f`/`on-error` handling, so the process didn't crash, but
 `core/reconcile` never ran, and the display never advanced past its
 initial paint. The fix: `view` reads `System/nanoTime` directly
@@ -438,7 +441,7 @@ onto a nexus config map:
 ```
 
 No demo in this project currently calls `install-logger`: only
-`test/glitter/nexus/action_log_test.clj`'s own unit tests exercise it
+glitter-core's `test/glitter/nexus/action_log_test.clj`'s own unit tests exercise it
 directly, against small standalone nexus configs. `(pr-str @log)` is
 the current, and only, inspection method; there is no viewer. A GTK4-
 native viewer window (walking `@log`'s `:chronology`/`:entries` tree the
