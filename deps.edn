@@ -38,9 +38,10 @@
  ;; library provides (jolt #813 / RFC 0014). Without it, a jolt carrying #813
  ;; cannot resolve java.time.ZoneId at all: `jolt flights` dies, and
  ;; glitter.nexus.action-log-test is silently dropped from the suite, 29 tests
- ;; down to 26 with a clean exit. It is untagged because no release carries it
- ;; yet, so this pin is ahead of v0.0.7 deliberately. Move it to the tag once
- ;; one ships. See docs/guide/nexus.md.
+ ;; down to 26 with a clean exit. It shipped in v0.0.8.
+ ;;
+ ;; Now v0.0.13: v0.0.8's locale_data.clj ns docstring has unescaped quotes
+ ;; that jolt 0.8.x rejects, so tick.core (and `jolt flights`) failed to load.
  ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
@@ -53,7 +54,7 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "33c5e9831c046cfcbe68bc0c9c33e92568eaebb1"}
+         :git/sha "753905d0e694600f593b9904e880a8a8379fb7b1"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}
