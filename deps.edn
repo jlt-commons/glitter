@@ -34,13 +34,8 @@
  ;; v0.0.7 itself is what made (t/today) answer the machine's zone instead of
  ;; UTC. Pinning older puts flights.clj's departure field back on the UTC date.
  ;;
- ;; 33c5e98 is jolt-lang/time#11, which declares the java.time classes the
- ;; library provides (jolt #813 / RFC 0014). Without it, a jolt carrying #813
- ;; cannot resolve java.time.ZoneId at all: `jolt flights` dies, and
- ;; glitter.nexus.action-log-test is silently dropped from the suite, 29 tests
- ;; down to 26 with a clean exit. It is untagged because no release carries it
- ;; yet, so this pin is ahead of v0.0.7 deliberately. Move it to the tag once
- ;; one ships. See docs/guide/nexus.md.
+ ;; v0.0.16 is the first release that leaves `jolt build --tree-shake` working
+ ;; for apps requiring it (jolt-lang/time#28); it needs jolt v0.8.24 or newer.
  ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
@@ -53,7 +48,7 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "33c5e9831c046cfcbe68bc0c9c33e92568eaebb1"}
+         :git/sha "a6690ca1ae69585681965823959eef33707239ce"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}
