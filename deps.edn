@@ -40,8 +40,12 @@
  ;; glitter.nexus.action-log-test is silently dropped from the suite, 29 tests
  ;; down to 26 with a clean exit. It shipped in v0.0.8.
  ;;
- ;; Now v0.0.15: v0.0.8's locale_data.clj ns docstring has unescaped quotes
+ ;; v0.0.15: v0.0.8's locale_data.clj ns docstring has unescaped quotes
  ;; that jolt 0.8.x rejects, so tick.core (and `jolt flights`) failed to load.
+ ;;
+ ;; Now v0.0.16, the first release that leaves `jolt build --tree-shake`
+ ;; working for apps requiring it (jolt-lang/time#28); it needs jolt v0.8.24
+ ;; or newer.
  ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
@@ -54,7 +58,7 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "80e5fc22d9ddd8ee2f2f525580fbc643d0ecba4c"}
+         :git/sha "a6690ca1ae69585681965823959eef33707239ce"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}
