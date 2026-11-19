@@ -5,7 +5,7 @@
 `glitter` is a Replicant-style GTK4 renderer for Jolt. Its sibling,
 [glimmer](https://github.com/jolt-lang/glimmer), already applies Reagent's
 model (ratoms, automatic dependency tracking, component-local state) to
-GTK4; glitter deliberately applies a different model;
+GTK4; glitter deliberately applies a different one:
 [Replicant](https://github.com/cjohansen/replicant)'s single application-
 state atom, pure `state -> hiccup` view function, top-down re-render, and
 data-driven action-dispatch handlers. This guide covers how that model was
@@ -80,7 +80,7 @@ live GTK widget tree in sync.
     date, which was fixed upstream and is now a version floor.
 
 ### GTK integration
-- [`widgets.md`](widgets.md): **the widget reference** — every one of the 43
+- [`widgets.md`](widgets.md): **the widget reference**, covering every one of the 43
   tags, its props, its signals, and what `[:glitter/value]` resolves to for
   each. Start here to build something. Every snippet is lifted from one of
   the four runnable galleries under `examples/glitter/`, which
@@ -131,10 +131,10 @@ live GTK widget tree in sync.
   `swap!` from any thread safely reach the GTK main loop.
 
 ### Verify
-- [`testing-and-tasks.md`](testing-and-tasks.md) (the unit suite, the
+- [`testing-and-tasks.md`](testing-and-tasks.md): the unit suite, the
   headless fake-`IRender` test renderer, the twenty-seven automated live-GTK
-  smokes, and the `jolt`/`bb` task surfaces that run them.
-- [`limitations.md`](limitations.md)) every known v1 gap, and the
+  smokes, and the `jolt`/`bb` tasks that run them.
+- [`limitations.md`](limitations.md): every known v1 gap, and the
   reasoning behind leaving each one unfixed for now.
 
 ## See also
@@ -144,5 +144,5 @@ live GTK widget tree in sync.
 - [Replicant](https://github.com/cjohansen/replicant): the source of
   `glitter.core`'s reconciler and most of the non-GTK-specific namespaces.
 - `NOTICE` (repo root): the authoritative file-by-file attribution
-  ledger; `porting-and-attribution.md` explains it, `NOTICE` is the
+  list; `porting-and-attribution.md` explains it, `NOTICE` is the
   source of truth for exact commit SHAs and per-file deviation notes.

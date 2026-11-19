@@ -1,18 +1,18 @@
 # The examples
 
-Everything runnable lives under `examples/glitter/`; 32 namespaces, in two
-kinds:
+Everything runnable lives under `examples/glitter/`: 32 namespaces, in three
+kinds.
 
 - **Six interactive demos** you open and click. Four of them are
   [7GUIs](https://eugenkiss.github.io/7guis/) tasks, so they can be
   compared against implementations in other toolkits.
-- **Four widget galleries** — reference pages you can run. Between them
-  they use all 43 registered tags, and each is written to be copied from;
+- **Four widget galleries**, reference pages you can run. Between them
+  they use all 43 registered tags, and each is written to be copied from.
   [`widgets.md`](widgets.md) quotes them. Run `bb gallery-inputs`,
   `bb gallery-layout`, `bb gallery-display`, `bb gallery-chrome`.
 - **Twenty-seven live-GTK smokes** that mount a real window, assert against
   real GTK state, and exit non-zero on failure. These are the project's
-  actual regression suite for the GTK layer; the headless unit suite
+  regression suite for the GTK layer; the headless unit suite
   can't reach it.
 
 Run any of them with `bb <name>`, or `jolt -M:<name>` without babashka.
@@ -22,8 +22,8 @@ Run any of them with `bb <name>`, or `jolt -M:<name>` without babashka.
 
 | preview | `bb` name | Task | What it demonstrates |
 |---|---|---|---|
-| [<img src="../demos/counter.gif" width="150">](../demos/counter.gif) | `counter` | — | The canonical demo. One state atom, a pure `state -> hiccup` view, handlers as data. The 20-line version of the whole model. |
-| [<img src="../demos/todo.gif" width="150">](../demos/todo.gif) | `todo` | — | A task board: derived counts computed inline (glitter has no reactive-derivation primitive, the view just re-runs), an entry with `:change`/`:activate`, checkbutton toggles, list rendering in a frame. |
+| [<img src="../demos/counter.gif" width="150">](../demos/counter.gif) | `counter` | n/a | The canonical demo. One state atom, a pure `state -> hiccup` view, handlers as data. The 20-line version of the whole model. |
+| [<img src="../demos/todo.gif" width="150">](../demos/todo.gif) | `todo` | n/a | A task board: derived counts computed inline (glitter has no reactive-derivation primitive, the view just re-runs), an entry with `:change`/`:activate`, checkbutton toggles, list rendering in a frame. |
 | [<img src="../demos/crud.gif" width="150">](../demos/crud.gif) | `crud` | [CRUD](https://eugenkiss.github.io/7guis/tasks/#crud) | Live prefix filter, single-selection list box, name/surname fields, Create/Update/Delete. The spec's "separation of domain and presentation logic" is the pure `get-people` fn, shared by the view and the select-row expansion. |
 | [<img src="../demos/flights.gif" width="150">](../demos/flights.gif) | `flights` | [Flight Booker](https://eugenkiss.github.io/7guis/tasks/#flight-booker) | Constraints *between* widgets and *within* one. The first `glitter.nexus` consumer, and the only demo that needs no action expansions at all: every interaction is at most two effects. |
 | [<img src="../demos/temperature.gif" width="150">](../demos/temperature.gif) | `temperature` | [Temperature Converter](https://eugenkiss.github.io/7guis/tasks/#temp) | Two linked numeric fields, each updating the other. Needs exactly one action expansion, because which field is the *source* depends on which one you just edited. |
@@ -36,18 +36,18 @@ full-size recording.
 ## Widget galleries
 
 Runnable reference pages rather than tasks. Between them they use all 43
-registered tags, and each is written to be copied from —
+registered tags, and each is written to be copied from.
 [`widgets.md`](widgets.md) quotes them per tag.
 
 | preview | gallery |
 |---|---|
-| [<img src="../demos/gallery-inputs.gif" width="170">](../demos/gallery-inputs.gif) | **`bb gallery-inputs`** — every value-bearing widget, all writing into one state atom, with a readout rendering that atom, so the signal → action → effect → `swap!` → re-render round trip is the visible subject. |
-| [<img src="../demos/gallery-layout.gif" width="170">](../demos/gallery-layout.gif) | **`bb gallery-layout`** — the containers, grouped by how each decides where a child goes: ordered lists, fixed named slots, child-driven placement, single-child wrappers. |
-| [<img src="../demos/gallery-display.gif" width="170">](../demos/gallery-display.gif) | **`bb gallery-display`** — the read-only widgets, with no signal of their own. One `:scale` drives all nine, so a single value flows into nine presentations of itself. |
-| [<img src="../demos/gallery-chrome.gif" width="170">](../demos/gallery-chrome.gif) | **`bb gallery-chrome`** — app chrome and navigation as controlled components: header/action bars, `:menu-button` + `:popover`, `:notebook`, `:stack`, `:search-bar`. |
+| [<img src="../demos/gallery-inputs.gif" width="170">](../demos/gallery-inputs.gif) | **`bb gallery-inputs`**: every value-bearing widget, all writing into one state atom, with a readout rendering that atom. You can watch the signal → action → effect → `swap!` → re-render round trip happen. |
+| [<img src="../demos/gallery-layout.gif" width="170">](../demos/gallery-layout.gif) | **`bb gallery-layout`**: the containers, grouped by how each decides where a child goes: ordered lists, fixed named slots, child-driven placement, single-child wrappers. |
+| [<img src="../demos/gallery-display.gif" width="170">](../demos/gallery-display.gif) | **`bb gallery-display`**: the read-only widgets, with no signal of their own. One `:scale` drives all nine, so a single value shows up in nine different presentations. |
+| [<img src="../demos/gallery-chrome.gif" width="170">](../demos/gallery-chrome.gif) | **`bb gallery-chrome`**: app chrome and navigation as controlled components: header/action bars, `:menu-button` + `:popover`, `:notebook`, `:stack`, `:search-bar`. |
 
 `gallery_smoke.clj` mounts all four against live GTK on every `bb smokes`
-run, so nothing quoted in the reference can quietly stop compiling.
+run, so nothing quoted in the reference can stop compiling unnoticed.
 
 ## Why the demos are worth reading, not just running
 
@@ -57,14 +57,14 @@ sibling. `counter.clj` says it directly: in glimmer, local state lives in
 a component-scoped ratom and a click closure calls `swap!` itself. Here
 all state is in one top-level atom, the view is a pure function of it,
 and click handlers are *data* dispatched through one global fn, never
-closures. That difference is the whole point of the project, and it is
-easier to see in 20 lines of `counter.clj` than in any prose.
+closures. That difference is the point of the project, and 20 lines of
+`counter.clj` show it better than prose can.
 
-The four 7GUIs demos add a second axis: each names the specific challenge
-its task is designed to expose, and shows what that challenge looks like
-under this model. `flights.clj` and `crud.clj` are the interesting pair:
-same engine, and one needs no action expansions while the other's
-interactions can't be expressed without them.
+Each of the four 7GUIs demos names the challenge its task is designed to
+expose, and shows what that challenge looks like under this model.
+`flights.clj` and `crud.clj` make a useful pair: same engine, but one needs
+no action expansions while the other's interactions can't be expressed
+without them.
 
 ## Two findings worth knowing, both from `flights.clj`
 
@@ -78,31 +78,31 @@ the same formatter, reject unless the result matches the trimmed input),
 which is the only way the spec's "T is coloured red when ill-formatted"
 requirement actually works.
 
-This one is structural, not a version to wait out: `jolt/time/fmt.clj`'s
+This one is structural, so waiting for a newer version won't fix it: `jolt/time/fmt.clj`'s
 `parse-with-pattern` is a hand-rolled field scanner, and the library has
-no `ResolverStyle`/`withResolverStyle` at all — `DateTimeFormatterBuilder`'s
+no `ResolverStyle`/`withResolverStyle` at all, and `DateTimeFormatterBuilder`'s
 `parseLenient` and `parseCaseInsensitive` are `(fn [b] b)` no-ops.
 
-### `(t/today)` answered the UTC date — found here, fixed upstream
+### `(t/today)` answered the UTC date: found here, fixed upstream
 
 `flights.clj` defaults its departure field to today, and opened on
 *yesterday* for the first 10 hours of every AEST day. `(t/today)` answered
 the UTC date on every machine and ignored `TZ` even when it was set
 explicitly.
 
-Two independent `jolt-lang/time` defects caused it — `ZoneId/systemDefault`
-hardcoded to UTC, *and* the `now` family ignoring a zone even when handed one
-— and fixing either alone was not enough. Both are fixed in
+Two independent `jolt-lang/time` defects caused it: `ZoneId/systemDefault`
+hardcoded to UTC, and the `now` family ignoring a zone even when handed one.
+Fixing either alone was not enough. Both are fixed in
 [jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
 v0.0.7, which is the SHA `deps.edn` pins. The demo calls plain `(t/today)`.
 
-The pin is load-bearing, and so is the toolchain: a correct local date also
-needs **jolt v0.7.24 or newer**, because zone discovery reads `TZ` and an
+Without that pin the date comes out wrong. The toolchain matters too: a
+correct local date also needs **jolt v0.7.24 or newer**, because zone discovery reads `TZ` and an
 older jolt leaks `TZ=UTC` from its own boot probe
 ([#712](https://github.com/jolt-lang/jolt/pull/712)). v0.7.24 also carries
 [#716](https://github.com/jolt-lang/jolt/pull/716), which takes `(t/today)`
-from ~1.15ms to ~13.6us. Full write-up, including why reaching for GLib
-instead does not dodge any of it:
+from ~1.15ms to ~13.6us. The full write-up, including why using GLib
+instead doesn't avoid any of it, is in
 [`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
 
 ## Live-GTK smokes
@@ -111,8 +111,8 @@ instead does not dodge any of it:
 failure. Each is also a standalone `bb <name>`.
 
 These exist because GTK4 is a live, stateful system with a blocking main
-loop, and several of this project's fixed bugs were "obviously correct"
-on paper and wrong when actually run. Each smoke pins the specific
+loop, and several of this project's fixed bugs looked correct
+on paper and were wrong when run. Each smoke pins the specific
 behaviour that was once broken.
 
 ## Smokes: reconciler behaviour
@@ -164,8 +164,8 @@ behaviour that was once broken.
 
 ## Adding an example
 
-Four touchpoints, and skipping any one of them leaves the example
-invisible to something:
+Four places need to know about a new example. Skip any one and something
+won't see it:
 
 1. **The namespace** under `examples/glitter/`.
 2. **A `deps.edn` alias**, so `jolt -M:<name>` works without babashka.
@@ -173,7 +173,7 @@ invisible to something:
 4. **If it's a smoke**, add it to `bb.edn`'s `smokes` list: otherwise
    `bb smokes` won't run it and CI-by-hand won't catch a regression in it.
 
-A smoke must exit non-zero on failure. Do **not** gate it on `jolt <task>`.
+A smoke must exit non-zero on failure. Do **not** rely on `jolt <task>` for that.
 On jolt before v0.7.28 a `deps.edn` `:tasks` entry didn't propagate its
 child's exit status, so `jolt smoke` printed failures and still exited 0. That
 is fixed now, but glitter's floor is v0.7.24, so the task form still can't be

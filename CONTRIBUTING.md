@@ -108,12 +108,12 @@ Each of these was a real bug at some point. Most are explained at length in
 [`docs/guide/`](docs/guide/index.md); the short forms are here so a reviewer
 can point at a number.
 
-1. **Never gate CI on `jolt <task>`.** On jolt v0.6.3 a `deps.edn` `:tasks`
+1. **Never rely on `jolt <task>` in CI.** On jolt v0.6.3 a `deps.edn` `:tasks`
    entry didn't propagate its child process's exit status, so `jolt test`
    printed failures and still exited 0. Jolt fixed that in v0.7.28, and on
    v0.7.29 the task form exits correctly (measured as 7). Keep using
    `jolt -M:<alias>` or a `bb.edn` task anyway: glitter runs on jolt from
-   v0.7.24, and the fix only lands at v0.7.28, so the task form can still
+   v0.7.24, and the fix only arrives at v0.7.28, so the task form can still
    swallow a failure on a supported version.
 
 2. **`insert-before` covers two different cases**: a genuinely new child, and
@@ -225,7 +225,7 @@ not; prefer Tab/Space/Enter where the demo allows it.
 
 Before filing a bug, please check
 [`docs/guide/limitations.md`](docs/guide/limitations.md). Each entry there is
-a deliberate v1 scope call with the reasoning recorded, not an oversight: for
+a deliberate v1 scope call, and the reasoning is recorded next to it. For
 example, removing an attribute entirely is a no-op because GTK has no generic
 "unset this property", and several container widgets can't safely swap a
 child's hiccup *tag* while their fixed slots are full.

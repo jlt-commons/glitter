@@ -140,7 +140,7 @@ simultaneous occupant), but a DIFFERENT, live-verified failure shape,
 since two slots behave differently from three when the reconciler's
 "insert new, then remove old" sequencing runs out of room:
 
-- Swapping the **last** slot's tag while both are full lands correctly:
+- Swapping the **last** slot's tag while both are full works correctly:
   there is no third slot after it for the reconciler's stale bookkeeping
   to corrupt into, unlike `:center-box`.
 - Swapping the **first** slot's tag while both are full fails
@@ -209,7 +209,7 @@ elsewhere. `:on-click`/`:on-toggled` already establish the precedent
 that a dispatched event with no `:glitter/value` is a normal, supported
 shape: apps that need "which child was activated" must correlate it
 themselves (e.g. via their own understanding of what's currently
-rendered in the flow-box) until a real fix lands.
+rendered in the flow-box) until a real fix ships.
 
 ## `:notebook` has no per-child tab-label convention
 
@@ -452,11 +452,11 @@ a zone in `LocalDate`/`LocalTime`/`LocalDateTime`/`OffsetDateTime` `now`, so
 `(t/today)` answered the UTC date on every machine. Traced from
 `flights.clj` defaulting its departure field to yesterday, fixed upstream in
 [jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
-v0.0.7 — the SHA `deps.edn` pins.
+v0.0.7, the SHA `deps.edn` pins.
 
 glitter briefly carried a GLib `local-today` helper for it. That is gone:
 plain `(t/today)` is correct, and a rendering library has no business
-shipping a date API. **Do not reintroduce the helper** — if dates look wrong,
+shipping a date API. **Do not reintroduce the helper**. If dates look wrong,
 check the two version floors first (`jolt-lang/time` v0.0.7, which
 `deps.edn` pins, and **jolt v0.7.24**), since the jolt half is what a stale
 toolchain will be missing, and the GLib route never dodged it anyway. See
@@ -471,7 +471,7 @@ listening, and nothing repaints until the next unrelated change.
 
 This is not hypothetical: GTK auto-selects the first page of a `:notebook`
 or `:stack` as it is populated, which dispatches through glitter during that
-very first render. Verified live — the atom holds 2 the instant `mount!`
+very first render. Verified live: the atom holds 2 the instant `mount!`
 returns, while the label rendered moments earlier still shows 0.
 
 **What to do about it:** nothing, in most apps. The state is correct; only
@@ -489,7 +489,7 @@ honour.
 
 **Why:** GTK exposes no C setter for it on that widget. `GtkPasswordEntry`
 has a `placeholder-text` GObject *property*, but no
-`gtk_password_entry_set_placeholder_text` function — verified on GTK 4.22.4
+`gtk_password_entry_set_placeholder_text` function. Verified on GTK 4.22.4
 by calling it, which fails with `no entry for
 "gtk_password_entry_set_placeholder_text"`. Reaching a property with no
 setter needs `g_object_set_property` plus `GValue` marshalling, a complexity
@@ -498,9 +498,9 @@ class this project has not needed anywhere else yet.
 This was worse before: all three `GtkEditable` widgets routed `:placeholder`
 through `gtk_entry_set_placeholder_text`, which asserts `GTK_IS_ENTRY`. On
 `:password-entry` and `:search-entry` that produced one `Gtk-CRITICAL` each
-and did nothing — no exception, and nothing visibly wrong in a screenshot.
+and did nothing, with no exception and nothing visibly wrong in a screenshot.
 Found while writing `gallery_inputs.clj`. `:search-entry` now uses its own
-setter and works; `gallery_smoke.clj` reads both back as its regression gate.
+setter and works; `gallery_smoke.clj` reads both back as its regression check.
 
 **A caution about verifying this kind of thing:** both cheap checks lie
 here. `jolt.ffi/dlsym-native` reports `gtk_editable_set_placeholder_text` as

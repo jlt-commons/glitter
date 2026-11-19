@@ -107,8 +107,8 @@ task](https://eugenkiss.github.io/7guis/tasks/#timer) exercising a
 background `:effect/schedule` tick and a live `System/nanoTime` read
 at render time (not through `:nexus/system->state`; see
 [`nexus.md`](nexus.md)): meant to be run and clicked, not asserted
-on. `jolt todo` and `jolt crud` are also `glitter.nexus` consumers as
-of this arc (retrofitted from a hand-written `execute-actions` `case`
+on. `jolt todo` and `jolt crud` are also `glitter.nexus` consumers now
+(retrofitted from a hand-written `execute-actions` `case`
 form); `jolt counter` still dispatches the old way, and `jolt flights`
 is the first demo written against `glitter.nexus` from the start,
 followed by `jolt temperature` and `jolt timer`.
@@ -129,11 +129,11 @@ it was how the `:tasks` wrapper behaved, for every task in `deps.edn`.
 exited 0". Re-measured on v0.7.29-25-gd4e92a43 with a task whose command
 exits 7: both `jolt -M:fail` and `jolt fail` answer 7.
 
-The alias form is still the right thing for a gate, for a narrower reason
-than the original one. glitter declares `:jolt/min-version "0.7.24"`, and
+The alias form is still the right choice for a build check, though the
+reason is narrower than it was. glitter declares `:jolt/min-version "0.7.24"`, and
 the fix only arrives at v0.7.28, so anyone running a supported jolt in
 between still gets a task form that swallows the failure. The alias form
-is correct across the whole supported range, which is what a gate needs.
+is correct across the whole supported range, which is what a build check needs.
 
 **Always use `-M:<alias>` (or a `bb.edn` task, which already does this) to
 gate a build.** The task shorthand (`jolt test`, `jolt keyed`, ...) is fine
@@ -169,7 +169,7 @@ bb smokes               # all twenty-seven smokes in sequence; stops at first fa
 
 Every `bb.edn` task shells to `jolt -M:<alias>` directly (never the
 `jolt <task>` shorthand), so `bb test` and `bb smokes` are safe to use as a
-CI gate on their own. `bb smokes` chains all twenty-seven smokes with a plain
+CI check on their own. `bb smokes` chains all twenty-seven smokes with a plain
 sequence of `shell` calls; babashka's task runner aborts on the first
 non-zero exit, so it naturally stops at the first failure without any
 extra control flow.
@@ -257,7 +257,7 @@ warnings that are legitimate style opinions, not false positives: a
 `glitter.widget/markup-validate-element!`, and one genuinely unused
 private helper in `test/glitter/core_test.clj`. Neither is worth a config
 exclusion (that risks hiding a *real* future instance of either), but
-neither should permanently block a gate either. clj-kondo's exit code is a
+neither should permanently block a check either. clj-kondo's exit code is a
 severity ladder (`0` clean, `2` warnings only, `3` errors present
 (verified live: an intentionally-broken probe file reproduced `errors: 2,
 warnings: 0` → exit `3`)), so `bb lint`/`bb verify` report and always exit
@@ -271,7 +271,7 @@ treating the 2 known warnings the same as a clean run.
 `spit`, not tracked in the repo: each clone opts in with its own `bb
 hooks:install` run, adapted from `b12n-adk-clj`'s identical pattern). The
 FAST hook runs in ~2s, three steps: `clj-kondo --lint src test examples`
-gated on `bb lint:errors`' exit-3-only rule, then `clojure-lsp format
+checked with `bb lint:errors`' exit-3-only rule, then `clojure-lsp format
 --dry`, then `clojure-lsp clean-ns --dry`. `bb hooks:install:full` adds a
 fourth step, the full `jolt -M:test` suite (safe to run in a hook: the
 suite is headless, driven by `glitter.test-renderer`, no live GTK window
@@ -292,10 +292,9 @@ on one:
                    :as impl} el headers vdom index]
   ...)
 ```
-,
-which is not merely a style preference glitter happens to disagree
-with. Checked directly against `replicant.core.cljc` in the actual
-upstream Replicant source: **upstream itself writes this exact function
+
+Upstream Replicant doesn't format it this way either. Checked directly against `replicant.core.cljc` in its
+source: **upstream itself writes this exact function
 signature on one line.** Since `glitter.core` and the other Bucket-1 files
 are supposed to stay a mechanical, diffable port of Replicant (see
 [`porting-and-attribution.md`](porting-and-attribution.md)), reformatting
@@ -318,7 +317,7 @@ never applied to those, so leaving them unformatted alongside the ported
 files was a broader style inconsistency than the original rationale
 justified). `format --dry` is now a step in both pre-commit hooks (see
 the mechanics above); the natural, cheap follow-up mentioned as an
-option is done: every commit now gates on staying
+option is done: every commit now has to stay
 `bb lsp:format-check`-clean, so the codebase can't silently drift back
 out of format again the way it originally did.
 

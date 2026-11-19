@@ -3,7 +3,7 @@
 `glitter.widget` maps hiccup tags to GTK widget constructors and prop
 appliers; `glitter.gtk` drives it from the `IRender`/`IMemory` protocols.
 This page covers the mechanics and the specific GTK4 API traps this
-project hit; each is a real, live-verified bug this codebase used to have.
+project hit. Each was a bug this codebase used to have, verified live.
 
 ## The widget registry
 
@@ -170,9 +170,9 @@ real reconciler bookkeeping even though it never touches actual GTK.
 `examples/glitter/keyed.clj` pins this against the *live* GTK tree; it
 reads back the actual widget order via
 `gtk_widget_get_first_child`/`gtk_widget_get_next_sibling`, not glitter's
-own `:children` tracking, to prove the real `gtk_box_insert_child_after`
-calls landed correctly and not just that the algorithm's decisions were
-correct in the abstract.
+own `:children` tracking, to prove the `gtk_box_insert_child_after`
+calls placed children correctly, since the algorithm's decisions could be
+right on paper and still wrong in GTK.
 
 ## `replace-child!`: capture the anchor before you remove it
 
@@ -196,8 +196,8 @@ anchor:
 ```
 
 `gtk_widget_get_prev_sibling` returning null/0 means "was already the
-first child": `insert-child-after` with a null sibling arg inserts at the
-front, which is exactly the desired position. `examples/glitter/replace_child.clj`
+first child", and `insert-child-after` with a null sibling arg inserts at
+the front, which is the position we want. `examples/glitter/replace_child.clj`
 pins this.
 
 ## `:scale`: the first-party value-bearing custom signal
@@ -262,7 +262,7 @@ for entry and checkbutton.
 
 ## `:spinner`/`:progress-bar`/`:image`: display-only widgets need no signal
 
-Three widgets with a genuinely simpler shape than everything above:
+Three widgets with a simpler shape than everything above:
 `:spinner` (an indeterminate "loading" indicator, one boolean prop
 `:spinning`), `:progress-bar` (`:fraction`/`:text`/`:show-text`), and
 `:image` (`:icon-name`/`:file`/`:pixel-size`). None of them have a signal
@@ -285,9 +285,9 @@ content" step is needed, because `GtkImage`'s internal storage type
 setter was called most recently.
 
 Verified live (`examples/glitter/leaf_widgets_smoke.clj`): all three
-widgets' construction-time props land correctly, and re-rendering with
+widgets' construction-time props reach GTK, and re-rendering with
 different values (a different fraction, a different icon name, spinning
-flipped off) is reflected in real GTK state; read back via
+flipped off) shows up in GTK state, read back via
 `gtk_spinner_get_spinning`/`gtk_progress_bar_get_fraction`/
 `gtk_image_get_icon_name`, not glitter's own bookkeeping.
 
@@ -329,19 +329,17 @@ widget (so a handler *closure* never goes stale when the action data
 changes between renders, without the widget's identity changing), and
 `:connect` doesn't provide that.
 
-Shipping `:switch` state-settable-but-non-interactive (readable via
+Shipping `:switch` state-settable but non-interactive (readable via
 `:active`, but never dispatching back on user toggle) was considered and
-rejected as a quiet half-measure: it would look identical to `:checkbutton`
-in hiccup but silently not round-trip, a worse trap than not shipping it
-at all. Left as an explicitly open decision at the time, rather than
-resolved either way.
+rejected: it would look identical to `:checkbutton` in hiccup but silently
+fail to round-trip, a worse trap than not shipping it at all. The decision
+stayed open at the time.
 
 **Resolved two rounds later** (see
 ["`:switch`) generalizing `set-event-handler`"](#switch--generalizing-set-event-handler)
-below. This section is kept as-written rather than rewritten: the
-investigation and the "not worth a quiet half-measure" judgment call were
-both correct and are exactly the reasoning that later justified the real
-architecture work.
+below. This section is kept as written. The investigation and the
+judgment that a half-measure wasn't worth shipping were both correct, and
+they are the reasoning that later justified the architecture change.
 
 ## `:toggle-button`: reusing `"toggled"` for a second GTK4 class
 
@@ -377,8 +375,8 @@ three-part rigor as `:scale`'s smoke): a real click (direct FFI
 the actual `"toggled"` signal fires) reaches `*dispatch*` and updates
 state; a subsequent programmatic `reset!` pushes the widget back in sync;
 and that programmatic push does **not** trigger a second, spurious
-dispatch. This is what actually proves the *reuse* works, not just that
-`:checkbutton`'s original wiring works, which was already known.
+dispatch. That proves the *reuse* works, which `:checkbutton`'s original wiring
+alone didn't.
 
 `:level-bar` (a gauge/indicator; `:value`/`:min-value`/`:max-value`/
 `:inverted`) shipped alongside it in the same pass, same display-only
@@ -403,9 +401,9 @@ entry at all, only its own `gtk_link_button_new`/`_with_label`/
 `gtk_widget_set_sensitive` directly, since those are inherited
 `GtkButton`/`GtkWidget` methods `button-spec` already calls.
 
-Writing this widget's smoke surfaced a genuine GTK4 timing gotcha, worth
-pinning precisely because it would silently break any future test (or
-application code) that tries to simulate a button click programmatically.
+Writing this widget's smoke surfaced a GTK4 timing gotcha. It would silently
+break any future test (or application code) that tries to simulate a button
+click programmatically, so it's worth pinning down.
 `gtk_widget_activate` (the public function that simulates a real
 Enter/Space key activation) does **not** synchronously emit `"clicked"`
 for a `GtkButton`. Traced through `gtk/gtkbutton.c`:
@@ -425,7 +423,7 @@ gtk_real_button_activate (GtkButton *button)
 }
 ```
 
-Two traps stacked here, both found live rather than assumed:
+Two traps are stacked here, both found live:
 
 1. **`"clicked"` fires ~250ms later**, via a `g_timeout_add_once`: the
    press-animation delay. `gtk_widget_activate` returns before that
@@ -476,8 +474,8 @@ into one generic `foreign-callable` call:
   ...)
 ```
 
-This compiles the *shape* of the idea correctly but fails at the
-`foreign-callable` call itself. `jolt.ffi/foreign-callable` (and the
+The idea's shape is sound, but it fails at the `foreign-callable` call
+itself. `jolt.ffi/foreign-callable` (and the
 `__ccallable` special form it expands to) is a **compile-time**
 construct: `argtypes`/`rettype` must be literal at the call site, not a
 runtime value. Verified live, twice, in throwaway namespaces isolated
@@ -525,14 +523,12 @@ call for each distinct shape:
 
 The dispatch logic (suppressing-guard + calling `handler`) is factored
 into a shared `dispatch!` closure so it isn't duplicated between
-branches, but the `foreign-callable` calls themselves (the part that
-actually has the compile-time-literal constraint) stay separate and
-literal. **There is no generic extension point for adding a third
-non-standard shape**: it means adding a third literal branch here, by
-hand. `glitter.widget/register-signal!` intentionally has no `shape`
+branches. The `foreign-callable` calls themselves have the
+compile-time-literal constraint, so they stay separate and literal.
+**There is no generic extension point for a third non-standard shape.**
+You add a third literal branch here, by hand. `glitter.widget/register-signal!` intentionally has no `shape`
 parameter for this reason: accepting one and storing it in a table
-would silently promise a capability `set-event-handler` can't actually
-honor.
+would silently promise a capability `set-event-handler` can't honor.
 
 `"state-set"`'s value-fn doesn't need the signal's own second argument
 (the new boolean state) either, despite that value being right there in
@@ -560,7 +556,7 @@ special argument threading needed:
 
 Returning `0`/`FALSE` from the "state-set" callable (the `:return`-shaped
 value baked into the branch above) matters for a second reason beyond
-"satisfy the C ABI": GTK's docs say the signal handler should return
+satisfying the C ABI. GTK's docs say the signal handler should return
 `TRUE` to *prevent* the default handler from running. Returning `FALSE`
 lets that default handler (`gtk_switch_set_state`, which keeps the
 switch's internal visual `::state` sub-property in sync with `::active`)
@@ -575,14 +571,14 @@ suppressing guard works identically for a 3-arg/non-void-return signal as
 it does for the standard 2-arg-void ones, since suppression is checked
 inside `dispatch!`, before the shape-specific branch ever matters.
 
-Verified live end-to-end (`examples/glitter/switch_smoke.clj`, the full
-three-part rigor every value-bearing widget's smoke uses): a real
+Verified live end-to-end (`examples/glitter/switch_smoke.clj`, the same
+three checks every value-bearing widget's smoke uses): a real
 interaction (direct FFI `gtk_switch_set_active`, bypassing
 `set-switch-active!` so the actual `"state-set"` signal fires) reaches
 `*dispatch*` with the correct value at `(get-in event [:glitter/dom-event
 :glitter/value])`; a subsequent programmatic `reset!` pushes the widget
 back in sync; and that programmatic push does **not** trigger a second,
-spurious dispatch: the suppressing guard proven to work for this signal
+spurious dispatch, so the suppressing guard works for this signal
 shape too, not just the standard ones. `jolt -M:test` and `bb smokes`
 (all prior smokes) were re-run after this change to confirm zero
 regression in the shared `set-event-handler` path every other interactive
@@ -608,7 +604,7 @@ value" ordering concern.
 Every container kind so far (`:box` (ordered append list), `:window`/
 `:frame`/`:scrolled`/`:revealer` (exactly one child)) fits one of two
 shapes `glitter.gtk`'s generic child-tracking already assumes.
-`GtkCenterBox` doesn't: it has **three independently addressable NAMED
+`GtkCenterBox` doesn't: it has **three independently addressable named
 slots** (`start`/`center`/`end`, via `gtk_center_box_set_start_widget`/
 `set_center_widget`/`set_end_widget`), not a position in an ordered list.
 
@@ -665,8 +661,8 @@ step (reconciling `R`, the trailing unchanged sibling, by index) reads
 against that stale, now-4-long bookkeeping and ends up touching the
 WRONG tracked entry, corrupting `R`.
 
-**This is a genuine structural limitation, not a bug that can be patched
-purely in `center-box-insert-after!`.** A 3-fixed-slot container
+**This is a structural limitation that can't be patched purely in
+`center-box-insert-after!`.** A 3-fixed-slot container
 literally cannot hold 4 simultaneous occupants the way an ordered list
 can: there's no slot to stash the new child in while the old one is
 still "pending removal" from the reconciler's point of view. Documented
@@ -683,7 +679,7 @@ correctly; already proven by every existing `:box` smoke, including
 paths this fix does support: a props-only text update on an
 already-populated slot (proving unrelated slots stay untouched), and
 dropping a slot's child entirely (pure removal, no concurrent insert).
-`:list-box`, covered next, does NOT share this problem; confirmed
+`:list-box`, covered next, does not share this problem; that was confirmed
 separately, live.
 
 ## `:spin-button`: generalizing `signal-value` by tag
@@ -715,10 +711,10 @@ GtkSpinButton is its own, unrelated GTK4 class. Registering
 `:spin-button`'s value-fn under the bare string `"value-changed"` would
 have **silently overwritten `:scale`'s entry** (or vice versa, depending
 on which widget's spec happened to load last): both widgets share the
-one map key, and only one value-fn can occupy it. Found via source-level
-verification WHILE adding `:spin-button`, cross-referencing
+one map key, and only one value-fn can occupy it. Found by reading
+the source while adding `:spin-button`, comparing
 `gtk/gtkspinbutton.c`'s signal name against `gtk/gtkrange.c`'s, before
-this ever shipped and broke `:scale`, not caught by any test, since no
+this shipped and broke `:scale`. No test would have caught it, since no
 prior widget had ever shared a signal name with another.
 
 The fix: `signal-value` is now keyed by **`[tag gtk-signal-name]`**, a
@@ -744,8 +740,7 @@ direct-props path; see the ns docstring) gained the same `tag`
 parameter for consistency, though it isn't exercised by the reconciler-
 driven render path.
 
-`spin_button_list_box_smoke.clj`'s spin-button assertions are what pin
-this actually works: the dispatched value comes back correctly through
+`spin_button_list_box_smoke.clj`'s spin-button assertions pin this: the dispatched value comes back correctly through
 `:spin-button`'s OWN getter, and `scale_smoke.clj` (already green,
 re-run as part of every `bb smokes` pass) confirms `:scale`'s entry is
 undisturbed.
@@ -755,7 +750,7 @@ undisturbed.
 `GtkListBox`'s row-interaction signals, `"row-selected"`/
 `"row-activated"`, are confirmed via `gtk/gtklistbox.c`'s `g_signal_new`
 calls to be `void(GtkListBox*, GtkListBoxRow*, gpointer)`: 3 args, VOID
-return. This is a THIRD distinct callable shape, alongside the default
+return. This is a third distinct callable shape, alongside the default
 2-arg-void and `"state-set"`'s 3-arg/non-void-return; `set-event-handler`
 gained a third literal `foreign-callable` branch:
 
@@ -818,7 +813,7 @@ grepping the GTK source tree for the literal warning string. Fix:
 `list-box-reorder-child!` all pass the ROW to `gtk_list_box_remove`, not
 the child.
 
-This bug is what made the round's ORIGINAL `:list-box` v1 scope call
+This bug is what made the round's original `:list-box` v1 scope call
 ("append/remove/replace correctly, but `insert-child-after!`/
 `reorder-child!` stay documented no-ops, same as the single-child
 containers") look reasonable at first. It wasn't: exactly the same
@@ -830,7 +825,7 @@ structural capacity limit; `GtkListBoxRow`s are just ordinary tree
 children, so `gtk_list_box_insert(box, child, position)`'s index-based
 API (confirmed via its own doc comment that an out-of-range or `-1`
 position clamps to "append") gives `list-box-insert-after!`/
-`list-box-reorder-child!` everything needed for a REAL fix, not a
+`list-box-reorder-child!` everything needed for a real fix, not a
 documented gap:
 
 ```clojure
@@ -852,11 +847,10 @@ time: `reorder-child!` deliberately removes `child`'s OLD row FIRST,
 THEN computes the target index, so a removal that happens to shift
 `sibling`'s live index (if `child` was previously positioned before it)
 is already reflected before the index is used. `list-box-reorder-child!`
-was written but not live-exercised by any smoke in this round (only
+was written but not exercised by any smoke in this round (only
 `insert-child-after!`'s "insert new, tag-swap" path and pure removal
-were); treat it as implemented-and-reasoned-through, not
-verified-under-fire the way the rest of this round's changes are; see
-`docs/guide/limitations.md`.
+were). Treat it as reasoned through but not tested live, unlike the rest
+of this round's changes; see `docs/guide/limitations.md`.
 
 ### Bug 2: removing the selected row fires a real, synchronous signal
 
@@ -872,10 +866,10 @@ argument: GTK's own deselection notice. Confirmed against
 conditionally), so removing a row that was selected leaves GTK's
 internal state needing to announce "nothing is selected now."
 
-This is a real GTK signal, not something `glitter.widget`'s existing
-`suppressing` guard (built for GLITTER'S OWN programmatic setters like
-`set-switch-active!`) was written to intercept: it's a side effect of a
-CONTAINER operation (`gtk_list_box_remove`), not a value-setter. Left
+This is a real GTK signal, and `glitter.widget`'s existing
+`suppressing` guard (built for glitter's own programmatic setters like
+`set-switch-active!`) wasn't written to intercept it. It's a side effect of a
+container operation (`gtk_list_box_remove`), not a value-setter. Left
 unsuppressed, the spurious dispatch reaches the app's `*dispatch*` fn
 exactly like a real user deselection would (and because `mount!`'s
 watcher runs `render!` INLINE when already on the GTK main thread
@@ -884,7 +878,7 @@ happens
 synchronously inside a GTK signal callback fired from INSIDE an
 in-progress `core/reconcile` call, the resulting `swap!` on the app's
 state atom triggers a SECOND, NESTED `core/reconcile` call before the
-outer one has finished) a reentrant reconcile, which is what actually
+outer one has finished) a reentrant reconcile, which is what
 threw the `GTK_IS_WIDGET` assertion (touching a widget the outer,
 still-in-flight reconcile hadn't finished processing yet).
 
@@ -892,8 +886,8 @@ Fix: `"row-selected"`'s `src-widget` argument is the list-box ITSELF
 (per its real C signature), so `list-box-remove-child!`/
 `list-box-replace-child!`/`list-box-reorder-child!` all `swap!
 suppressing conj/disj` on `parent` (the list-box widget) around their
-`gtk_list_box_remove` call; the exact same suppress-then-mutate shape
-`set-switch-active!` and friends already use, just applied to a
+`gtk_list_box_remove` call; the same suppress-then-mutate shape
+`set-switch-active!` and friends already use, applied to a
 container operation instead of a value setter:
 
 ```clojure
@@ -940,7 +934,7 @@ automatically cover `:password-entry`/`:search-entry`, even though all
 three share the identical GTK signal NAME and the identical value-fn
 body (`gtk_editable_get_text`). **The first version of this round
 shipped without `[:password-entry "changed"]`**, and a live smoke caught
-it immediately: typing into the password entry dispatched
+it: typing into the password entry dispatched
 `:action/set-pw` (confirming the SIGNAL wiring worked), but the
 dispatched value came back `nil` every time (confirming the VALUE
 extraction silently failed);
@@ -962,17 +956,15 @@ is identical to `:entry`'s:
 [:search-entry "changed"]   (fn [widget] (g/gtk-editable-get-text widget))
 ```
 
-This is exactly the risk `:spin-button`'s `[tag signal]` re-keying was
-designed to prevent (a shared signal name silently losing one widget's
-registration) (but re-keying by tag doesn't mean each widget gets
-`:entry`'s registration "for free" the way `signals` (the signal-NAME
-table) does; it means the OPPOSITE) every widget that wants a
-value-bearing signal needs its own explicit entry, full stop, even when
-that entry is a byte-for-byte duplicate of another widget's. Caught by
-`password_search_entry_smoke.clj` before it ever shipped, not
-discovered after the fact.
+`:spin-button`'s `[tag signal]` re-keying was designed to prevent a shared
+signal name from silently losing one widget's registration. The flip side
+is that no widget gets `:entry`'s registration "for free" the way `signals`
+(the signal-name table) does. Every widget that wants a value-bearing
+signal needs its own explicit entry, even when that entry is a
+byte-for-byte duplicate of another widget's. `password_search_entry_smoke.clj`
+caught this before it shipped.
 
-`:search-entry` also gets its own genuinely new signal, `"search-changed"`:
+`:search-entry` also gets its own new signal, `"search-changed"`:
 confirmed via `gtk/gtksearchentry.c`'s `g_signal_new` call to be
 `G_TYPE_NONE, 0`, the plain 2-arg-void shape, no `set-event-handler`
 generalization needed. It's debounced by the widget's own internal timer
@@ -996,8 +988,8 @@ else
 
 `password_search_entry_smoke.clj` uses this documented-in-source special
 case (clear to `""`) as its live-interaction trigger for `"search-changed"`:
-a deterministic, synchronous path, instead of trying to wait out a
-real GLib timeout inside a smoke test.
+a deterministic, synchronous path, instead of waiting out a
+GLib timeout inside a smoke test.
 
 ## `:expander`/`:paned`: free signal reuse, and a second structural gap
 
@@ -1028,12 +1020,10 @@ EXISTING literal branch with zero new `foreign-callable` call sites:
  [:pointer :pointer :pointer] :void :collect-safe)
 ```
 
-This is the payoff the round-6 `:list-box` write-up promised: "add a
-new signal branch here for the next one" turned out to mean, for THIS
-specific 3-arg-void shape, "add the signal NAME to the existing set,"
-not "write a new branch." `expander_paned_smoke.clj`'s dispatch-count
-assertions are what actually prove this reuse works end-to-end, not
-just that it compiles.
+The round-6 `:list-box` write-up said to add a new signal branch for the
+next one. For this 3-arg-void shape that turned out to mean adding the
+signal name to the existing set. `expander_paned_smoke.clj`'s dispatch-count
+assertions prove the reuse works end-to-end, beyond compiling.
 
 ### `:paned`: a second named-slot container, with a DIFFERENT verified failure shape
 
@@ -1048,13 +1038,12 @@ no transient capacity for a 3rd simultaneous occupant when both slots
 are full and a same-slot hiccup TAG swap goes through
 `glitter.core`'s "insert new, then remove old" sequencing.
 
-This gap was applied to `:paned` from the start this round, informed by
-the `:center-box` investigation, but the exact SYMPTOM still needed
-live verification, not assumption, because `GtkPaned` only has 2 slots,
-not 3, and that changes what actually breaks:
+The `:center-box` investigation told us to expect this gap in `:paned`,
+but the exact symptom still needed live verification, because `GtkPaned`
+has 2 slots, not 3, and that changes what breaks:
 
 - **Swapping the LAST slot's tag** (`sibling` = the OTHER, unchanged
-  slot's widget) while both are full lands **correctly**. The new child
+  slot's widget) while both are full works **correctly**. The new child
   overwrites the occupied end slot directly (`gtk_paned_set_end_child`
   unparents (and, with nothing else referencing it, GTK finalizes) the
   old occupant immediately, same mechanism as `:center-box`), but unlike
@@ -1071,7 +1060,7 @@ not 3, and that changes what actually breaks:
   neither widget. Verified live in a throwaway probe: both
   `gtk_paned_get_start_child` and reading back the intended replacement
   trip `GTK_IS_BUTTON` assertions afterward, not corruption of an
-  unrelated slot this time, just a silently-failed swap.
+  unrelated slot this time, just a silently failed swap.
 
 Either way, the remedy is identical to `:center-box`'s: no same-slot tag
 swap when both slots are already occupied: change props instead of
@@ -1097,12 +1086,12 @@ setters (`gtk/gtkaspectframe.h`), so unlike `:paned`'s `orientation`
 they carry no chicken-and-egg risk and resolve directly from props at
 ctor time, with GTK's own documented defaults as fallback.
 
-`GtkCalendar` is a genuinely new value-bearing leaf widget.
+`GtkCalendar` is a new kind of value-bearing leaf widget.
 `"day-selected"` is confirmed via `gtk/gtkcalendar.c`'s `g_signal_new`
 call to be the plain 2-arg-void shape, but `gtk_calendar_get_date`
 returns a `GDateTime*`, a value type this project has never marshalled
 before. GLib's `GDateTime` is refcounted, and the exact ownership rules
-matter enough that they're worth pinning precisely rather than guessing
+matter enough to pin down rather than guess
 from general GObject conventions:
 
 ```c
@@ -1145,8 +1134,7 @@ dispatch: small individually, but unbounded over a long-running app's
 lifetime. `aspect_frame_calendar_smoke.clj`'s round-trip (a real
 interaction dispatching a `[year month day]` value, then a programmatic
 `reset!` syncing the widget back with the suppressing guard proven to
-hold) is what actually exercises this discipline under repeated use, not
-just confirms it compiles.
+hold) exercises this discipline under repeated use.
 
 ## `:overlay`/`:flow-box`: a third container shape, and a verified difference, not an assumption
 
@@ -1200,8 +1188,8 @@ layout manager:
 
 `:overlay-child-count-on-mount` reads `2` (main + one overlay);
 `:overlay-child-count-after-drop` reads `1` after removing the overlay;
-proof the removal reached live GTK state, not just that `main` stayed
-correct.
+which shows the removal reached live GTK state and not just that `main`
+stayed correct.
 
 ### `:flow-box`: apply the `:list-box` lessons, but verify, don't assume
 
@@ -1213,11 +1201,11 @@ and `gtk_flow_box_insert`'s body confirms it: a plain child gets wrapped
 in a fresh `GtkFlowBoxChild` exactly like `gtk_list_box_insert` wraps in
 a fresh `GtkListBoxRow`.
 
-The temptation, given the structural similarity, is to assume
-`gtk_flow_box_remove` has the identical "needs the wrapper, not the
-plain child" gotcha `:list-box` needed a fix for two rounds ago. **It
-does not**; verified by reading `gtk_flow_box_remove`'s C body
-directly, not by assuming the lesson transfers between sibling widgets:
+Given the structural similarity, you'd expect `gtk_flow_box_remove` to
+have the same "needs the wrapper, not the plain child" gotcha that
+`:list-box` needed a fix for two rounds ago. **It doesn't.** The lesson
+didn't transfer between sibling widgets, which we know from reading
+`gtk_flow_box_remove`'s C body directly:
 
 ```c
 /* gtk_flow_box_remove's actual C body — confirmed by reading it directly */
@@ -1252,7 +1240,7 @@ the insert/reorder side.
 `:paned`, another free reuse with zero new `foreign-callable` call
 sites. v1 deliberately wires `:on-child-activated` with **no value-fn**:
 reading back "which child" would need `GList` traversal via
-`gtk_flow_box_get_selected_children`) a genuinely new FFI complexity
+`gtk_flow_box_get_selected_children`) a new FFI complexity
 class (walking a linked list through raw pointers) this project hasn't
 needed yet, and not worth taking on for a first pass when
 `:on-click`/`:on-toggled` already establish the precedent that a
@@ -1283,21 +1271,20 @@ plain strings (not a `GFile*`), matching `:image`'s existing
 checked against those before writing the new ones, so no new marshalling
 convention was introduced.
 
-`GtkEditableLabel` is a THIRD widget in this project implementing
+`GtkEditableLabel` is a third widget in this project implementing
 `GtkEditable` via a delegate (after `:password-entry`/`:search-entry`:
 confirmed against `gtk/gtkeditablelabel.c`'s `gtk_editable_init_delegate`
 call), so it reuses `set-entry-text!`/`:entry`'s `"changed"` signal NAME
 for free. It still needs its own `[:editable-label "changed"]`
 `signal-value` entry, exactly like `:password-entry` did two rounds ago,
-and this round repeated that EXACT mistake once, live, despite writing a
+and this round repeated that exact mistake, despite writing a
 comment in `editable-label-spec` saying the entry would be "applied
 proactively this time." It wasn't; the entry was written into the spec's
-comment and then never actually added to the `signal-value` atom. Caught
-by the throwaway probe this section's smoke was distilled from (a typed
-value came back `nil`), not assumed safe because the comment said so:
-the same lesson as the original `:password-entry` near-miss, now missed
-*twice* by two different rounds' authors, which is why it's called out
-here explicitly rather than trusted to a comment alone.
+comment and then never actually added to the `signal-value` atom. A
+throwaway probe (a typed value came back `nil`) caught it. This is the same
+lesson as the original `:password-entry` near-miss, now missed *twice* by
+two different rounds' authors, so a comment alone can't be trusted to
+prevent it.
 
 Click-to-edit itself is GTK's own built-in gesture, no signal wiring
 needed for entering edit mode by clicking. Programmatic edit-mode control
@@ -1321,11 +1308,11 @@ in-progress text rather than discarding it.
 
 ### A general `GtkEditable` finding: bulk text replacement isn't one atomic emission
 
-Investigating this widget's `"changed"` dispatch count surfaced a real,
-general `GtkEditable` behavior that applies to **every** widget built on
+Investigating this widget's `"changed"` dispatch count surfaced a general
+`GtkEditable` behavior that applies to **every** widget built on
 the delegate in this project (`:entry`, `:password-entry`,
-`:search-entry`, and now `:editable-label` alike) not a glitter bug and
-not specific to any one widget. `gtk_editable_set_text`'s own C body,
+`:search-entry`, and now `:editable-label` alike). It's a GTK behavior,
+it isn't specific to any one widget, and glitter doesn't cause it. `gtk_editable_set_text`'s own C body,
 read directly rather than assumed atomic:
 
 ```c
@@ -1340,7 +1327,7 @@ gtk_editable_set_text (GtkEditable *editable, const char *text)
 ```
 
 Two separate mutations, not one, and only property `notify` is frozen/
-thawed around them (`g_object_freeze_notify`/`thaw_notify`), NOT the
+thawed around them (`g_object_freeze_notify`/`thaw_notify`), not the
 `"changed"` signal itself. Whether `"changed"` fires once or twice
 depends on the state of the buffer BEFORE the call:
 `gtk/gtktext.c`'s `gtk_text_delete_text` has an early return;
@@ -1351,18 +1338,18 @@ if (start_pos == end_pos)
   return;
 ```
 ,
-so deleting from an ALREADY-EMPTY buffer is a silent no-op (no
+so deleting from an already-empty buffer is a silent no-op (no
 `"changed"` emitted), leaving only the insert's own emission: **one**
-`"changed"` total. Replacing NON-EMPTY text fires the delete's emission
-AND the insert's: **two**. This only matters when SIMULATING a bulk
+`"changed"` total. Replacing non-empty text fires the delete's emission
+AND the insert's: **two**. This only matters when simulating a bulk
 replace-all-text interaction the way this project's smokes do: calling
 `gtk_editable_set_text` directly to bypass glitter's own wrapper and
-trigger the real signal. A real user typing character-by-character never
-takes this path at all; that goes through `gtk_editable_insert_text`
+trigger the real signal. A user typing character by character never
+takes this path; that goes through `gtk_editable_insert_text`
 directly, once per keystroke, with no matching delete. Every
 `GtkEditable`-family smoke in this project (`password_search_entry_smoke.clj`,
 `picture_editable_label_smoke.clj`) starts its interaction target from
-EMPTY text specifically so its dispatch-count assertion tests the
+empty text specifically so its dispatch-count assertion tests the
 behavior under test, not this incidental doubling: round 7's
 `:password-entry` smoke happened to get this right by starting `:pw` at
 `""`, but that was accidental (discovered only while root-causing this
@@ -1370,7 +1357,7 @@ round's finding), not a deliberate choice documented at the time.
 
 ## `:notebook`/`:scale-button`: a sixth callable shape, a mount-time surprise, and a tag-aware dispatch
 
-`GtkNotebook` does NOT auto-wrap its children the way `:list-box`/
+`GtkNotebook` does not auto-wrap its children the way `:list-box`/
 `:flow-box` do: a page's child IS the real widget throughout, and
 `gtk_notebook_page_num(notebook, child)` recovers its page index
 directly (confirmed against `gtk/gtknotebook.h`), no unwrap step
@@ -1385,10 +1372,10 @@ always passes `NULL`: no per-child hiccup convention for custom tab
 labels yet, deferred rather than inventing a second widget-per-page
 shape for a first pass.
 
-`"switch-page"` is a SIXTH callable shape in this project (4 args,
+`"switch-page"` is a sixth callable shape in this project (4 args,
 `void(GtkNotebook*, GtkWidget* page, guint page_num, gpointer)`,
 confirmed against `gtk/gtknotebook.c`'s `g_signal_new` call), and the
-FIRST signal here that can't reuse the shared `dispatch!`/`value-fn`
+first signal here that can't reuse the shared `dispatch!`/`value-fn`
 path every earlier signal (including `:scale-button`'s, below) uses.
 `gtk_notebook_switch_page` (the function that EMITS this signal) only
 READS `notebook->cur_page`; the actual `cur_page = page` assignment
@@ -1416,7 +1403,7 @@ entirely:
 
 ### Mounting a notebook dispatches, before any interaction
 
-A second, genuinely surprising real GTK behavior falls out of
+A second, surprising GTK behavior falls out of
 `gtk_notebook_insert_page`'s own C body (also called internally by
 `gtk_notebook_append_page`), read directly while investigating why the
 throwaway probe's dispatch log had a `"switch-page"` entry BEFORE any
@@ -1435,11 +1422,11 @@ if (!gtk_notebook_has_current_page (notebook))
 Appending the FIRST page to a notebook that has no current page yet
 auto-selects it, which is exactly what happens when `:notebook`'s
 initial children are appended during mount. So constructing a
-`[:notebook ...]` with initial children genuinely DISPATCHES a
+`[:notebook ...]` with initial children dispatches a
 `"switch-page"` action as a side effect of mounting, before the app
-ever interacts with the widget. This is real GTK behavior, not a
+ever interacts with the widget. This is GTK behavior, not a
 glitter bug, but it means a dispatch-count baseline of `0` after mount
-is WRONG for any app using `:notebook` with pre-populated pages;
+is wrong for any app using `:notebook` with pre-populated pages;
 `notebook_scale_button_smoke.clj`'s own dispatch-count assertions start
 from `1`, not `0`, for exactly this reason. There is no `get-nth-page`
 GTK API to read a page's own child widget back out (only
@@ -1458,9 +1445,9 @@ icon set rather than erroring on a null icon array.
 
 Its `"value-changed"` signal shares the exact GTK signal NAME
 `:scale`/`:spin-button` already use (a THIRD widget doing so), but has
-a genuinely DIFFERENT real C shape: `void(GtkScaleButton*, double,
+a different C shape: `void(GtkScaleButton*, double,
 gpointer)`, confirmed against `gtk/gtkscalebutton.c`'s `g_signal_new`
-call. This is the FIRST case in this project where the signal NAME
+call. This is the first case in this project where the signal name
 alone is insufficient to pick the right callable; `set-event-handler`'s
 `cond` has to check the widget's own `:tag` too:
 
@@ -1485,8 +1472,8 @@ though the raw-argument-only pattern was required for `:notebook`.
 `notebook_scale_button_smoke.clj`'s dispatch-count sequence (`1` after
 mount (the notebook's own auto-select), `2` after a real page switch,
 `3` after a real scale-button drag, `3` again (unchanged) after a
-programmatic sync-back of both widgets) is what proves both findings
-end-to-end against live GTK state, not just that the code compiles.
+programmatic sync-back of both widgets) proves both findings
+end-to-end against live GTK state.
 
 ## `:inscription`/`:search-bar`: two more quick, no-signal wins
 
@@ -1517,7 +1504,7 @@ Every multi-child container up to this point has been either a plain
 ordered list (`:box`/`:list-box`/`:flow-box`/`:notebook`) or a FIXED
 set of independently-named slots (`:center-box`'s three,`:paned`'s
 two, `:overlay`'s one-plus-unbounded-unenumerable). `GtkHeaderBar` and
-`GtkActionBar` are a genuinely different shape again: one named
+`GtkActionBar` are a different shape again: one named
 title-widget/center-widget slot, plus an **ordered** pack-start list;
 unbounded, like `:box`'s children, but coexisting with a named slot the
 way `:center-box`'s do.
@@ -1535,7 +1522,7 @@ becomes the title-widget (`:header-bar`) or center-widget
     (g/gtk-header-bar-pack-start parent child)))
 ```
 
-A real, verified finding drove the decision to stop there and not also
+A verified finding drove the decision to stop there and not also
 wire `pack_end`. Reading `gtk_header_bar_pack`'s C body directly:
 
 ```c
@@ -1608,7 +1595,7 @@ at this smoke assumed a flat 3-sibling composite and mis-treated a
 `GtkCenterBox` pointer as a `GtkButton`, caught immediately by a live
 `GTK-CRITICAL` rather than a silent wrong answer.
 
-That same investigation surfaced a second, independent real finding:
+That same investigation surfaced a second, independent finding:
 `gtk_header_bar_set_show_title_buttons(bar, TRUE)` calls
 `create_window_controls(bar)`, which `gtk_box_prepend`s a native
 `GtkWindowControls` widget into `bar->start_box`; THE SAME pack-start
@@ -1622,13 +1609,12 @@ bar->start_window_controls = controls;
 
 Toggling `:show-title-buttons` true therefore lands a GTK-managed,
 non-button widget at the FRONT of the pack-start list, shifting
-glitter's own tracked children back by one position. This is real GTK
+glitter's own tracked children back by one position. This is GTK
 behavior sharing the same mutable list, not a glitter bug, and not
 something glitter's own container-management code needs to guard
 against, since `gtk_header_bar_remove`/`replace` only ever act on
 widgets glitter itself created, never on GTK's own internal controls
-widget. `header_bar_action_bar_smoke.clj` asserts the shift explicitly
-rather than avoiding it: mounts with `:show-title-buttons false` (so
+widget. `header_bar_action_bar_smoke.clj` asserts the shift explicitly: mounts with `:show-title-buttons false` (so
 the mount-time read sees only glitter's own two buttons), then toggles
 it true on re-render and confirms the pack-start count grows by one
 while glitter's own buttons keep their relative order, now at the tail.
@@ -1660,12 +1646,12 @@ if (popover)
 `:popover` itself is an ordinary single-child container
 (`gtk_popover_set_child`), same strategy as `:frame`/`:revealer`.
 
-Both signals turned out to be free reuses of the plain 2-arg-void shape
+Both signals are free reuses of the plain 2-arg-void shape
 already generalized in this project: confirmed via
 `gtk/gtkmenubutton.c`'s and `gtk/gtkpopover.c`'s own `g_signal_new`
 calls that `"activate"` and `"closed"` are both `G_TYPE_NONE, 0`. No new
-`foreign-callable` branch was needed in `glitter.gtk/set-event-handler`
-at all; the first round where every new signal is a free reuse.
+`foreign-callable` branch was needed in `glitter.gtk/set-event-handler`.
+This is the first round where every new signal is a free reuse.
 `:on-activate` was already a registered `signals` entry (added
 speculatively in an earlier round, unused until now); `:on-closed` is
 new, but only as a signal NAME entry, not a new shape.
@@ -1725,11 +1711,11 @@ for the full mechanism (`create-node`'s actual call, `set-attribute`'s
 one-key-per-call shape). This section covers what that finding meant
 for the widgets already shipped by round 10.
 
-A systematic audit of all 39 pre-round-11 widget specs, cross-checking
+An audit of all 39 pre-round-11 widget specs, cross-checking
 every `:ctor` prop reference against `:apply`'s coverage, found four
-real bugs; all confirmed live, all shipped since as early as round 1,
-all invisible to every existing smoke because no existing smoke's
-chosen test values happened to exercise the gap:
+bugs. All were confirmed live and had shipped as early as round 1. Every
+existing smoke missed them because none of the smokes' test values
+happened to exercise the gap:
 
 1. **`:checkbutton-spec`'s `:label` was read in `:ctor` but never
    applied.** `(gtk-check-button-new-with-label (:label p))` never
@@ -1796,10 +1782,10 @@ chosen test values happened to exercise the gap:
    `gtk_spin_button_get_adjustment` instead of `gtk_range_get_adjustment`
    (GtkSpinButton is not a GtkRange subclass).
 
-4. **Not fixed, documented v1 gap:** the audit found ONE more
+4. **Not fixed, documented v1 gap:** the audit found one more
    instance of the same shape, `window-spec`'s `:width`/`:height` ->
    `gtk_window_set_default_size`. Its counterpart getter,
-   `gtk_window_get_default_size`, uses OUT-PARAMETERS (a genuinely new
+   `gtk_window_get_default_size`, uses OUT-PARAMETERS (a new
    FFI marshalling class this project hasn't taken on), and the
    practical severity is much lower than the other three (an
    initial-sizing-only concern; the `-1` fallback GTK itself uses means
@@ -1808,15 +1794,14 @@ chosen test values happened to exercise the gap:
    on the next unrelated resize). Left as a documented comment above
    `window-spec` rather than fixed this round.
 
-`examples/glitter/ctor_apply_regression_smoke.clj` pins bugs 1-3
-permanently: it changes `:min`/`:max`/`:step` on SEPARATE re-renders
+`examples/glitter/ctor_apply_regression_smoke.clj` pins bugs 1-3: it changes `:min`/`:max`/`:step` on SEPARATE re-renders
 (not together in one hiccup swap) specifically to exercise the
 one-key-at-a-time call pattern that caused the clobbering; changing
 both together in one render would never have caught the original bug,
 since that code path (`set-attribute` receiving two keys in one call)
-never exists in the real reconciler at all.
+never exists in the real reconciler.
 
-**The rule going forward, stated for every future widget-spec author:**
+**For every future widget-spec author:**
 design for props flowing entirely through `:apply`, never rely on
 `:ctor` seeing anything. If `:ctor` branches on a prop for a
 performance or correctness reason (e.g. picking the right
@@ -1835,7 +1820,7 @@ strings for keys", and simply looking more idiomatic). A throwaway
 probe mounting `[:label {:my-plain-prop 42 :grid/column 2}]` and
 printing every key `IRender/set-attribute` actually received showed
 only `:my-plain-prop` ever arrived; `:grid/column` never reached
-`set-attribute` at all, no error, no warning, just silently absent.
+`set-attribute` at all, with no error or warning.
 
 Root cause: `glitter.core`'s `set-attr` and `update-attr` both guard on
 `(when-not (namespace attr) ...)` before calling into `IRender`
@@ -1851,7 +1836,7 @@ This is why `:grid-column`/`:grid-row`/`:grid-column-span`/
 `:grid-row-span`/`:stack-name` (below) are plain, hyphenated,
 non-namespaced keywords rather than the more idiomatic `:grid/column`
 form: the namespaced form would have compiled, mounted with no error,
-and simply never worked, for every consumer forever; a worse trap
+and simply never worked, for every consumer forever; which is a worse trap
 than an unusual naming choice.
 
 ## `:glitter/structural-props`: a child's props read by its PARENT
@@ -1939,14 +1924,12 @@ positions; see [`limitations.md`](limitations.md).
 `g_signal_new` in `gtk/gtkwindowhandle.c`): a single-child CSD
 drag-handle wrapper, the same container strategy as `:frame`/
 `:revealer`/`:expander`/`:search-bar`. Its first live smoke run caught
-a real bug, but one shipped by THIS round's own new code, not a
-pre-existing one: the `:window-handle` case branch was missing
+a bug in this round's own new code, not a pre-existing one: the `:window-handle` case branch was missing
 entirely from `append-child!`/`remove-child!`/`replace-child!` in
 `glitter.widget.clj`. The widget compiled cleanly and mounted with no
 exception: `gtk_window_handle_set_child` simply never ran, so the
-widget silently had no child at all. Caught immediately by
-`window_handle_stack_smoke.clj` reading the child back and getting
-nothing, before this ever shipped. Fixed by adding the three missing
+widget silently had no child at all. `window_handle_stack_smoke.clj` caught it by reading the child back and
+getting nothing, before this shipped. Fixed by adding the three missing
 `case` branches, mirroring every other single-child container already
 in those functions.
 
@@ -1957,14 +1940,14 @@ pages are NAME-addressed (`:stack-name`, via the structural-props
 mechanism above), not index-addressed the way `:notebook`'s pages are.
 `gtk_stack_add_page`'s C body auto-selects the first added VISIBLE
 child as the stack's `visible-child` (confirmed by reading it
-directly) a THIRD instance of the exact mount-time-auto-dispatch
+directly) a third instance of the mount-time-auto-dispatch
 finding `:notebook` first surfaced two rounds ago. Mounting a `:stack`
-with initial children genuinely dispatches a `"notify::visible-child-name"`
+with initial children dispatches a `"notify::visible-child-name"`
 before any real interaction; `window_handle_stack_smoke.clj`'s
 dispatch-count baseline starts at `1`, not `0`, for the same reason
 `notebook_scale_button_smoke.clj`'s does.
 
-A second, genuinely new finding fell out of writing this smoke: `:apply`
+A second finding fell out of writing this smoke: `:apply`
 runs at `create!` time, BEFORE the reconciler has appended any
 children (see the ctor/apply prop-flow section above), so an initial
 `:visible-child-name` prop always landed on a completely EMPTY stack.
@@ -1984,7 +1967,7 @@ proceeding only if the named page already exists:
     (swap! suppressing disj widget)))
 ```
 
-This silences the spurious warning, but leaves a real, documented v1
+This silences the spurious warning but leaves a documented v1
 gap: requesting a NON-default initial page still doesn't take effect
 at mount, because `:apply` has no way to defer itself until after
 children exist. `window_handle_stack_smoke.clj`'s own initial
@@ -2023,8 +2006,7 @@ same 3-arg-void GObject property-change shape already generalized for
 the same plain 2-arg-void shape `:menu-button` already registered.
 `drop_down_grid_smoke.clj`'s selection round-trip (a real FFI
 selection change bypassing the wrapper, then a programmatic sync-back)
-proves both reuses hold for a fourth and fifth widget respectively,
-not just that they compile.
+shows both reuses hold for a fourth and fifth widget respectively.
 
 ## `:grid`: the first child-placement container
 
@@ -2044,8 +2026,8 @@ position information; `remove-child!`'s `:grid` branch is a one-line
 `case` addition, no structural-props threading needed at all.
 `gtk_grid_get_child_at(grid, column, row)` is the live-GTK verification
 primitive `drop_down_grid_smoke.clj` uses to confirm real cell
-placement, including a column-span cell verified by pointer-equality at
-BOTH of the two coordinates it's meant to cover; proving the span
+placement, including a column-span cell checked by pointer equality at
+both of the two coordinates it's meant to cover. That shows the span
 argument, not just the base column/row, reached GTK correctly.
 
 `:grid` inherits `:glitter/structural-props`'s v1 constraint above: a
@@ -2056,8 +2038,7 @@ later re-render's `:grid-column`/etc changes.
 
 `:scrolled` shipped in round 1, forked verbatim from glimmer, but
 `examples/glitter/crud.clj` (a port of the 7GUIs CRUD task) is the
-first time any example or smoke in this project has actually given it
-real content to wrap. Reading a live GTK widget tree back afterward via
+first example or smoke in this project to give it content to wrap. Reading a live GTK widget tree back afterward via
 the usual `gtk_widget_get_first_child` walk (every smoke's ground-truth
 technique) initially found `:scrolled`'s child to be some OTHER widget
 entirely, not the `:list-box` that was actually mounted inside it.
@@ -2068,7 +2049,7 @@ doc comment and C body directly: *"If `child` does not implement the
 `GtkViewport` instance and then add the viewport as its child widget."*
 `GtkListBox` does not implement `GtkScrollable` (confirmed against
 `gtk/gtklistbox.c`'s `G_DEFINE_TYPE_WITH_CODE`, which lists no
-`GTK_TYPE_SCROLLABLE` interface), so `:scrolled`'s REAL first GTK child
+`GTK_TYPE_SCROLLABLE` interface), so `:scrolled`'s first GTK child
 is a `GtkViewport`, and the `:list-box` is one level further down, as
 the viewport's own first child:
 
@@ -2078,8 +2059,7 @@ the viewport's own first child:
     g/gtk-widget-get-first-child)           ; the actual :list-box
 ```
 
-This is pure GTK behavior, not a glitter concern for ordinary hiccup
-authors: `glitter.gtk`'s own `:children` bookkeeping for the
+This is GTK behavior, and ordinary hiccup authors never see it: `glitter.gtk`'s own `:children` bookkeeping for the
 `:scrolled` element never sees the viewport at all (it only ever calls
 `gtk_scrolled_window_set_child` once, with the `:list-box` pointer; GTK
 manages the viewport-wrapping internally and transparently). It only
@@ -2128,8 +2108,8 @@ gtk_list_box_row_dispose (GObject *object)
 
 With nothing else in glitter holding an independent reference to that
 child, `gtk_widget_unparent` here doesn't just detach it: it drops the
-child's refcount to zero and finalizes it too. `child` is a genuinely
-DANGLING pointer by the time `list-box-insert-after!` tries to reuse
+child's refcount to zero and finalizes it too. `child` is a dangling
+pointer by the time `list-box-insert-after!` tries to reuse
 it. `flow-box-reorder-child!` has the byte-for-byte identical shape,
 confirmed independently rather than assumed to carry over just because
 the widgets are siblings: `gtk_flow_box_child_dispose` has the same
@@ -2155,14 +2135,13 @@ ownerless:
 
 `g_object_ref_sink` is safe to call on an ALREADY-sunk, parented widget
 too (its own semantics: a normal `+1` ref if the object isn't floating);
-it isn't a floating-ref-specific trick, which is why it's the right
+it isn't specific to floating refs, so it's the right
 primitive here even though `child` was never floating at this call
 site (it was sunk into its OLD row long ago). Both
 `g-object-ref-sink`/`g-object-unref` were already bound in
 `glitter.ffi` (inherited from glimmer's own fork, describing GTK's
 general floating-ref convention in the ns docstring) but had never
-actually been called from glitter's own code until this fix; the
-first real use of either.
+been called from glitter's own code until this fix.
 
 `examples/glitter/list_box_reorder_smoke.clj` pins this permanently:
 reorders a keyed `:list-box` and a keyed `:flow-box` by the SAME keys
@@ -2170,7 +2149,7 @@ reorders a keyed `:list-box` and a keyed `:flow-box` by the SAME keys
 `gtk_widget_get_first_child`/`get_next_sibling` ground-truth walk, not
 glitter's own bookkeeping: the same discipline
 `examples/glitter/keyed.clj` established for `:box`'s own keyed
-reorder. FAIL-path verified by temporarily reverting the fix: the
+reorder. To check the failure path, we temporarily reverted the fix: the
 smoke crashes with the exact assertion failures above and exits 1;
 restoring the fix returns it to a clean exit 0.
 
@@ -2187,10 +2166,10 @@ restoring the fix returns it to a clean exit 0.
 ```
 
 `some?` rather than truthiness is what lets `{:active false}` or
-`{:sensitive false}` actually reach the widget instead of being filtered
-out alongside genuinely-absent (`nil`) keys; mirrors
+`{:sensitive false}` reach the widget instead of being filtered
+out alongside absent (`nil`) keys. This mirrors
 `glitter.core`'s own deviation #3 (see
-[`porting-and-attribution.md`](porting-and-attribution.md)); the two layers
+[`porting-and-attribution.md`](porting-and-attribution.md)), and the two layers
 have to agree, or a `false` prop would survive the reconciler's diff only
 to be silently dropped one layer down.
 
@@ -2229,12 +2208,11 @@ app-provided CSS.
 
 Verified live end-to-end (`examples/glitter/class_smoke.clj`): a
 built-in class and a custom class both land on mount (confirmed via
-`gtk_widget_has_css_class`, not glitter's own bookkeeping); and,
-crucially, dropping a class from a re-render's `:class` set actually
-removes it from the live widget: the class that was correctly
-**not** re-applied is the weaker half of the test (any bug that just
-skipped `add-class` entirely would still pass that check), so the
-smoke also asserts a *different* class is added in the same
+`gtk_widget_has_css_class`, not glitter's own bookkeeping); and
+dropping a class from a re-render's `:class` set removes it from the live
+widget. Checking that the dropped class is gone is the weaker half of the
+test (any bug that just skipped `add-class` entirely would still pass), so
+the smoke also asserts a *different* class is added in the same
 re-render, proving `update-classes`' diff calls both `add-class` and
 `remove-class` correctly in one pass, not just one or the other.
 
@@ -2244,8 +2222,8 @@ per-element property set outside any stylesheet. GTK4 styling is
 exclusively class-based, matched against CSS rules loaded through a
 `GtkCssProvider`. Synthesizing a real effect from an inline `:style`
 map would mean generating a unique class name and CSS rule text per
-widget and loading it through a provider at render time: genuine
-design work (provider lifecycle, rule invalidation on every diff,
+widget and loading it through a provider at render time: design
+work (provider lifecycle, rule invalidation on every diff,
 name collision avoidance), not a small FFI addition like `:class`
 turned out to be. Hiccup `:style` props are still accepted and diffed
 by `glitter.core` (calling `set-style`/`remove-style`), but those two

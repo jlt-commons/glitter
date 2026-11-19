@@ -21,12 +21,12 @@ Before that extraction these were `glitter.nexus` and
 
 ## Why
 
-Every glitter demo before this arc (`counter.clj`, `todo.clj`, `crud.clj`)
+Every glitter demo before nexus (`counter.clj`, `todo.clj`, `crud.clj`)
 hand-wrote one `case` branch per action kind inside its own
 `execute-actions` fn, manually reading
 `(get-in event [:glitter/dom-event :glitter/value])` and `swap!`-ing the
 state atom directly. This works, but (per this project's own design
-spec for the arc) "it's boilerplate that scales linearly with the
+spec for the nexus work) "it's boilerplate that scales linearly with the
 number of interactive fields, and it puts side-effecting `swap!` calls
 in the same function that also has to make domain decisions (should
 this add a task? should this replace the selected person?)."
@@ -161,7 +161,7 @@ anything itself:
 ```
 
 One live-verified arity gotcha, found while retrofitting `crud.clj`
-(Task 6 of this arc): `[[:action/select-row]]` (the naive hiccup
+(Task 6 of the nexus work): `[[:action/select-row]]` (the naive hiccup
 `:on` value with no trailing action-tuple data) silently mismatches
 `register-action!`'s 2-arg fn (`state` and `idx`), and the resulting
 exception is swallowed into nexus's own `:errors` accumulator (see
@@ -203,7 +203,7 @@ runs through `run-interceptors`, which threads state through a stack of
         :else state))))
 ```
 
-No demo in this arc registers a custom interceptor: `:nexus/interceptors`
+No demo registers a custom interceptor: `:nexus/interceptors`
 stays empty in `flights.clj`/`crud.clj`/`todo.clj`. The one concrete
 interceptor in this codebase is `glitter.nexus.action-log`'s
 `get-interceptor` (see below), which any consumer can add via
@@ -229,7 +229,7 @@ in the ported files, mirroring how upstream's own dev example,
   constructs, which stuffs the widget's current value onto it as
   `:glitter/value` for any value-bearing signal (see
   [`gtk-widget-layer.md`](gtk-widget-layer.md) and CONTRIBUTING.md invariant
-  #8). This is the SAME value every demo read by hand before this arc;
+  #8). This is the SAME value every demo read by hand before nexus;
   registering it as a nexus placeholder just moves the `get-in` call out
   of a hand-written dispatch fn and into data.
 - **`:nexus/on-error` → `clojure.tools.logging`**: every demo registers
@@ -240,7 +240,7 @@ in the ported files, mirroring how upstream's own dev example,
   handler); without it, errors are silently swallowed into
   `ctx :errors` and never surface anywhere. This is the reason
   `jolt-lang/logging` (a port of `clojure.tools.logging`) was added to
-  `deps.edn` in this arc.
+  `deps.edn` for this.
 
 Both are toolkit-specific choices a Reagent/glimmer app or a
 `nexus.core`-only web app wouldn't share, which is exactly why they
@@ -277,8 +277,8 @@ state back through nexus.
 
 ### `crud.clj`/`todo.clj`/`temperature.clj`/`timer.clj`: action-expansions
 
-`crud.clj` and `todo.clj` were both retrofitted onto `nexus.core` in
-this arc (replacing a hand-written `execute-actions` `case` form);
+`crud.clj` and `todo.clj` were both retrofitted onto `nexus.core`
+(replacing a hand-written `execute-actions` `case` form);
 `temperature.clj` (the 7GUIs Temperature Converter) and `timer.clj`
 (the 7GUIs Timer) were both written against `nexus.core` from the
 start, like `flights.clj` before them. All four register
@@ -514,9 +514,9 @@ and the round-trip wrapper still rejects every one of them.
 A second, unrelated date finding from the same file. Unlike the parse
 leniency above, this one is fixed: it was traced here, fixed upstream in
 [jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), and released
-as v0.0.7 — the SHA `deps.edn` pins. `flights.clj` calls plain `(t/today)`
-again. It stays written up because the pin is load-bearing, and because how
-it was found is the useful part.
+as v0.0.7, the SHA `deps.edn` pins. `flights.clj` calls plain `(t/today)`
+again. It stays written up because dropping below that pin brings the UTC bug
+back, and because how it was found is the useful part.
 
 `(t/today)` used to answer the **UTC** date on every machine, ignoring `TZ`
 even when set explicitly. Measured at 07:29 AEST on 2026-08-24, before the fix:
@@ -528,7 +528,7 @@ TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
 ```
 
 Flight Booker defaults its departure field to today, so it opened on
-*yesterday* for the first 10 hours of every AEST day — a bug you only notice
+*yesterday* for the first 10 hours of every AEST day. You only notice
 if you happen to look before 10am, in a demo whose whole subject is date
 constraints.
 
@@ -546,7 +546,7 @@ order: `TZ`, then `/etc/localtime`, then `/etc/timezone`, still answering
 
 *`now` ignored a zone it was given.* The value types live in jolt core, which
 has no zone layer, so core's `now` read epoch millis and split them into
-fields with no offset applied — an explicit zone argument changed nothing:
+fields with no offset applied, so an explicit zone argument changed nothing:
 
 ```
 (LocalDate/now (ZoneId/of "Australia/Sydney"))      => 2026-08-23
@@ -565,16 +565,16 @@ which is why `(t/in (t/now) …)` was correct while `(t/today)` was not. The
 A correct local date needs **both** halves, and the second is not
 jolt-lang/time's:
 
-- `jolt-lang/time` **v0.0.7 or newer** — the fix above.
+- `jolt-lang/time` **v0.0.7 or newer**: the fix above.
 - **jolt v0.7.24 or newer.** Before
   [#712](https://github.com/jolt-lang/jolt/pull/712), jolt's own boot-time
   libc zone probe set `TZ` and never restored it, leaving every process in
-  whichever zone it probed last — `"UTC"`, as it happened. Zone discovery
+  whichever zone it probed last, which happened to be `"UTC"`. Zone discovery
   reads `TZ` first, so a leaked `TZ=UTC` makes `systemDefault` answer `Z` and
   puts `(t/today)` straight back on the UTC date.
 
 Reaching for GLib instead does not dodge that second requirement: `TZ` is
-process-global, so `g_date_time_new_now_local` answered UTC too — measured
+process-global, so `g_date_time_new_now_local` answered UTC too, measured
 `[2026 8 23 21]` against a real local `[2026 8 24 7]`, and correct again the
 instant `TZ` was unset in-process. glitter carried a GLib `local-today` helper
 for exactly one day, between finding the bug and the upstream fix landing; it

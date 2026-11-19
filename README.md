@@ -60,8 +60,8 @@ an elapsed-time progress bar/label that advances on its own via a
 background tick, and a Reset button) a fourth `glitter.nexus` consumer
 and the first demo whose state changes without any user interaction.
 
-As of this arc, `jolt todo`/`jolt crud`/`jolt flights`/`jolt temperature`/
-`jolt timer` all dispatch through `glitter.nexus`; a port of
+All of `jolt todo`/`jolt crud`/`jolt flights`/`jolt temperature`/
+`jolt timer` now dispatch through `glitter.nexus`, a port of
 [nexus](https://github.com/cjohansen/nexus) (same author as Replicant)
 that replaces a hand-written `execute-actions` `case` form with plain
 data: actions dispatch through registered **effect** handlers (the only
@@ -75,18 +75,18 @@ needs only effects and placeholders; `jolt crud`/`jolt todo`/
 including two live-verified date gotchas `jolt flights` turned up:
 `t/parse-date` is lenient, so its date validation needs a round-trip
 check, and `(t/today)` used to answer the UTC date rather than the
-machine's — traced here and fixed upstream in `jolt-lang/time` v0.0.7,
-which `deps.edn` pins. (Since this arc, `glitter.nexus`/
+machine's. That was traced here and fixed upstream in `jolt-lang/time` v0.0.7,
+which `deps.edn` pins. (`glitter.nexus`/
 `glitter.nexus.registry` have moved to `nexus.core`/`nexus.registry` in
-the separate `nexus-jolt` package — see Architecture below — the
+the separate `nexus-jolt` package, see Architecture below. The
 dispatch mechanism described above is unchanged, only its location.)
 
 Four **widget galleries** (`jolt gallery-inputs`, `gallery-layout`,
 `gallery-display`, `gallery-chrome`) are runnable reference pages rather
 than tasks: between them they use all 43 widget tags, each is written to be
-copied from, and [`docs/guide/widgets.md`](docs/guide/widgets.md) — the
-per-tag reference of props, signals and what `[:glitter/value]` resolves to
-— quotes them directly.
+copied from, and [`docs/guide/widgets.md`](docs/guide/widgets.md), the
+per-tag reference of props, signals and what `[:glitter/value]` resolves to,
+quotes them directly.
 
 `jolt test` runs the unit suite. The rest are 27 automated live-GTK
 smokes, each of which mounts a real window and exits non-zero on failure.
@@ -141,7 +141,7 @@ If you have [Babashka](https://babashka.org/) installed, `bb.edn` wraps the
 same tasks with a grouped cheat-sheet:
 
 ```
-bb info      # start here — grouped task list
+bb info      # start here: grouped task list
 bb test      # jolt -M:test
 bb counter   # interactive demo
 bb todo      # interactive task-board demo
@@ -154,7 +154,7 @@ bb smokes    # every live-GTK smoke in sequence, CI-safe (stops at first failure
 
 `bb.edn`'s tasks all shell out to the `-M:<alias>` form directly (never the
 deps.edn `jolt <task>` shorthand), so `bb test` and `bb smokes` exit non-zero
-on failure and are safe to use as a CI gate.
+on failure and are safe to use as a CI check.
 
 ### Quality tooling
 
@@ -164,7 +164,7 @@ bb lsp:format / lsp:format-check          # reformat, or check formatting (dry r
 bb lsp:clean-ns / lsp:clean-ns-check      # organize ns forms, or check (dry run)
 bb lsp:diagnostics / lsp:check / lsp:fix  # diagnostics | all dry-run checks | auto-fix
 bb check:positional-args / :strict        # find fns with 3+ positional args
-bb verify                                 # pre-commit gate: lint (report) + test (must pass)
+bb verify                                 # pre-commit check: lint (report) + test (must pass)
 bb hooks:install / :install:full / :uninstall  # git pre-commit hook: fast | +tests | remove
 bb site:build / site:serve [port] / site:clean # local preview of the docs site
 ```
@@ -180,7 +180,7 @@ excludes the files ported verbatim from Replicant (they keep intentional
 harmless false positive for that specific porting strategy, not a real
 defect), so `bb lint` and friends run unscoped over `src test examples`.
 `bb hooks:install` sets up a fast pre-commit hook (lint errors + format +
-ns cleanliness) that gates every commit on staying `bb lsp:format-check`-
+ns cleanliness) that blocks every commit that isn't `bb lsp:format-check`-
 clean (the whole codebase is formatted uniformly now, including the
 files ported from Replicant (an earlier decision to exempt those from
 clojure-lsp's default style, to preserve upstream diffability, was later
@@ -221,7 +221,7 @@ Where the code came from:
   plain Jolt port of upstream cjohansen/nexus.
 - `glitter.ffi`, `glitter.widget`, `glitter.genum`: forked from
   [glimmer](https://github.com/jolt-lang/glimmer). `glitter.app` is adapted
-  from the non-reactive app-loop slice of `glimmer.core`.
+  from the non-reactive app-loop part of `glimmer.core`.
 - `glitter.gtk`: new code specific to glitter, unmoved. See `NOTICE`.
 
 ## Documentation
@@ -229,12 +229,12 @@ Where the code came from:
 - **[`docs/guide/index.md`](docs/guide/index.md)**, the full guide: the
   reconcile → `IRender`/`IMemory` architecture, the GTK4-specific widget/
   signal-lifecycle mechanics, cross-thread marshalling, the porting/
-  attribution ledger, testing, and every known v1 limitation in depth.
-- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** (how to set up, which gates to
+  attribution record, testing, and every known v1 limitation in depth.
+- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** (how to set up, which checks to
   run before a PR, how to add a widget, and the numbered list of invariants
   not to regress (each one was a real bug at some point).
 - **[`NOTICE`](NOTICE)**) file-by-file provenance for what's forked from
-  glimmer and still lives here — the Replicant-ported reconciler and
+  glimmer and still lives here. The Replicant-ported reconciler and
   nexus-jolt's own provenance now live in `glitter-core`'s and
   `nexus-jolt`'s own NOTICE files, respectively.
 - Design spec and implementation plan are not part of this repo; they live in
@@ -414,7 +414,7 @@ still re-read via the usual getter, unlike `:notebook`'s signal. See
 
 **`:inscription`/`:search-bar` (zero `glitter.gtk` changes), `:header-bar`/
 `:action-bar` (a genuinely new hybrid container), and `:menu-button`/
-`:popover` (the first popup surface).** `:inscription`/`:search-bar` are
+`:popover` (the first popup API).** `:inscription`/`:search-bar` are
 entirely display/props-driven, no signal: the first round needing no
 `glitter.gtk` changes at all. `:header-bar`/`:action-bar` are a hybrid
 shape: one named title/center-widget slot plus an ORDERED pack-start
@@ -589,8 +589,8 @@ was MIT until 2026-09-05.
 
 That covers what was written here. The code forked from glimmer keeps the
 licence it came with, and [`NOTICE`](NOTICE) is the file-by-file record of
-what came from where for everything still vendored in this repo — the
+what came from where for everything still vendored in this repo. The
 Replicant-ported reconciler and nexus-jolt's own provenance moved along
-with the code itself, recorded in `glitter-core`'s and `nexus-jolt`'s own
+with the code itself and are recorded in `glitter-core`'s and `nexus-jolt`'s own
 NOTICE files. EPL 2.0 relicenses none of it: the whole is EPL 2.0 and
 each part keeps what it came with, as long as those notices travel with it.

@@ -15,9 +15,9 @@ flowchart TD
 [`porting-and-attribution.md`](porting-and-attribution.md)) is the entire
 diff algorithm. It knows nothing about GTK: every effect it wants to have
 on the live tree goes through the `IRender`/`IMemory` protocols in
-`glitter.protocols`. This is the seam that makes two different backends
+`glitter.protocols`. That boundary is what lets two different backends
 (`glitter.gtk` for real widgets, `glitter.test-renderer` for headless unit
-tests) possible from the same reconciler.
+tests) share the same reconciler.
 
 ## Composing views: plain function calls, not hiccup tags
 
@@ -39,7 +39,7 @@ not `[my-component args...]`. Since a glitter view is just a pure function
 returning data, this works exactly like any other Clojure code, no
 special hiccup convention needed for an in-file layout helper.
 
-Replicant's *real* reusable-component mechanism is
+Replicant's reusable-component mechanism is
 [`glitter.alias`](porting-and-attribution.md): `defalias` registers a
 function under a **qualified keyword**, and `[my-ns/my-component args...]`
 in hiccup (a vector whose first element genuinely *is* a keyword) is
@@ -137,8 +137,8 @@ real call site.** `glitter.core`'s `create-node` calls
 ;; glitter.core.clj — create-node's actual call, confirmed by reading it
 (r/create-element renderer tag-name (when ns {:ns ns}))
 ```
-,
-so `glitter.gtk`'s `create-element` always invokes a spec's `:ctor` with
+
+So `glitter.gtk`'s `create-element` always invokes a spec's `:ctor` with
 `{}` or `{:ns "..."}`, never `{:label "..."}` or anything resembling a
 real prop. Confirmed live, not assumed: a throwaway probe mounting
 `[:button {:label "x"}]` printed `options` as `nil` at the real call
@@ -180,10 +180,10 @@ Two consequences every widget-spec author needs to know:
    `:min`/`:max` handling, masked for 10 rounds because every existing
    smoke's chosen test values happened to match the broken fallback.
 
-`IMemory` (`remember`/`recall`, glitter's equivalent of Replicant's
-per-element scratch storage (used for e.g. stashing a value on mount and
-reading it back on update) keys off the `el` atom itself, not the raw
-pointer) an atom is already a stable Clojure identity, which sidesteps any
+`IMemory` (`remember`/`recall`) is glitter's equivalent of Replicant's
+per-element scratch storage, used for e.g. stashing a value on mount and
+reading it back on update. It keys off the `el` atom itself, not the raw
+pointer. An atom is already a stable Clojure identity, which sidesteps any
 question of whether Jolt FFI pointers hash/compare correctly as map keys.
 
 ## Event dispatch: data, not closures
@@ -203,8 +203,8 @@ A hiccup handler in glitter is data (`[:button {:on {:click
 that, when the underlying GTK signal fires, calls `(*dispatch* event-map
 actions)` (`event-map` is built by `build-event-map`, which (on the `:clj`
 side) reads the acting element out of `(:glitter/node e)` rather than a DOM
-`event.target` (**deviation #1** from the pure Replicant port) see
-[`porting-and-attribution.md`](porting-and-attribution.md)).
+`event.target` (**deviation #1** from the pure Replicant port; see
+[`porting-and-attribution.md`](porting-and-attribution.md))).
 
 Because the handler is just data, it can change between renders (the same
 button's `:on {:click [...]}` can carry different action tuples across two

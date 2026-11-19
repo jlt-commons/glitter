@@ -7,8 +7,8 @@ rather than what a commit did.
 
 Nothing has been released yet, so there is a single `Unreleased` section. It
 covers the project from its first commit (2026-08-05) to now, grouped by
-theme rather than dated per change — the whole thing is one continuous first
-pass.
+theme rather than dated per change, since the whole thing is one continuous
+first pass.
 
 ## Unreleased
 
@@ -25,7 +25,7 @@ pass.
   `glitter.nexus.registry` moved to
   [nexus-jolt](https://github.com/jlt-commons/nexus-jolt), a plain Jolt
   port of upstream cjohansen/nexus, renamed to `nexus.core`/
-  `nexus.registry`. `glitter` itself is unaffected at the API level —
+  `nexus.registry`. `glitter` itself is unaffected at the API level:
   `glitter.gtk`, `glitter.widget`, `glitter.ffi`, `glitter.genum`, and
   `glitter.app` are untouched, and every namespace `glitter-core` carries
   kept its original `glitter.*` name, so this is a dependency change, not
@@ -51,7 +51,7 @@ pass.
   deliberately a different model from [glimmer](https://github.com/jolt-lang/glimmer),
   which applies Reagent's ratom/dependency-tracking approach to the same
   toolkit.
-- **`glitter.core` is `replicant.core` ported essentially unchanged** — the
+- **`glitter.core` is `replicant.core` ported essentially unchanged.** The
   diff algorithm is upstream's. It talks to the live tree only through the
   `IRender`/`IMemory` protocols in `glitter.protocols`, so it has no idea GTK
   exists. `NOTICE` records every file's provenance and every deliberate
@@ -85,8 +85,8 @@ pass.
   sugar for an oriented `:box`), from `:window`/`:box`/
   `:button`/`:label`/`:entry` through `:list-box`, `:notebook`, `:stack`,
   `:drop-down`, `:grid`, `:header-bar`, `:menu-button`/`:popover` and more.
-  The full set is listed in `README.md`; how each one was added — including the
-  ones that needed real architectural work — is recorded in
+  The full set is listed in `README.md`; how each one was added, including the
+  ones that needed real architectural work, is recorded in
   `docs/guide/gtk-widget-layer.md`.
 - **Extensible from outside the library** via `glitter.widget/register-widget!`
   and `register-signal!`. Signals with the standard `void(widget, user_data)`
@@ -95,7 +95,7 @@ pass.
   `jolt.ffi/foreign-callable` requires literal argtypes at the call site and so
   signal shapes cannot be registered as data.
 - **`:class` reaches real GTK CSS classes** (`gtk_widget_add/remove_css_class`).
-  `:style` is still accepted and diffed but is inert — GTK4 has no
+  `:style` is still accepted and diffed but is inert, because GTK4 has no
   DOM-`style`-attribute equivalent to wire it to.
 - A round-11 audit of the constructor/prop-applier split found and fixed four
   previously shipped bugs that no existing smoke exercised: `:checkbutton`'s
@@ -106,7 +106,7 @@ pass.
 ### Examples
 
 - **Six interactive demos**: a counter, a task board, and four from
-  [7GUIs](https://eugenkiss.github.io/7guis/) — CRUD, Flight Booker,
+  [7GUIs](https://eugenkiss.github.io/7guis/): CRUD, Flight Booker,
   Temperature Converter and Timer. Between them they cover derived state,
   list-box selection, cross-field constraints, parse-on-input, and a demo whose
   state advances on its own via a background tick.
@@ -125,8 +125,8 @@ pass.
   `gallery-display` / `gallery-chrome`): runnable reference pages that
   between them use all 43 widget tags. Each is a real `state -> hiccup` view
   over one atom, written to be copied from, and
-  `docs/guide/widgets.md` — a new per-tag reference of props, signals and
-  what `[:glitter/value]` resolves to — quotes them directly.
+  `docs/guide/widgets.md`, a new per-tag reference of props, signals and
+  what `[:glitter/value]` resolves to, quotes them directly.
 - **`:placeholder` now works on `:search-entry`, and is refused on
   `:password-entry`.** All three `GtkEditable` widgets routed it through
   `gtk_entry_set_placeholder_text`, which asserts `GTK_IS_ENTRY`, so on two
@@ -151,12 +151,12 @@ pass.
 
 - `bb info` prints a grouped cheat-sheet of every task. `bb test` runs the unit
   suite headlessly; `bb smokes` runs all twenty-seven live-GTK smokes in sequence;
-  `bb verify` is the pre-commit gate. `bb hooks:install` writes a fast (~2s)
+  `bb verify` is the pre-commit check. `bb hooks:install` writes a fast (~2s)
   local pre-commit hook.
 - **`.clj-kondo/hooks/jolt_ffi.clj` rewrites `jolt.ffi/defcfn` into an
   equivalent `defn`** so clj-kondo and clojure-lsp can see through the FFI
   macro. Without it every `gtk-*`/`g-*` binding reports as unresolved.
-- **Never gate CI on `jolt <task>`**: on jolt v0.6.3 a `deps.edn` `:tasks`
+- **Never rely on `jolt <task>` in CI**: on jolt v0.6.3 a `deps.edn` `:tasks`
   entry did not propagate its child process's exit status, so `jolt test`
   printed failures and still exited 0. Jolt fixed this in v0.7.28 and the task
   form now exits with the command's status (measured as 7 on v0.7.29), but the

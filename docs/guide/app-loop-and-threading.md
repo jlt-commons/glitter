@@ -1,6 +1,6 @@
 # App loop and cross-thread marshalling
 
-`glitter.app` is adapted from the non-reactive slice of `glimmer.core`
+`glitter.app` is adapted from the non-reactive part of `glimmer.core`
 (`post-to-gui`, `on-gui`, `run*`, `run`): bootstrapping a `GtkApplication`
 and hopping callbacks onto the GTK main thread has nothing to do with which
 reconciler sits on top, so this code ports cleanly. The one real change
@@ -74,7 +74,7 @@ directly):
     :else (post-to-gui work)))
 ```
 
-Two things matter here, both load-bearing:
+Two things matter here, and dropping either one breaks rendering:
 
 1. **Headless (no loop running) runs inline.** Unit tests using
    `glitter.test-renderer` never start a `GtkApplication`, so `on-gui`
@@ -113,5 +113,5 @@ called the reconciler synchronously on whatever thread performed the
 example mutates state from inside `activate` or a signal callback (i.e.
 already on the GTK main thread), so none of them could ever have caught
 it. This example is the one the original design spec called for and the
-implementation arc initially missed; its absence is why the bug went
+implementation initially missed; its absence is why the bug went
 unnoticed until a dedicated review pass.

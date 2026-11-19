@@ -1,14 +1,14 @@
 # Porting and attribution
 
 glitter's source falls into four buckets. `NOTICE` (repo root) is the
-authoritative, maintained ledger; this page explains what the buckets mean
+authoritative, maintained record; this page explains what the buckets mean
 and summarizes the deviations; if the two ever disagree, `NOTICE` wins.
 
 **Note (as of the glitter-core/nexus extraction):** the files described
 below in Bucket 1 (Replicant) and Bucket 4 (nexus) moved to `glitter-core`
 and `nexus-jolt` respectively. `glitter-core`'s and `nexus-jolt`'s own
 `NOTICE` files are now the authoritative record for those buckets
-specifically — this page has not been updated yet and still describes
+specifically. This page has not been updated yet and still describes
 the pre-extraction layout.
 
 ## Bucket 1: ported from Replicant
@@ -122,7 +122,7 @@ section for the authoritative statement and its full reasoning:
   1. `replace-child!`'s `:box` branch captures the old child's previous
      sibling via `gtk_widget_get_prev_sibling` and re-inserts with
      `gtk_box_insert_child_after`, where glimmer used `gtk_box_remove` +
-     `gtk_box_append`. `append` always lands at the *end* of the box,
+     `gtk_box_append`. `append` always puts the child at the *end* of the box,
      silently relocating any non-final child.
   2. `signal-value` is keyed by `[tag gtk-signal-name]`, not by bare
      signal name: `:spin-button` and `:scale` emit the identical
@@ -218,7 +218,7 @@ section for the authoritative statement and its full reasoning:
   [`gtk-widget-layer.md`](gtk-widget-layer.md#header-baraction-bar--a-genuinely-new-hybrid-container-shape)),
   and `menu-button-spec`/`:menu-button` + `popover-spec`/`:popover` +
   `set-popover-visible!` + the new `:on-closed` signal entry (the
-  FIRST popup surface in this project and the first hiccup
+  FIRST popup widget in this project and the first hiccup
   relationship that isn't a normal append-child!-managed tree child;
   `:menu-button`'s ONE hiccup child, if present, is attached via
   `gtk_menu_button_set_popover` rather than any container-management
@@ -274,7 +274,7 @@ section for the authoritative statement and its full reasoning:
 
   See [`gtk-widget-layer.md`](gtk-widget-layer.md) for why all of this matters.
 - `glitter.genum`: forked from `glimmer.genum`, unmodified.
-- `glitter.app`: adapted from the non-reactive slice of `glimmer.core`
+- `glitter.app`: adapted from the non-reactive part of `glimmer.core`
   (`post-to-gui`, `on-gui`, `run*`, `run`). glimmer's own `mount`/`unmount!`/
   `reload!`/`live-root`/`make-rerender-watcher` are **not** ported; they're
   glimmer-reconciler-specific and have no equivalent in glitter's
@@ -307,7 +307,7 @@ section for the authoritative statement and its full reasoning:
   different protocol-composition mechanism; `reify`, not
   `:extend-via-metadata`; was required; see below).
 
-## Load-bearing implementation note: `reify`, never `:extend-via-metadata`
+## Implementation note: `reify`, never `:extend-via-metadata`
 
 Replicant's own test helper (`replicant.mutation-log`) composes `IRender`
 and a logging concern via `:extend-via-metadata true` plus `with-meta`.
