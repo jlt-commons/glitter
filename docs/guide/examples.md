@@ -1,19 +1,17 @@
 # The examples
 
-Everything runnable lives under `examples/glitter/`: 32 namespaces, in three
-kinds.
+Everything runnable lives under `examples/glitter/`, in three kinds.
 
-- **Six interactive demos** you open and click. Four of them are
+- **Interactive demos** you open and click. Four of them are
   [7GUIs](https://eugenkiss.github.io/7guis/) tasks, so they can be
   compared against implementations in other toolkits.
-- **Four widget galleries**, reference pages you can run. Between them
+- **Widget galleries**, reference pages you can run. Between them
   they use all 43 registered tags, and each is written to be copied from.
   [`widgets.md`](widgets.md) quotes them. Run `bb gallery-inputs`,
   `bb gallery-layout`, `bb gallery-display`, `bb gallery-chrome`.
-- **Twenty-seven live-GTK smokes** that mount a real window, assert against
-  real GTK state, and exit non-zero on failure. These are the project's
-  regression suite for the GTK layer; the headless unit suite
-  can't reach it.
+- **Live-GTK smokes** that mount a real window, assert against
+  real GTK state, and exit non-zero on failure. They are the regression
+  suite for the GTK layer, which the headless unit suite can't reach.
 
 Run any of them with `bb <name>`, or `jolt -M:<name>` without babashka.
 `bb info` prints the same grouping live.
@@ -29,15 +27,12 @@ Run any of them with `bb <name>`, or `jolt -M:<name>` without babashka.
 | [<img src="../demos/temperature.gif" width="150">](../demos/temperature.gif) | `temperature` | [Temperature Converter](https://eugenkiss.github.io/7guis/tasks/#temp) | Two linked numeric fields, each updating the other. Needs exactly one action expansion, because which field is the *source* depends on which one you just edited. |
 | [<img src="../demos/timer.gif" width="150">](../demos/timer.gif) | `timer` | [Timer](https://eugenkiss.github.io/7guis/tasks/#timer) | The first demo whose state advances **on its own**: a background tick via a demo-local `:effect/schedule`, plus a Reset button. |
 
-Every preview is a real recording of the demo running, not a mockup. They
-are committed under `docs/demos/`, and each thumbnail links to the
-full-size recording.
+Previews are recordings committed under `docs/demos/`; each thumbnail links
+to the full-size file.
 
 ## Widget galleries
 
-Runnable reference pages rather than tasks. Between them they use all 43
-registered tags, and each is written to be copied from.
-[`widgets.md`](widgets.md) quotes them per tag.
+Runnable reference pages. [`widgets.md`](widgets.md) quotes them per tag.
 
 | preview | gallery |
 |---|---|
@@ -49,71 +44,41 @@ registered tags, and each is written to be copied from.
 `gallery_smoke.clj` mounts all four against live GTK on every `bb smokes`
 run, so nothing quoted in the reference can stop compiling unnoticed.
 
-## Why the demos are worth reading, not just running
+## Why the demos are worth reading
 
-Each one is a deliberate contrast with how the same UI would be written
-in [glimmer](https://github.com/jolt-lang/glimmer), the Reagent-style
-sibling. `counter.clj` says it directly: in glimmer, local state lives in
-a component-scoped ratom and a click closure calls `swap!` itself. Here
-all state is in one top-level atom, the view is a pure function of it,
-and click handlers are *data* dispatched through one global fn, never
-closures. That difference is the point of the project, and 20 lines of
-`counter.clj` show it better than prose can.
+Each demo is a deliberate contrast with how the same UI would be written in
+[glimmer](https://github.com/jolt-lang/glimmer). `counter.clj` says it
+directly: in glimmer, local state lives in a component-scoped ratom and a
+click closure calls `swap!` itself. Here all state is in one top-level atom,
+the view is a pure function of it, and click handlers are data dispatched
+through one global fn.
 
 Each of the four 7GUIs demos names the challenge its task is designed to
-expose, and shows what that challenge looks like under this model.
-`flights.clj` and `crud.clj` make a useful pair: same engine, but one needs
-no action expansions while the other's interactions can't be expressed
-without them.
+expose. `flights.clj` and `crud.clj` make a useful pair: same engine, but
+one needs no action expansions while the other can't be expressed without
+them.
 
-## Two findings worth knowing, both from `flights.clj`
+## Date handling in `flights.clj`
 
-### Lenient date parsing
+`t/parse-date` from `jolt-lang/time` is lenient: `"27.03.2014x"`,
+`"not-a-date"` and `"31.02.2014"` all parse without throwing. The demo wraps
+it in a round-trip check (parse, reformat with the same formatter, reject
+unless the result matches the trimmed input), which the spec's "T is
+coloured red when ill-formatted" requirement needs. The leniency is
+structural: the library's `parse-with-pattern` is a hand-rolled field
+scanner with no `ResolverStyle`, and `parseLenient`/`parseCaseInsensitive`
+are no-ops.
 
-`flights.clj` needed its own `parse-date`. `t/parse-date` from
-`jolt-lang/time` is **lenient**, not strict: verified live that
-`"27.03.2014x"`, `"not-a-date"` and `"31.02.2014"` all parse without
-throwing. The demo wraps it in a round-trip check (parse, reformat with
-the same formatter, reject unless the result matches the trimmed input),
-which is the only way the spec's "T is coloured red when ill-formatted"
-requirement actually works.
-
-This one is structural, so waiting for a newer version won't fix it: `jolt/time/fmt.clj`'s
-`parse-with-pattern` is a hand-rolled field scanner, and the library has
-no `ResolverStyle`/`withResolverStyle` at all, and `DateTimeFormatterBuilder`'s
-`parseLenient` and `parseCaseInsensitive` are `(fn [b] b)` no-ops.
-
-### `(t/today)` answered the UTC date: found here, fixed upstream
-
-`flights.clj` defaults its departure field to today, and opened on
-*yesterday* for the first 10 hours of every AEST day. `(t/today)` answered
-the UTC date on every machine and ignored `TZ` even when it was set
-explicitly.
-
-Two independent `jolt-lang/time` defects caused it: `ZoneId/systemDefault`
-hardcoded to UTC, and the `now` family ignoring a zone even when handed one.
-Fixing either alone was not enough. Both are fixed in
-[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
-v0.0.7, which is the SHA `deps.edn` pins. The demo calls plain `(t/today)`.
-
-Without that pin the date comes out wrong. The toolchain matters too: a
-correct local date also needs **jolt v0.7.24 or newer**, because zone discovery reads `TZ` and an
-older jolt leaks `TZ=UTC` from its own boot probe
-([#712](https://github.com/jolt-lang/jolt/pull/712)). v0.7.24 also carries
-[#716](https://github.com/jolt-lang/jolt/pull/716), which takes `(t/today)`
-from ~1.15ms to ~13.6us. The full write-up, including why using GLib
-instead doesn't avoid any of it, is in
-[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
+The departure field defaults to plain `(t/today)`. That gives the local date
+with the pinned `jolt-lang/time` and any jolt at or above the declared
+floor (0.8.24). See [`nexus.md`](nexus.md) for the full write-up.
 
 ## Live-GTK smokes
 
-`bb smokes` runs all twenty-seven in sequence and stops at the first
-failure. Each is also a standalone `bb <name>`.
-
-These exist because GTK4 is a live, stateful system with a blocking main
-loop, and several of this project's fixed bugs looked correct
-on paper and were wrong when run. Each smoke pins the specific
-behaviour that was once broken.
+`bb smokes` runs them all in sequence and stops at the first failure. Each
+is also a standalone `bb <name>`. GTK4 is a live, stateful system with a
+blocking main loop, so each smoke pins behaviour that looked correct on
+paper and was once wrong when run.
 
 ## Smokes: reconciler behaviour
 
@@ -126,7 +91,7 @@ behaviour that was once broken.
 | `main-thread-smoke` | An off-main-thread `swap!` renders **on** the GTK main thread |
 | `list-box-reorder-smoke` | The `g_object_ref_sink` fix for the keyed-reorder use-after-dispose bug |
 | `gallery-smoke` | All four widget galleries mount and round-trip; the `:placeholder` fix; `:grid` placement; the notebook/stack mount-time dispatch |
-| `ctor-apply-regression-smoke` | Four real ctor/apply bugs found in the round-11 audit stay fixed |
+| `ctor-apply-regression-smoke` | Four ctor/apply bugs (`:checkbutton`'s `:label`, `:min`/`:max`/`:step` clobbering) stay fixed |
 
 ## Smokes: signals and value delivery
 
@@ -157,10 +122,10 @@ behaviour that was once broken.
 
 | `bb` name | Pins |
 |---|---|
-| `class-smoke` | `:class` reaches real GTK CSS classes (add, coexist, remove on diff |
+| `class-smoke` | `:class` reaches real GTK CSS classes add, coexist and remove on diff |
 | `leaf-widgets-smoke` | `:spinner`/`:progress-bar`/`:image` construction and re-render |
 | `picture-editable-label-smoke` | `:picture` re-render; `:editable-label` as a third `GtkEditable` reuse |
-| `inscription-search-bar-smoke` | Display and props only) the round where zero `glitter.gtk` changes were needed |
+| `inscription-search-bar-smoke` | `:inscription` display props and `:search-bar` props, with no `glitter.gtk` changes needed |
 
 ## Adding an example
 
@@ -173,11 +138,9 @@ won't see it:
 4. **If it's a smoke**, add it to `bb.edn`'s `smokes` list: otherwise
    `bb smokes` won't run it and CI-by-hand won't catch a regression in it.
 
-A smoke must exit non-zero on failure. Do **not** rely on `jolt <task>` for that.
-On jolt before v0.7.28 a `deps.edn` `:tasks` entry didn't propagate its
-child's exit status, so `jolt smoke` printed failures and still exited 0. That
-is fixed now, but glitter's floor is v0.7.24, so the task form still can't be
-trusted across every version this project supports. Use `jolt -M:<alias>` or a
-`bb.edn` task. See [`testing-and-tasks.md`](testing-and-tasks.md) for the
-full rationale and [`CONTRIBUTING.md`](https://github.com/jlt-commons/glitter/blob/main/CONTRIBUTING.md)
+A smoke must exit non-zero on failure. Don't rely on `jolt <task>` for that:
+before jolt v0.7.28 a `deps.edn` `:tasks` entry didn't propagate its child's
+exit status. Use `jolt -M:<alias>` or a `bb.edn` task. See
+[`testing-and-tasks.md`](testing-and-tasks.md) for the rationale and
+[`CONTRIBUTING.md`](https://github.com/jlt-commons/glitter/blob/main/CONTRIBUTING.md)
 for the invariant list.

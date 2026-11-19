@@ -9,40 +9,25 @@ The deep documentation lives in [`docs/guide/`](docs/guide/index.md) and is
 published at <https://jlt-commons.github.io/glitter/>. Edit the Markdown here,
 never the site.
 
-Publishing is automatic. `.github/workflows/site.yml` builds the site on every
-pull request and deploys it when your change lands on `main`, so a docs change
-goes live on merge without anyone running anything. You can preview it locally
-with `bb site:serve` if you clone
-[jlt-commons/docs-engine](https://github.com/jlt-commons/docs-engine) alongside
-this repo, but the pull request build is the authority.
+`.github/workflows/site.yml` builds the site on every pull request and
+deploys it on merge to `main`. To preview locally, clone
+[jlt-commons/docs-engine](https://github.com/jlt-commons/docs-engine)
+alongside this repo and run `bb site:serve`.
 
 ## Setting up
 
 You need Jolt and a native GTK4:
 
 ```sh
-jolt --version           # developed against v0.6.3; re-verified on v0.7.24 and v0.7.29
+jolt --version           # v0.8.24 or newer (the floor, and what CI pins)
 brew install gtk4        # macOS; on Linux use your distro's gtk4 + glib dev packages
 ```
 
-Everything except one demo works on any Jolt in that range. `jolt flights`
-wants **v0.7.24 or newer** to show the correct date: Jolt's boot-time libc
-zone probe used to leave `TZ=UTC` set process-globally, and zone discovery
-reads `TZ`, so an older Jolt puts `(t/today)` back on the UTC date. Fixed in
-[jolt-lang/jolt#712](https://github.com/jolt-lang/jolt/pull/712); the other
-half is `jolt-lang/time` v0.0.7, which `deps.edn` pins. v0.7.24 also carries
-[#716](https://github.com/jolt-lang/jolt/pull/716), which takes `(t/today)`
-from ~1.15ms to ~13.6us. See
-[`docs/guide/nexus.md`](docs/guide/nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix)
-for the measurements. On an older Jolt the demo still runs, it just defaults
-its departure field to the UTC date.
-
-`deps.edn` states that floor as `:jolt/min-version "0.7.24"`, so it is
-machine-readable rather than only written down here. A Jolt below a declared
-floor refuses to load the project instead of running it. Note this does not
-change anything for an older Jolt today: the runtime that reads the key is
-v0.8.0 or newer, comfortably above the floor, so a Jolt old enough to have the
-date bug ignores the key entirely. It is there for the next breaking change.
+`deps.edn` declares `:jolt/min-version "0.8.24"`, so an older Jolt refuses to
+load the project. The floor comes from `jolt-lang/time` v0.0.16+, which
+needs 0.8.24 and declares none itself. The time-zone background for
+`jolt flights` is in
+[`docs/guide/nexus.md`](docs/guide/nexus.md#time-zones-and-the-jolt-floor).
 
 `deps.edn`'s `:jolt/native` declares `glib-2.0`, `gobject-2.0`, `gio-2.0` and
 `gtk-4`, with Homebrew paths for darwin and `.so` names for linux.
@@ -54,21 +39,18 @@ date bug ignores the key entirely. It is there for the next breaking change.
 ## Before you open a PR
 
 ```sh
-bb test               # unit suite (headless — no display needed)
+bb test               # unit suite (headless, no display needed)
 bb lint:strict        # clj-kondo, non-zero exit on any finding
 bb lsp:format-check   # clojure-lsp formatting, dry run
 bb smokes             # every live-GTK smoke in sequence (needs a display)
 ```
 
 `bb lsp:fix` applies formatting and ns cleanup in place if `lsp:format-check`
-complains. **Formatting is owned by clojure-lsp**, and the whole codebase is
-uniform under it: including the ten files ported verbatim from Replicant. An
-earlier decision exempted those to preserve upstream diffability; it was
-reversed in favour of one project-wide style. Please don't reintroduce the
-exemption for a file you touch.
+complains. **Formatting is owned by clojure-lsp**, including the ten files
+ported from Replicant. Please don't exempt a file you touch.
 
-`bb hooks:install` sets up a fast (~2s) local pre-commit hook: lint errors,
-format check, ns check. It's never committed, so each clone opts in.
+`bb hooks:install` sets up a fast local pre-commit hook (lint errors, format
+check, ns check). Each clone opts in.
 
 **`bb lint` needs `.clj-kondo/hooks/jolt_ffi.clj`**, which rewrites
 `jolt.ffi/defcfn` into an equivalent `defn` so clj-kondo and clojure-lsp can
@@ -104,17 +86,14 @@ Full breakdown: [`docs/guide/architecture.md`](docs/guide/architecture.md).
 
 ## Invariants: please don't regress these
 
-Each of these was a real bug at some point. Most are explained at length in
+Each of these was a real bug. Most are explained at length in
 [`docs/guide/`](docs/guide/index.md); the short forms are here so a reviewer
 can point at a number.
 
-1. **Never rely on `jolt <task>` in CI.** On jolt v0.6.3 a `deps.edn` `:tasks`
-   entry didn't propagate its child process's exit status, so `jolt test`
-   printed failures and still exited 0. Jolt fixed that in v0.7.28, and on
-   v0.7.29 the task form exits correctly (measured as 7). Keep using
-   `jolt -M:<alias>` or a `bb.edn` task anyway: glitter runs on jolt from
-   v0.7.24, and the fix only arrives at v0.7.28, so the task form can still
-   swallow a failure on a supported version.
+1. **Use `jolt -M:<alias>` or a `bb.edn` task in CI, not `jolt <task>`.**
+   Before jolt v0.7.28 a `deps.edn` `:tasks` entry didn't propagate its
+   child's exit status, so `jolt test` printed failures and exited 0. The
+   floor is past that now, but the alias form is what CI and `bb.edn` use.
 
 2. **`insert-before` covers two different cases**: a genuinely new child, and
    repositioning an *already-parented* child (a keyed reorder).
@@ -136,7 +115,7 @@ can point at a number.
    [`porting-and-attribution.md`](docs/guide/porting-and-attribution.md).
 
 5. **Protocol composition uses `reify`, never `:extend-via-metadata`.**
-   Verified broken under Jolt: the with-meta-as-method-table style throws
+   Under Jolt the with-meta-as-method-table style throws
    `No method create-element in glitter.protocols/IRender` at call time.
    `glitter.gtk`'s and `glitter.test-renderer`'s renderers each implement
    `IRender` *and* `IMemory` in one `reify`; `with-meta` carries only
@@ -191,11 +170,10 @@ Two things that reliably surprise people:
   standard `void(widget, user_data)` shape is free; anything else (GTK's
   3-arg `"state-set"`, the 4-arg `"switch-page"`) is a new literal branch.
 
-- **Verify against real GTK, not reasoning.** GTK4 is a live, stateful system
-  with a blocking main loop. Several of this project's fixed bugs (the keyed
-  reorder, `replace-child!`'s position, cross-thread render) were each
-  "obviously correct" on paper and wrong when actually run. Add a smoke under
-  `examples/glitter/` and wire it into `bb.edn`'s `smokes` list.
+- **Verify against real GTK, not reasoning.** The keyed reorder,
+  `replace-child!`'s position and cross-thread render all looked correct on
+  paper and failed when run. Add a smoke under `examples/glitter/` and wire
+  it into `bb.edn`'s `smokes` list.
 
 ## Demo GIFs
 
@@ -225,10 +203,7 @@ not; prefer Tab/Space/Enter where the demo allows it.
 
 Before filing a bug, please check
 [`docs/guide/limitations.md`](docs/guide/limitations.md). Each entry there is
-a deliberate v1 scope call, and the reasoning is recorded next to it. For
-example, removing an attribute entirely is a no-op because GTK has no generic
-"unset this property", and several container widgets can't safely swap a
-child's hiccup *tag* while their fixed slots are full.
+a deliberate v1 scope call with its reasoning recorded.
 
 ## Licensing
 
