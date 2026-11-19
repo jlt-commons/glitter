@@ -17,35 +17,34 @@
  ;; not protective.
  :jolt/min-version "0.8.0"
 
- ;; jolt-lang/time provides the java.time.* surface as a pure-Clojure
- ;; host shim, with juxt/tick (pulled transitively via jolt-lang/time's
- ;; own deps.edn) as the idiomatic date/time API on top — used by
- ;; examples/glitter/flights.clj for date parsing/formatting/comparison.
- ;; jolt-lang/logging ports clojure.tools.logging — used by
- ;; glitter.nexus consumers as the :nexus/on-error handler. Both pinned
- ;; SHAs are the known-good versions, verified live under real Jolt (not
- ;; just JVM Clojure) as of when they were pinned — re-verify live
- ;; before bumping either.
+ ;; jolt-lang/time provides the java.time.* classes as a pure-Clojure host
+ ;; shim, with juxt/tick (pulled in through jolt-lang/time's own deps.edn) as
+ ;; the date/time API on top. examples/glitter/flights.clj uses it to parse,
+ ;; format and compare dates. jolt-lang/logging ports clojure.tools.logging,
+ ;; and glitter.nexus consumers use it as the :nexus/on-error handler. Both
+ ;; SHAs were verified live under Jolt, not just JVM Clojure, when they were
+ ;; pinned. Re-verify live before bumping either.
  ;;
- ;; The time SHA is a FLOOR, not just a snapshot, and it now sits two commits
- ;; PAST the v0.0.7 tag rather than on it. Two separate reasons, both of which
- ;; break silently if the pin moves back:
+ ;; The time SHA is a FLOOR, not just a snapshot. Each release below fixed
+ ;; something glitter depends on, and each one breaks silently if the pin
+ ;; moves back past it:
  ;;
- ;; v0.0.7 itself is what made (t/today) answer the machine's zone instead of
- ;; UTC. Pinning older puts flights.clj's departure field back on the UTC date.
+ ;; v0.0.7 made (t/today) answer the machine's zone instead of UTC. Older
+ ;; pins put flights.clj's departure field back on the UTC date.
  ;;
- ;; 33c5e98 is jolt-lang/time#11, which declares the java.time classes the
- ;; library provides (jolt #813 / RFC 0014). Without it, a jolt carrying #813
- ;; cannot resolve java.time.ZoneId at all: `jolt flights` dies, and
- ;; glitter.nexus.action-log-test is silently dropped from the suite, 29 tests
- ;; down to 26 with a clean exit. It shipped in v0.0.8.
+ ;; v0.0.8 carries jolt-lang/time#11 (commit 33c5e98), which declares the
+ ;; java.time classes the library provides (jolt #813 / RFC 0014). Without
+ ;; it, a jolt carrying #813 can't resolve java.time.ZoneId at all: `jolt
+ ;; flights` dies, and glitter.nexus.action-log-test drops out of the suite
+ ;; (29 tests down to 26) with a clean exit.
  ;;
- ;; v0.0.15: v0.0.8's locale_data.clj ns docstring has unescaped quotes
- ;; that jolt 0.8.x rejects, so tick.core (and `jolt flights`) failed to load.
+ ;; v0.0.15 fixed locale_data.clj's ns docstring. In v0.0.8 it had unescaped
+ ;; quotes that jolt 0.8.x rejects, so tick.core (and `jolt flights`) failed
+ ;; to load.
  ;;
- ;; Now v0.0.16, the first release that leaves `jolt build --tree-shake`
- ;; working for apps requiring it (jolt-lang/time#28); it needs jolt v0.8.24
- ;; or newer.
+ ;; v0.0.16, the current pin, is the first release that leaves `jolt build
+ ;; --tree-shake` working for apps that require it (jolt-lang/time#28). It
+ ;; needs jolt v0.8.24 or newer.
  ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
