@@ -1,78 +1,75 @@
 # Known v1 limitations
 
-Each of these was a deliberate, human-approved scope decision made during
-the project's final whole-branch review, not an oversight. If you're
-tempted to "just fix" one of these opportunistically, read the rationale
-first; each has a reason the mechanical fix was deferred rather than a
-reason it's impossible.
+Each of these was a deliberate scope decision, not an oversight. Read the
+rationale before "just fixing" one, because each has a reason the
+mechanical fix was deferred.
 
 ## Removing an attribute entirely is a no-op
 
-Setting a prop to a *new* value (including an explicit `false`) always
-works correctly (see [`gtk-widget-layer.md`](gtk-widget-layer.md#boolean-props-some-not-truthiness)).
-Dropping a key from your hiccup entirely does not.
+Setting a prop to a new value (including an explicit `false`) works (see
+[`gtk-widget-layer.md`](gtk-widget-layer.md#boolean-props-use-some)).
+Dropping a key from your hiccup does not.
 
-**Why:** `glitter.widget/apply-props!` only ever receives the keys present
-in the new prop map: that's intentional, and what makes it safe to call
-with a single-key partial map like `{:label "new text"}` (exactly how
-`glitter.gtk`'s `set-attribute` uses it, applying one changed key at a
-time rather than the whole prop map on every change). A key that's
-*absent* from the new map is simply never visited again, so the widget
-keeps whatever value it last had.
+**Why:** `glitter.widget/apply-props!` only receives the keys present in
+the new prop map, which is what makes a single-key partial map like
+`{:label "new text"}` safe (`glitter.gtk`'s `set-attribute` applies one
+changed key at a time). An absent key is never visited, so the widget keeps
+its last value. GTK has no generic "unset this property" API, because a
+`GObject` property always has some value.
 
-DOM's `removeAttribute` has an obvious browser meaning (the attribute
-disappears from the element, and CSS/JS both understand "attribute not
-present" as a real, distinct state). GTK has no equivalent generic
-"unset this property, revert to type default" API; a `GObject` property
-always has *some* value, and there's no ABI-level way to ask "what would
-this widget's `:sensitive` be if nobody had ever set it."
+**What a real fix needs:** per-widget-type default values in
+`glitter.widget`'s `:apply` closures (a fresh `GtkCheckButton`'s `:active`
+defaults to `false`, so "removed" could re-apply that). That is design work
+per widget type.
 
-**What a real fix needs:** per-widget-type default values designed into
-`glitter.widget`'s `:apply` closures (e.g. knowing that a fresh
-`GtkCheckButton`'s `:active` defaults to `false`, so "attribute removed"
-could mean "re-apply that default"). This is real design work per widget
-type, not a mechanical patch; out of scope for v1, consistent with this
-project's existing "no CSS wiring, no animations" v1 boundaries.
-
-`glitter.gtk/remove-attribute`'s implementation makes this explicit rather
-than silently no-opping without comment:
+`glitter.gtk/remove-attribute` makes this explicit:
 
 ```clojure
 (remove-attribute [_ el a]
   (w/apply-props! (:tag @el) (ptr el) {(keyword a) nil})
   nil)
 ```
-;
-confirmed live against real GTK state: setting a checkbutton's `:active
-true` then "removing" it still leaves `gtk_check_button_get_active`
-returning `1`.
+
+Setting a checkbutton's `:active true` and then "removing" it still leaves
+`gtk_check_button_get_active` returning `1`.
 
 ## `mount!` is one-way
 
 `glitter.gtk/mount!` registers its `add-watch` under a fixed key
-(`::render`) and returns `nil`; there is no corresponding `unmount!`.
+(`::render`) and returns `nil`. There is no `unmount!`.
 
-**Consequences:**
-- Mounting twice against the *same* state atom silently replaces the first
-  watcher (the second `add-watch ::render ...` call under the same key
-  overwrites the first), rather than running both.
-- There's no way to detach a mounted tree and stop it re-rendering, short
-  of `(remove-watch state-atom ::render)` by hand from outside the API.
+- Mounting twice against the same state atom replaces the first watcher
+  instead of running both.
+- To stop a mounted tree re-rendering, call
+  `(remove-watch state-atom ::render)` by hand.
 
-**Why left as-is:** every current example and the intended v1 usage
-pattern (one root window, mounted once, for the process's life) never
-needs unmount. Adding a real unmount API (one that also tears down the
-mounted widget tree, not just the watcher) is real design work (what
-happens to in-flight renders? does it also need to release every retained
-`foreign-callable` under the unmounted subtree?) better done when there's
-an actual multi-window or hot-reload use case driving the requirements,
-rather than speculatively.
+**Why left as-is:** the intended usage is one root window mounted for the
+process's life. A real unmount would also have to tear down the widget
+tree and release retained `foreign-callable`s, which is better designed
+once a multi-window or hot-reload use case exists.
+
+## A state change during `mount!`'s first render does not repaint
+
+`mount!` renders once and then installs its `add-watch` (`glitter/gtk.clj`:
+`render!`, then `add-watch`). A state change during that first render
+updates the atom with no watcher listening, so nothing repaints until the
+next change.
+
+GTK auto-selects the first page of a `:notebook` or `:stack` as it is
+populated, which dispatches through glitter during that first render. The
+atom then holds 2 when `mount!` returns while the label still shows 0.
+
+In most apps nothing needs doing: the state is correct and the first
+interaction repaints. If a view must show a mount-time-derived value
+immediately, swap the atom once after `mount!` returns.
+`examples/glitter/gallery_chrome.clj` deliberately doesn't, so the
+behaviour is visible.
 
 ## `IMemory` never releases
 
-`:glitter/remember` data is held in a process-global map
-(`glitter.gtk`'s private `memory` atom) keyed by the element atom, with no
-eviction when that element is unmounted/removed from the tree.
+`:glitter/remember` data is held in a process-global map (`glitter.gtk`'s
+private `memory` atom) keyed by the element atom, with no eviction when the
+element is removed from the tree.
 
 ```clojure
 (defonce ^:private memory (atom {}))
@@ -82,455 +79,238 @@ proto/IMemory
 (recall [_ node] (get @memory node))
 ```
 
-**Why this is fine for the intended use, but not for everything:** the
-common `IMemory` use case is a value stashed on mount and read back on a
-later update (Replicant's own docs describe this pattern): small,
-bounded, and the element usually lives for the app's whole lifetime
-anyway. It is *not* fine for anything long-lived-relative-to-element-
-churn or high-cardinality; a keyed list that creates and discards many
-short-lived rows over a session would leak one map entry per discarded
-row, forever.
+This is fine for the usual use, a small value stashed on mount and read
+back on update. It is not fine for high-cardinality use: a keyed list that
+creates and discards many short-lived rows would leak one entry per
+discarded row. Replicant's DOM backend uses a `WeakMap`
+(`replicant.dom`'s `memories`). Jolt/Chez has no weak-keyed map yet, so
+there is no mechanical fix.
 
-**What Replicant's DOM backend does instead:** a `WeakMap`: verified
-directly against `replicant.dom`'s source
-(`(def ^:no-doc memories (js/WeakMap.))`), which lets the JS garbage
-collector reclaim an entry the moment nothing else references its key
-DOM node. There is no Jolt/Chez equivalent of a weak-keyed map available
-to reach for yet, so this gap doesn't currently have a mechanical fix;
-it's a real platform-capability gap, not a missed line of code.
+## Swapping a fixed-slot container's child tag
 
-## `:center-box` cannot safely swap a slot's hiccup tag while all 3 slots are full
+Several containers have fixed named slots and no spare capacity for a
+second occupant. `glitter.core`'s reconciler handles a same-position,
+non-keyed tag mismatch (a slot's child going from `:label` to `:button`) as
+two steps, insert the new node and then remove the old one, which assumes
+the container can briefly hold both. `glitter.gtk`'s generic `:children`
+bookkeeping also assumes `:box`-like extra capacity.
 
-`GtkCenterBox` has exactly three fixed named slots (`start`/`center`/
-`end`), no transient capacity for a 4th simultaneous occupant the way
-`:box`'s ordered list has.
+**What to do instead, for all of the cases below:** change a slot's props,
+not its tag (a props-only update never goes through insert/remove), or nest
+a stable wrapper tag one level down (always render `[:box [...]]` in the
+slot), so the type change happens where `:box`'s capacity handles it.
 
-**Why this matters:** `glitter.core`'s reconciler handles a same-position,
-non-keyed hiccup TAG mismatch (e.g. a slot's child going from `:label` to
-`:button`) as two separate steps (insert the new node, then remove the
-old one) relying on the container having room to briefly hold both.
-`GtkCenterBox` doesn't; `gtk_center_box_set_*_widget` unparents (and,
-since nothing else references it, GTK finalizes) whatever was previously
-in that slot the instant the new one is set. `glitter.gtk`'s own
-`:children` bookkeeping, however, is generic across every container kind
-and briefly assumes `:box`-like extra capacity: that mismatch corrupts
-an UNRELATED third slot, not the one being swapped. Full trace:
-[`gtk-widget-layer.md`](gtk-widget-layer.md#center-box--a-genuinely-new-container-strategy-and-a-real-v1-gap).
+**Why left as-is:** a real fix needs `glitter.gtk`'s child bookkeeping to
+become container-kind-aware. That changes shared machinery, and swapping a
+fixed-slot tag dynamically is a narrow pattern.
 
-**What to do instead:** change a slot's PROPS, not its TAG (a props-only
-update never goes through insert/remove at all). If the slot genuinely
-needs to switch widget types dynamically, nest a stable wrapper tag one
-level down (e.g. always render `[:box [...]]` in that slot) so the type
-change happens where `:box`'s own genuine transient capacity already
-handles it correctly.
+### `:center-box` with all 3 slots full
 
-**Why left as-is:** a real fix would need `glitter.gtk`'s generic
-`:children` bookkeeping to become container-kind-aware (know that
-`:center-box` has zero spare capacity and defer/reorder its own updates
-accordingly); a change to shared reconciler-adjacent machinery, not a
-one-widget patch, and this round's tag-swap scenario is a narrow enough
-usage pattern (most center-box usage keeps a stable widget type per slot
-across re-renders) that it wasn't judged worth that scope increase yet.
+`GtkCenterBox` has three slots (`start`/`center`/`end`).
+`gtk_center_box_set_*_widget` unparents the previous occupant the instant
+the new one is set, and the stale bookkeeping then corrupts an unrelated
+third slot. Full trace:
+[`gtk-widget-layer.md`](gtk-widget-layer.md#slot-containers-cannot-swap-a-tag-while-full).
 
-## `:paned` cannot safely swap a slot's hiccup tag while both slots are full
+### `:paned` with both slots full
 
-Same root cause as `:center-box`'s gap above (`GtkPaned` has exactly two
-fixed named slots (`start`/`end`), no transient capacity for a 3rd
-simultaneous occupant), but a DIFFERENT, live-verified failure shape,
-since two slots behave differently from three when the reconciler's
-"insert new, then remove old" sequencing runs out of room:
+`GtkPaned` has two slots (`start`/`end`). Swapping the last slot's tag works.
+Swapping the first slot's tag fails differently from `:center-box`: the
+insert finds no empty slot and no-ops, and removing the old occupant leaves
+the slot empty. Full trace:
+[`gtk-widget-layer.md`](gtk-widget-layer.md#slot-containers-cannot-swap-a-tag-while-full).
 
-- Swapping the **last** slot's tag while both are full lands correctly:
-  there is no third slot after it for the reconciler's stale bookkeeping
-  to corrupt into, unlike `:center-box`.
-- Swapping the **first** slot's tag while both are full fails
-  differently: the insert step finds no empty slot and silently no-ops,
-  and the subsequent removal of the old occupant leaves that slot
-  genuinely EMPTY, not corrupted, just missing both the old and the new
-  widget.
+### `:overlay` once the main child is occupied
 
-**What to do instead:** same remedy as `:center-box`: change props, not
-tags, or nest a stable wrapper tag one level down. Full trace, including
-the live verification of both failure shapes:
-[`gtk-widget-layer.md`](gtk-widget-layer.md#expanderpaned--free-signal-reuse-and-a-second-structural-gap).
+`overlay-insert-after!` only handles `sibling = nil, slot still empty`. GTK
+also has no API to enumerate overlay children (no "get overlays" in
+`gtk/gtkoverlay.h`), so anything beyond appending, removing or replacing
+the main slot, plus appending or removing an overlay, can't be verified by
+a live smoke. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#overlay).
 
-**Why left as-is:** same reasoning as `:center-box`: a real fix needs
-`glitter.gtk`'s generic child bookkeeping to become container-kind-aware,
-not a one-widget patch, and swapping a fixed-slot container's tag
-dynamically is a narrow usage pattern.
+### `:header-bar`/`:action-bar` title or center widget while occupied
 
-## `:overlay` cannot safely swap its main child's hiccup tag once occupied
-
-Same class of gap as `:center-box`/`:paned`: `GtkOverlay`'s one named
-slot (the main content) has no transient capacity for a second
-simultaneous occupant, so `overlay-insert-after!` only handles the
-`sibling = nil, slot still empty` case for real. Same remedy: change
-props, not tags, or nest a stable wrapper tag one level down.
-
-A second, more fundamental gap on top: GTK exposes **no API to
-enumerate current overlay children at all** (confirmed: no "get
-overlays" function in `gtk/gtkoverlay.h`), so anything beyond
-"append/remove/replace the main slot correctly, plus append/remove an
-overlay" is unverifiable by a live smoke, not merely untested. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#overlayflow-box--a-third-container-shape-and-a-verified-difference-not-an-assumption).
-
-## No longer a limitation: `:list-box`'s and `:flow-box`'s `reorder-child!`
-
-This section used to read: *"implemented but not live-verified... no
-smoke in this project currently exercises a genuine reorder for
-either... treat both as implemented, not verified-under-fire, until a
-keyed-list reordering smoke covers them."* That caveat was correct to
-have; the live-verification it called for found a REAL bug.
-`examples/glitter/crud.clj` (a port of the 7GUIs CRUD task) was the
-first thing in this project to actually trigger a genuine keyed
-reorder (renaming a selected person to a family name that sorts
-differently), and it crashed: `list-box-reorder-child!`/
-`flow-box-reorder-child!` were reusing a widget pointer that GTK had
-already disposed as a side effect of removing its old wrapping row:
-confirmed by reading `gtk_list_box_row_dispose`'s and
-`gtk_flow_box_child_dispose`'s C bodies directly. Fixed via a
-`g_object_ref_sink`/`g_object_unref` bracket around the remove-then-
-reinsert in both functions, keeping the child alive across the gap.
-`examples/glitter/list_box_reorder_smoke.clj` now pins this
-permanently: reorders a keyed `:list-box` and a keyed `:flow-box` by
-the same keys and reads the new order back via the live GTK tree, not
-glitter's own bookkeeping, FAIL-path verified by temporarily reverting
-the fix. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#list-box-reorder-child-flow-box-reorder-child--a-real-use-after-dispose-bug)
-for the full trace.
-
-## `:flow-box`'s `:on-child-activated` dispatches with no value
-
-v1 deliberately does not wire a value-fn for `"child-activated"`:
-reading back "which child" would need `GList` traversal via
-`gtk_flow_box_get_selected_children`, a new FFI complexity class (walking
-a linked list through raw pointers) this project hasn't needed
-elsewhere. `:on-click`/`:on-toggled` already establish the precedent
-that a dispatched event with no `:glitter/value` is a normal, supported
-shape: apps that need "which child was activated" must correlate it
-themselves (e.g. via their own understanding of what's currently
-rendered in the flow-box) until a real fix lands.
-
-## `:notebook` has no per-child tab-label convention
-
-`notebook-append-child!`/`notebook-insert-after!` always pass `NULL` as
-`gtk_notebook_append_page`/`insert_page`'s `tab_label` argument: GTK
-auto-generates a default numbered tab in that case. There is no v1
-hiccup convention for supplying a custom tab label per page (that would
-mean a second widget per child, a shape no other container in this
-project needs), so this was deliberately deferred rather than invented
-under time pressure. Apps that need custom tabs must wait for a real
-fix, or work around it by rendering their own tab-strip alongside a
-plain `:box` instead of using `:notebook`'s built-in tabs.
-
-## `:notebook` dispatches a real action as a side effect of mounting
-
-`gtk_notebook_insert_page`'s own C body auto-selects the first page
-added to a notebook that has no current page yet (`if
-(!gtk_notebook_has_current_page (notebook)) { gtk_notebook_switch_page
-(notebook, page); }`, confirmed by reading it directly). Since
-`:notebook`'s initial children are appended via this exact path during
-mount, constructing a `[:notebook ...]` with pre-populated pages
-genuinely fires `"switch-page"` (and therefore dispatches whatever
-action the hiccup wires to it) before the app has done anything. This
-is real GTK behavior, not a glitter defect, but it means any app
-tracking a dispatch count (or assuming "no action fires until the user
-interacts") must account for this one mount-time dispatch specifically
-for `:notebook`; no other container in this project behaves this way.
-See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#notebookscale-button--a-sixth-callable-shape-a-mount-time-surprise-and-a-tag-aware-dispatch)
-for the full trace, including the empirical probe that confirmed it.
-
-## Bulk `GtkEditable` text replacement can fire `"changed"` once or twice
-
-`gtk_editable_set_text` is not a single atomic mutation: its C body
-calls `gtk_editable_delete_text` then `gtk_editable_insert_text`
-separately, and only property `notify` (not `"changed"` itself) is
-frozen around the pair. Replacing text in an already-empty buffer fires
-`"changed"` once (the delete is a no-op, confirmed via
-`gtk/gtktext.c`'s early return when `start_pos == end_pos`); replacing
-non-empty text fires it twice. This affects every widget in this
-project built on the `GtkEditable` delegate (`:entry`,
-`:password-entry`, `:search-entry`, `:editable-label`) not just one of
-them, and only matters when a caller bulk-replaces text via
-`gtk_editable_set_text` directly (this project's own "bypass the
-wrapper, trigger the real signal" smoke-testing technique, or any real
-app code doing a programmatic bulk replace); normal character-by-
-character typing never hits this path. Every `GtkEditable`-family smoke
-in this project starts its interaction target from empty text to avoid
-asserting on this incidental doubling rather than the behavior under
-test. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#pictureeditable-label--a-quick-win-a-third-gtkeditable-delegate-and-a-general-gtkeditable-finding)
-for the full trace.
-
-## `:header-bar`/`:action-bar` cannot safely swap the title/center-widget's hiccup tag while occupied
-
-Same root cause and same class of gap as `:center-box`'s/`:paned`'s/
-`:overlay`'s: `*-insert-after!`'s `sibling` nil branch falls through to
-`*-append-child!`, which sees the title/center-widget slot still
-occupied and pack-starts the new widget instead of replacing the
-title: the reconciler's subsequent removal of the old title then
-leaves that slot empty with the new widget stranded in the pack-start
-list. Change props instead of tags, or nest a stable wrapper tag one
-level down.
+`*-insert-after!`'s nil-sibling branch falls through to `*-append-child!`,
+which sees the slot occupied and pack-starts the new widget. Removing the
+old title then leaves the slot empty with the new widget stranded in the
+pack-start list.
 
 ## `:header-bar`/`:action-bar` never call `pack_end`
 
-Confirmed by reading `gtk_header_bar_pack`'s and
-`gtk_action_bar_pack_end`'s C bodies directly: both widgets'
-`pack_end` reverse-accumulate (a `gtk_box_prepend` under one name, a
-`gtk_box_insert_child_after(..., NULL)`: also a prepend: under the
-other): feeding END-region children one at a time in hiccup order, as
-the reconciler naturally does, would silently land them in REVERSE
-order with no public API to fix afterward. v1 only wires `pack_start`;
-`gtk_header_bar_pack_end`/`gtk_action_bar_pack_end` are not bound to
-anything in this codebase. A future round adding end-region support
-must also solve the reversal (e.g. resyncing the whole region on every
-mutation), not just call the function. Neither widget's pack-start
-region can be reordered either, for a genuinely structural reason: it's
-a real ordered list internally, but a PRIVATE `GtkBox` glitter has no
-pointer to: only the append-only `pack_start` functions are public.
+Both widgets' `pack_end` reverse-accumulate (a `gtk_box_prepend`, or a
+`gtk_box_insert_child_after(..., NULL)`, which is also a prepend). Feeding
+end-region children one at a time in hiccup order, as the reconciler does,
+would land them in reverse order with no public API to fix it. v1 only wires
+`pack_start`. Adding end-region support means solving the reversal too (for
+example by resyncing the whole region on every mutation). Neither pack-start
+region can be reordered, because it is a private `GtkBox` glitter has no
+pointer to and only the append-only `pack_start` functions are public.
 
-## `:header-bar`'s `:show-title-buttons` shares glitter's own pack-start list
+## `:header-bar`'s `:show-title-buttons` shares glitter's pack-start list
 
 `gtk_header_bar_set_show_title_buttons(bar, TRUE)` prepends a native
-`GtkWindowControls` widget into the SAME `start_box` glitter's own
-pack-start children live in (confirmed by reading
-`create_window_controls`'s C body directly). This is real GTK
-behavior, not a glitter defect, and does not affect glitter's own
-correctness (`gtk_header_bar_remove`/`replace` only ever act on
-widgets glitter itself created), but any code inspecting the header
-bar's pack-start region directly (rather than through glitter's own
-API) needs to account for GTK's own widget potentially occupying the
-front of that list. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#header-baraction-bar--a-genuinely-new-hybrid-container-shape)
-for the full trace, including how `header_bar_action_bar_smoke.clj`
-asserts the shift explicitly.
+`GtkWindowControls` widget into the same `start_box` that glitter's
+pack-start children live in. glitter's correctness is unaffected, since
+`gtk_header_bar_remove`/`replace` only act on widgets glitter created, but
+code inspecting the pack-start region directly must allow for GTK's widget
+at the front. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#header-bar-and-action-bar).
+
+## `:flow-box`'s `:on-child-activated` dispatches with no value
+
+v1 doesn't wire a value-fn for `"child-activated"`. Reading back which
+child needs `GList` traversal via `gtk_flow_box_get_selected_children`, an
+FFI complexity class this project hasn't needed elsewhere. `:on-click` and
+`:on-toggled` already dispatch with no `:glitter/value`, so apps that need
+"which child" must correlate it themselves from what they rendered.
+
+## `:notebook` has no per-child tab-label convention
+
+`notebook-append-child!`/`notebook-insert-after!` pass `NULL` as the
+`tab_label`, so GTK generates default numbered tabs. There is no hiccup
+convention for a custom label per page, since it would need a second widget
+per child. Render your own tab strip alongside a plain `:box` if you need
+custom tabs.
+
+## `:notebook` dispatches an action as a side effect of mounting
+
+`gtk_notebook_insert_page` auto-selects the first page added to a notebook
+with no current page. Mount appends the initial children through that path,
+so constructing a `[:notebook ...]` with pre-populated pages fires
+`"switch-page"` and dispatches whatever action the hiccup wires to it before
+the user does anything. This is GTK behavior, and no other container here
+does it. An app counting dispatches, or assuming none fire before
+interaction, must allow for this one. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#notebook-and-stack).
+
+## Bulk `GtkEditable` text replacement can fire `"changed"` once or twice
+
+`gtk_editable_set_text` calls `gtk_editable_delete_text` then
+`gtk_editable_insert_text`, and only property `notify` is frozen around the
+pair. Replacing text in an empty buffer fires `"changed"` once (the delete
+is a no-op), and replacing non-empty text fires it twice. This affects every
+`GtkEditable`-based widget (`:entry`, `:password-entry`, `:search-entry`,
+`:editable-label`) and only matters when code bulk-replaces text through
+`gtk_editable_set_text`, as the smoke tests do. Character-by-character
+typing never hits it, and every `GtkEditable` smoke starts from empty text
+to avoid asserting on the doubling. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#entries-and-gtkeditable).
 
 ## `:search-bar` cannot auto-manage search mode via key capture
 
-v1 does not wire `gtk_search_bar_connect_entry`/
-`gtk_search_bar_set_key_capture_widget`: both need a raw
-`GtkEditable`/`GtkWidget` pointer glitter has no hiccup-level
-convention for passing sideways yet (every other cross-widget
-relationship in this project is either a normal tree child or a
-single named prop, not "here's a pointer to a DIFFERENT widget
-elsewhere in the tree"). `:search-mode` remains fully controllable
-programmatically; only the Ctrl+F/Escape auto-toggle convenience is
-missing.
-
-## No longer a limitation: `:class` reaches real GTK CSS classes
-
-Hiccup `:class` is diffed by the reconciler (`IRender/add-class`/
-`remove-class`), and `glitter.gtk` now wires both to
-`gtk_widget_add_css_class`/`gtk_widget_remove_css_class`: GTK4's actual
-per-widget styling hook, including its built-in classes (`"flat"`,
-`"suggested-action"`, `"destructive-action"`, `"pill"`, ...) which apply
-with zero app-provided CSS. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#known-gap-removing-a-key-is-a-no-op)
-for the mechanics and `examples/glitter/class_smoke.clj` for the live
-verification (add, coexist, and (the part that actually proves the diff
-path works, not just `add-class`) remove on a re-render).
+v1 doesn't wire `gtk_search_bar_connect_entry` or
+`gtk_search_bar_set_key_capture_widget`, since both need a raw widget pointer
+and glitter has no hiccup convention for passing a pointer to a different
+widget in the tree. `:search-mode` is fully controllable programmatically.
+Only the Ctrl+F/Escape auto-toggle is missing.
 
 ## `:grid`/`:stack`: a child's structural props are read only at first attach
 
 `:grid-column`/`:grid-row`/`:grid-column-span`/`:grid-row-span` (read by
-`:grid`) and `:stack-name` (read by `:stack`) are stashed on a CHILD's
-own tracking atom via `:glitter/structural-props`, but only consumed at
-the moment that child is FRESHLY attached: a fresh mount, or a keyed
-insert. Changing an already-attached child's `:grid-column`/`:stack-name`
-on a LATER re-render does not move it in the grid or rename its stack
-page; there is no code path that re-reads `:glitter/structural-props`
-for a child already in the tree.
+`:grid`) and `:stack-name` (read by `:stack`) are stashed on the child's
+tracking atom via `:glitter/structural-props` and consumed only when the
+child is freshly attached (a fresh mount or a keyed insert). Changing them
+on a later re-render doesn't move the child or rename its stack page.
 
-**Why left as-is:** every other container in this project keys position
-either by GTK's own live-queryable occupancy (`:center-box`/`:paned`) or
-by plain append order (`:box`/`:list-box`): `:grid`/`:stack` are the
-first containers where position is data the CHILD carries, and making
-that data reactive to later changes would mean detecting a
-structural-prop diff INSIDE `set-attribute` and re-invoking
-`gtk_grid_attach`/`gtk_stack_add_named` on an already-parented widget
-(gtk_grid_attach's own behavior on an already-attached child at a new
-position isn't something this round verified live). Fine for the common
-case of a static layout with fixed positions. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#glitterstructural-props--a-childs-props-read-by-its-parent).
+**Why left as-is:** these are the first containers where position is data
+the child carries. Making it reactive would mean detecting a structural-prop
+diff inside `set-attribute` and re-invoking `gtk_grid_attach` or
+`gtk_stack_add_named` on an already-parented widget, which hasn't been
+verified. It is fine for static layouts. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#child-borne-props-glitterstructural-props).
 
 ## `:stack` doesn't honor a non-default initial `:visible-child-name` at mount
 
-`:apply` runs at `create!` time, BEFORE the reconciler has appended any
-children to the newly-created widget (see the ctor/apply prop-flow
-finding in [`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs)),
-so an initial `[:stack {:visible-child-name "b"} ...]` always applies
-`:visible-child-name` to a completely empty stack. `gtk_stack_get_child_by_name`
-guards `set-stack-visible-child-name!` to avoid the resulting GTK
-warning, but the requested page still doesn't take effect: GTK's own
-`gtk_stack_add_page` auto-selects the FIRST added visible child instead,
-same as `:notebook`'s mount-time auto-select above. A subsequent
-re-render's `:visible-child-name` DOES work correctly (`:apply` runs
-after the stack already has children by then); only the very first,
-initial page selection is affected.
+`:apply` runs at `create!` time, before the reconciler appends any children
+(see
+[`gtk-widget-layer.md`](gtk-widget-layer.md#props-flow-through-apply-never-ctor)),
+so an initial `[:stack {:visible-child-name "b"} ...]` applies the name to an
+empty stack. `set-stack-visible-child-name!` guards with
+`gtk_stack_get_child_by_name` to avoid a GTK warning, but the page still
+doesn't take effect, and GTK's `gtk_stack_add_page` auto-selects the first
+visible child. Later re-renders work, so only the first selection is
+affected.
 
-**Why left as-is:** a real fix needs `:apply` to defer the
-`:visible-child-name` call until after the reconciler has appended this
-render's children: a change to the create!/apply-props! sequencing
-shared by every widget spec, not a `:stack`-local patch. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#stack--a-third-mount-time-auto-dispatch-instance-and-a-real-apply-timing-gap).
+**Why left as-is:** a fix needs `:apply` to defer the call until after the
+children are appended, which changes the create!/apply-props! sequencing
+shared by every widget spec. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#notebook-and-stack).
 
 ## `:window`'s `:width`/`:height` can clobber each other across single-key re-renders
 
-The same multi-key-clobbering shape the ctor/apply audit found and
-fixed in `:scale`/`:spin-button`/`:scale-button` (above) also exists in
-`window-spec`: `gtk_window_set_default_size(window, width, height)`
-takes both dimensions in one call, and a render changing only `:width`
-(or only `:height`) risks resetting the other back to a hardcoded `-1`
-fallback rather than preserving its last-applied value.
+`window-spec` has the multi-key clobbering that the ctor/apply audit fixed in
+`:scale`/`:spin-button`/`:scale-button`.
+`gtk_window_set_default_size(window, width, height)` takes both dimensions,
+so a render changing only one risks resetting the other to the `-1` fallback
+instead of its last value.
 
-**Why NOT fixed alongside the other three this round:** the fix pattern
-used elsewhere (read the widget's CURRENT value as the fallback instead
-of a hardcoded default) needs `gtk_window_get_default_size`, whose real
-signature returns via OUT-PARAMETERS (`void gtk_window_get_default_size
-(GtkWindow*, int *width, int *height)`), a genuinely new FFI marshalling
-class this project hasn't taken on anywhere else. The practical severity
-is also much lower than the other three: `:width`/`:height` are
-initial-sizing-only concerns (GTK's own `-1` fallback means "natural
-size," not garbage), and no live smoke or app in this project currently
-sets them across separate single-key re-renders. Documented as a comment
-above `window-spec` rather than fixed. See
-[`gtk-widget-layer.md`](gtk-widget-layer.md#the-ctorapply-audit--four-real-previously-shipped-bugs).
+**Why not fixed:** the usual fix reads the widget's current value as the
+fallback, which needs `gtk_window_get_default_size`, and that returns through
+out-parameters, an FFI marshalling class this project hasn't taken on. The
+severity is low (`:width`/`:height` are initial-sizing concerns and `-1`
+means natural size), and nothing here sets them across separate single-key
+re-renders. A comment above `window-spec` records it. See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#props-flow-through-apply-never-ctor).
 
 ## Action-expansions dispatch N sequential renders, not one atomic transition
 
-`app.clj`'s `on-gui` runs inline when already on the GTK main thread,
-and every glitter effect dispatches from a GTK signal callback (that
-thread), so each `:effect/assoc-in` inside an action-expansion
-(`register-action!`) drives its own full, synchronous `core/reconcile`
-before the next effect in that expansion runs, not one render for the
-whole expansion. `crud.clj`'s `:action/delete` is the concrete example:
-4 effects, 4 renders, where the pre-retrofit hand-written version
-computed the whole transition in one `swap!` and drove exactly 1.
+Each effect inside an expansion drives its own synchronous `core/reconcile`.
+`crud.clj`'s `:action/delete` is 4 effects and 4 renders. No demo shows wrong
+intermediate state today, but a new demo could. A batching effect would be
+new architecture, so it is out of scope. See
+[`nexus.md`](nexus.md#action-expansions-are-not-atomic).
 
-**Why this is fine today, but worth knowing:** no demo in this project
-currently exposes wrong intermediate state from this: `crud.clj`'s own
-intermediate delete-render still has `:selected-id` pointing at the
-just-removed person, but `view`'s `selected?` derivation happens to
-keep the Update/Delete buttons insensitive regardless. A future demo
-built on the action-expansion pattern should keep the possibility in
-mind. See
-[`nexus.md`](nexus.md#action-expansions-are-not-atomic) for the full
-mechanics.
+## `nexus.registry`'s registry is one process-global atom
 
-**Why left as-is:** a coarser effect type that batches an expansion's
-effects into one render would be new architecture on top of a faithful
-nexus port, not a mechanical fix: out of scope here.
-
-## `glitter.nexus.registry`'s registry is one process-global atom
-
-`glitter.nexus.registry/!registry` is a single top-level atom: two
-glitter apps sharing one process (e.g. two demos' namespaces loaded
-into the same REPL) share one set of registered effects/placeholders/
-expansions, not one each. Every demo in this project runs as its own
-process (`jolt -M:crud`, `jolt -M:flights`, ...), so this has never
-mattered in practice, but it's a real constraint on any future
-multi-app-in-one-process usage.
+The registry is a single top-level atom, so two glitter apps in one process
+(two demos loaded into one REPL) share one set of registered effects,
+placeholders and expansions. Every demo runs as its own process
+(`jolt -M:crud`, `jolt -M:flights`, ...), so this hasn't mattered, but it
+constrains any multi-app-in-one-process use.
 
 ## No action-log viewer ships
 
-`glitter.nexus.action-log` accumulates a full dispatch/expansion/effect
-tree (see [`nexus.md`](nexus.md#the-action-log)), but `(pr-str @log)`
-is the only inspection method today; there is no GTK-native viewer
-window. A deliberate v1 scope decision from the design spec, not an
-oversight; upstream's own viewer (`nexus.inspector`) is entangled with
-`dataspex.*` rendering protocols that have no glitter/GTK equivalent.
-
-## No longer a limitation: `(t/today)` answering the UTC date
-
-Listed here because it was a limitation for exactly one day and the fix is
-a version floor, not code.
-
-`jolt-lang/time` used to hardcode `ZoneId/systemDefault` to UTC *and* ignore
-a zone in `LocalDate`/`LocalTime`/`LocalDateTime`/`OffsetDateTime` `now`, so
-`(t/today)` answered the UTC date on every machine. Traced from
-`flights.clj` defaulting its departure field to yesterday, fixed upstream in
-[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), released as
-v0.0.7 — the SHA `deps.edn` pins.
-
-glitter briefly carried a GLib `local-today` helper for it. That is gone:
-plain `(t/today)` is correct, and a rendering library has no business
-shipping a date API. **Do not reintroduce the helper** — if dates look wrong,
-check the two version floors first (`jolt-lang/time` v0.0.7, which
-`deps.edn` pins, and **jolt v0.7.24**), since the jolt half is what a stale
-toolchain will be missing, and the GLib route never dodged it anyway. See
-[`nexus.md`](nexus.md#the-ttoday-is-utc-finding-and-its-upstream-fix).
-
-## A state change during `mount!`'s first render does not repaint
-
-`mount!` renders once and *then* installs its `add-watch`
-(`glitter/gtk.clj`: `render!`, then `add-watch`). Anything that changes
-state during that first render therefore updates the atom with no watcher
-listening, and nothing repaints until the next unrelated change.
-
-This is not hypothetical: GTK auto-selects the first page of a `:notebook`
-or `:stack` as it is populated, which dispatches through glitter during that
-very first render. Verified live — the atom holds 2 the instant `mount!`
-returns, while the label rendered moments earlier still shows 0.
-
-**What to do about it:** nothing, in most apps. The state is correct; only
-the first paint is stale, and the first interaction fixes it. If a view
-genuinely must show a mount-time-derived value immediately, swap the atom
-once after `mount!` returns to force a second render.
-`examples/glitter/gallery_chrome.clj` deliberately does *not* do that, so
-the behaviour is visible on screen.
+`glitter.nexus.action-log` accumulates a dispatch/expansion/effect tree
+(see [`nexus.md`](nexus.md#the-action-log)), and `(pr-str @log)` is the only
+way to inspect it. A GTK-native viewer is out of scope for v1.
 
 ## `:password-entry` cannot have placeholder text
 
-`:entry` and `:search-entry` both accept `:placeholder`. `:password-entry`
-does not, and glitter refuses the prop rather than accepting one it cannot
-honour.
+`:entry` and `:search-entry` accept `:placeholder`. `:password-entry`
+doesn't, and glitter refuses the prop rather than accept one it can't honour.
 
-**Why:** GTK exposes no C setter for it on that widget. `GtkPasswordEntry`
-has a `placeholder-text` GObject *property*, but no
-`gtk_password_entry_set_placeholder_text` function — verified on GTK 4.22.4
-by calling it, which fails with `no entry for
-"gtk_password_entry_set_placeholder_text"`. Reaching a property with no
-setter needs `g_object_set_property` plus `GValue` marshalling, a complexity
-class this project has not needed anywhere else yet.
+**Why:** `GtkPasswordEntry` has a `placeholder-text` GObject property but no
+`gtk_password_entry_set_placeholder_text` function (calling it on GTK 4.22.4
+fails with `no entry for "gtk_password_entry_set_placeholder_text"`).
+Reaching a property with no setter needs `g_object_set_property` plus
+`GValue` marshalling, which this project hasn't needed elsewhere.
+`gallery_smoke.clj` reads `:entry` and `:search-entry` placeholders back as
+its regression check.
 
-This was worse before: all three `GtkEditable` widgets routed `:placeholder`
-through `gtk_entry_set_placeholder_text`, which asserts `GTK_IS_ENTRY`. On
-`:password-entry` and `:search-entry` that produced one `Gtk-CRITICAL` each
-and did nothing — no exception, and nothing visibly wrong in a screenshot.
-Found while writing `gallery_inputs.clj`. `:search-entry` now uses its own
-setter and works; `gallery_smoke.clj` reads both back as its regression gate.
+**Verify by calling.** `jolt.ffi/dlsym-native` reports
+`gtk_editable_set_placeholder_text` present and the call then fails, and a
+foreign-procedure built via `__cfn` reports every symbol callable even with
+no GTK loaded. Only calling the function inside a running app tells you.
 
-**A caution about verifying this kind of thing:** both cheap checks lie
-here. `jolt.ffi/dlsym-native` reports `gtk_editable_set_placeholder_text` as
-present, and the call then fails with `no entry`. Building a
-foreign-procedure via `__cfn` reports every one of these symbols callable
-even with no GTK loaded at all. Only calling the function inside a running
-app tells the truth.
+## `:style` is a no-op, and there are no animations
 
-## Still a limitation: `:style`, and no animations
-
-`:style` is still diffed (`IRender/set-style`/`remove-style` are called)
-but both remain no-ops. Unlike `:class`, there's no small FFI addition
-that fixes this: GTK4 has no equivalent of DOM's inline
-`element.style.color = ...`: styling is exclusively class-based, matched
-against rules loaded through a `GtkCssProvider`. A real `:style` prop
-would need generating a unique class name and CSS rule text per widget,
-managing that provider's lifecycle, and invalidating/reloading the rule
-on every diff; genuine design work, not attempted here.
-`on-transition-end` still fires its callback immediately and
-synchronously; there is no animated mount/unmount transition support.
-Both remain explicit v1 scope boundaries from the design spec, not
-partially-implemented features.
+`:style` is diffed (`IRender/set-style`/`remove-style` are called) but both
+are no-ops. GTK4 has no inline `element.style.color = ...`: styling is
+class-based, matched against rules loaded through a `GtkCssProvider`. A real
+`:style` would need a generated class name and rule text per widget plus
+provider lifecycle management. `:class` does work: `IRender/add-class` and
+`remove-class` call `gtk_widget_add_css_class`/`gtk_widget_remove_css_class`,
+including GTK4's built-in classes (`"flat"`, `"suggested-action"`,
+`"destructive-action"`, `"pill"`, ...). See
+[`gtk-widget-layer.md`](gtk-widget-layer.md#removing-a-key-is-a-no-op)
+and `examples/glitter/class_smoke.clj`.
+`on-transition-end` fires its callback immediately and synchronously, so
+there are no animated mount/unmount transitions.
 
 ## `timer.clj`: dragging duration to 0 is a UX dead end, not a crash
 
-`examples/glitter/timer.clj`'s duration `:scale` allows `:min 0`, and
-`get-view-state` is written to stay safe at `:duration 0` (coerced to a
-double before the percentage division, so it resolves to `{:pct 0
-:elapsed "0s"}` rather than throwing), but the practical result is a
-permanently frozen 0%/"0s" display with no way to progress, since
-`elapsed` is always `(min elapsed 0)`. Not fixed, since "what should a
-0-second timer visually do" isn't specified by the 7GUIs task and any
-answer is a UX judgment call, not a correctness fix.
+The duration `:scale` allows `:min 0`. `get-view-state` stays safe there
+(coerced to a double before the division, giving `{:pct 0 :elapsed "0s"}`),
+but the display freezes at 0%/"0s" with no way to progress. Not fixed, since
+the 7GUIs task doesn't say what a 0-second timer should do.

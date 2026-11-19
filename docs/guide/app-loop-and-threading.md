@@ -1,6 +1,6 @@
 # App loop and cross-thread marshalling
 
-`glitter.app` is adapted from the non-reactive slice of `glimmer.core`
+`glitter.app` is adapted from the non-reactive part of `glimmer.core`
 (`post-to-gui`, `on-gui`, `run*`, `run`): bootstrapping a `GtkApplication`
 and hopping callbacks onto the GTK main thread has nothing to do with which
 reconciler sits on top, so this code ports cleanly. The one real change
@@ -74,7 +74,7 @@ directly):
     :else (post-to-gui work)))
 ```
 
-Two things matter here, both load-bearing:
+Two things matter here, and dropping either one breaks rendering:
 
 1. **Headless (no loop running) runs inline.** Unit tests using
    `glitter.test-renderer` never start a `GtkApplication`, so `on-gui`
@@ -93,25 +93,13 @@ Two things matter here, both load-bearing:
    thread-identity check is what makes same-thread renders synchronous
    while still safely marshalling genuinely cross-thread ones.
 
-## The regression this guards against
+## Regression test
 
-`examples/glitter/main_thread_smoke.clj` is the automated pin for exactly
-this: it mutates `state` from inside a `future` (a genuinely different
-thread), then schedules a read-back through `on-gui`, and asserts **which
-thread `view` actually ran on**, not merely that the label updated. An
-unmarshalled watcher would still update the label (nothing stops a
-worker thread from mutating GTK internals under Jolt; it's just an AppKit
-violation, not a crash), so a text-only assertion would pass with the bug
-present and prove nothing. The example records `(Thread/currentThread)`
-inside `view` itself and requires it to equal the GTK main thread, and
-separately asserts the worker thread really was a different thread (so the
-whole check can't pass vacuously if `future` ever ran inline).
-
-This gap existed once: `glitter.gtk/mount!`'s state-atom watcher originally
-called the reconciler synchronously on whatever thread performed the
-`swap!`, bypassing `glitter.app`'s marshalling entirely. Every *other*
-example mutates state from inside `activate` or a signal callback (i.e.
-already on the GTK main thread), so none of them could ever have caught
-it. This example is the one the original design spec called for and the
-implementation arc initially missed; its absence is why the bug went
-unnoticed until a dedicated review pass.
+`examples/glitter/main_thread_smoke.clj` mutates `state` from inside a
+`future`, then asserts **which thread `view` ran on**, not merely that the
+label updated. An unmarshalled watcher would still update the label (off-main
+mutation is an AppKit violation, not a crash), so a text-only assertion
+would pass with the bug present. The smoke records `(Thread/currentThread)`
+inside `view`, requires it to equal the GTK main thread, and checks the
+worker really was a different thread. Every other example mutates state
+from the GTK main thread, so none of them would catch a regression here.

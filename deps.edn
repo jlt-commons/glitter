@@ -1,51 +1,54 @@
 {:paths ["src"]
 
  ;; The oldest jolt glitter runs on, declared so a runtime below it refuses
- ;; to load rather than run wrong (jolt #804) — a library is the natural
+ ;; to load rather than run wrong (jolt #804). A library is the natural
  ;; declarer, since it knows what its bindings need and the app pulling it
  ;; in does not. Think twice before RAISING this: the floor is enforced on
  ;; every consumer too (:jolt/required-by), not just here, so raise it only
- ;; for something glitter genuinely needs. (Why 0.7.24 was the original
- ;; floor, before this: git blame, or docs/guide/nexus.md.)
+ ;; for something glitter needs. (Why 0.7.24 was the original floor: git
+ ;; blame, or docs/guide/nexus.md.)
  ;;
- ;; 0.8.0 is not one of those "genuinely needs" cases — glitter's own code
- ;; has never needed more than 0.7.24. It's raised to 0.8.0 because glitter
- ;; now depends on glitter-core (see :deps below), whose own deps.edn
- ;; independently declares that floor. Jolt floors combine as the max across
- ;; the dependency graph, so glitter's EFFECTIVE floor was already 0.8.0
- ;; transitively — declaring anything lower here would only be misleading,
- ;; not protective.
- :jolt/min-version "0.8.0"
+ ;; glitter's own code has never needed more than 0.7.24. The floor went to
+ ;; 0.8.0 when glitter started depending on glitter-core, whose deps.edn
+ ;; declares that floor. It is now 0.8.24 because jolt-lang/time v0.0.16 and
+ ;; later need jolt v0.8.24 (see the time pin below) but don't declare
+ ;; :jolt/min-version themselves, so nothing else in the graph enforces it.
+ ;; CI already pins 0.8.24.
+ :jolt/min-version "0.8.24"
 
- ;; jolt-lang/time provides the java.time.* surface as a pure-Clojure
- ;; host shim, with juxt/tick (pulled transitively via jolt-lang/time's
- ;; own deps.edn) as the idiomatic date/time API on top — used by
- ;; examples/glitter/flights.clj for date parsing/formatting/comparison.
- ;; jolt-lang/logging ports clojure.tools.logging — used by
- ;; glitter.nexus consumers as the :nexus/on-error handler. Both pinned
- ;; SHAs are the known-good versions, verified live under real Jolt (not
- ;; just JVM Clojure) as of when they were pinned — re-verify live
- ;; before bumping either.
+ ;; jolt-lang/time provides the java.time.* classes as a pure-Clojure host
+ ;; shim, with juxt/tick (pulled in through jolt-lang/time's own deps.edn) as
+ ;; the date/time API on top. examples/glitter/flights.clj uses it to parse,
+ ;; format and compare dates. jolt-lang/logging ports clojure.tools.logging,
+ ;; and glitter.nexus consumers use it as the :nexus/on-error handler. Both
+ ;; SHAs were verified live under Jolt, not just JVM Clojure, when they were
+ ;; pinned. Re-verify live before bumping either.
  ;;
- ;; The time SHA is a FLOOR, not just a snapshot, and it now sits two commits
- ;; PAST the v0.0.7 tag rather than on it. Two separate reasons, both of which
- ;; break silently if the pin moves back:
+ ;; The time SHA is a FLOOR, not just a snapshot. Each release below fixed
+ ;; something glitter depends on, and each one breaks silently if the pin
+ ;; moves back past it:
  ;;
- ;; v0.0.7 itself is what made (t/today) answer the machine's zone instead of
- ;; UTC. Pinning older puts flights.clj's departure field back on the UTC date.
+ ;; v0.0.7 made (t/today) answer the machine's zone instead of UTC. Older
+ ;; pins put flights.clj's departure field back on the UTC date.
  ;;
- ;; 33c5e98 is jolt-lang/time#11, which declares the java.time classes the
- ;; library provides (jolt #813 / RFC 0014). Without it, a jolt carrying #813
- ;; cannot resolve java.time.ZoneId at all: `jolt flights` dies, and
- ;; glitter.nexus.action-log-test is silently dropped from the suite, 29 tests
- ;; down to 26 with a clean exit. It shipped in v0.0.8.
+ ;; v0.0.8 carries jolt-lang/time#11 (commit 33c5e98), which declares the
+ ;; java.time classes the library provides (jolt #813 / RFC 0014). Without
+ ;; it, a jolt carrying #813 can't resolve java.time.ZoneId at all: `jolt
+ ;; flights` dies, and glitter.nexus.action-log-test drops out of the suite
+ ;; (29 tests down to 26) with a clean exit.
  ;;
- ;; v0.0.15: v0.0.8's locale_data.clj ns docstring has unescaped quotes
- ;; that jolt 0.8.x rejects, so tick.core (and `jolt flights`) failed to load.
+ ;; v0.0.15 fixed locale_data.clj's ns docstring. In v0.0.8 it had unescaped
+ ;; quotes that jolt 0.8.x rejects, so tick.core (and `jolt flights`) failed
+ ;; to load.
  ;;
- ;; Now v0.0.16, the first release that leaves `jolt build --tree-shake`
- ;; working for apps requiring it (jolt-lang/time#28); it needs jolt v0.8.24
- ;; or newer.
+ ;; v0.0.16 is the first release that leaves `jolt build --tree-shake`
+ ;; working for apps that require it (jolt-lang/time#28). It needs jolt
+ ;; v0.8.24 or newer, which is why :jolt/min-version above is 0.8.24.
+ ;;
+ ;; v0.0.18, the current pin, makes ZoneId/of, OffsetDateTime/parse and
+ ;; ZonedDateTime/parse follow java.time: ISO parsing, the JDK's exception
+ ;; types for bad input, and a ZoneOffset back for an offset id
+ ;; (jolt-lang/time#31, #32, #33, #35).
  ;;
  ;; The two use different Maven-coordinate conventions on purpose:
  ;; io.github.jolt-lang/time is a normal git-coordinate dep, but
@@ -58,22 +61,17 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "a6690ca1ae69585681965823959eef33707239ce"}
+         :git/sha "ec750bbe1f02050389258292bcc35b95b9eca756"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
-         :git/sha "ec6747e55583118d881faf4ab41e68d7e587ce4c"}
+         :git/sha "35b73131991336d6d008078016f2f87497fa713d"}
 
         ;; Pinned now that both are pushed (was :local/root while local-only
         ;; per the extraction plan). Mirrors how glitter-uikit/glitter-gl
-        ;; pin glitter itself. Note: glitter-core's own deps.edn declares
-        ;; :jolt/min-version "0.8.0" (raised after this pin was first
-        ;; written) — since floors combine as the max across the
-        ;; dependency graph, glitter's effective floor is already 0.8.0
-        ;; transitively, even though this file still declares "0.7.24"
-        ;; below. Left as-is pending a decision on whether to raise
-        ;; glitter's own declared floor to match; a stale-but-lower
-        ;; declared floor here is misleading, not unsafe, since the
-        ;; transitive 0.8.0 is enforced regardless.
+        ;; pin glitter itself. glitter-core declares :jolt/min-version
+        ;; "0.8.0" and nexus-jolt "0.7.24", both below glitter's own floor
+        ;; above. As of 2026-11-19 both repos' main is 4 commits past these
+        ;; pins, all in CI and bb.edn, so there is nothing to bump for.
         io.github.jlt-commons/glitter-core
         {:git/url "https://github.com/jlt-commons/glitter-core"
          :git/sha "4fba1ddb069be798adc1ef0c028e6e21a21ec9f3"}

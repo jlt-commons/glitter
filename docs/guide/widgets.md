@@ -1,14 +1,13 @@
 # Widget reference
 
 Every hiccup tag glitter registers, what props it takes, and what it sends
-back. This is the "how do I use it" page;
-[`gtk-widget-layer.md`](gtk-widget-layer.md) is the "how it was built and
-what it taught" page, and they deliberately do not duplicate each other.
+back. [`gtk-widget-layer.md`](gtk-widget-layer.md) covers how the widgets
+are built.
 
 Every snippet below is lifted from a runnable file. The four galleries
 under `examples/glitter/` between them use all 43 tags, and
 `gallery_smoke.clj` mounts all four against live GTK on every `bb smokes`
-run, so nothing here can quietly stop compiling:
+run:
 
 | gallery | run | covers |
 |---|---|---|
@@ -17,18 +16,17 @@ run, so nothing here can quietly stop compiling:
 | [`gallery_display.clj`](../../examples/glitter/gallery_display.clj) | `bb gallery-display` | the read-only widgets |
 | [`gallery_chrome.clj`](../../examples/glitter/gallery_chrome.clj) | `bb gallery-chrome` | app chrome and navigation |
 
-Recordings of all four, with what each one shows, are in
-[`examples.md`](examples.md#widget-galleries).
+Recordings are in [`examples.md`](examples.md#widget-galleries).
 
 ## The three rules that apply to every tag
 
 **Props are applied, never diffed away.** A prop set to a new value always
 reaches the widget, including an explicit `false`. *Removing* a key from
-your hiccup does nothing — GTK has no generic "unset this property", so the
+your hiccup does nothing, because GTK has no generic "unset this property" and the
 widget keeps what it last had. See
 [`limitations.md`](limitations.md#removing-an-attribute-entirely-is-a-no-op).
 
-**Handlers are data, not closures.** `:on {:click [[:action/inc]]}` — the
+**Handlers are data, not closures.** `:on {:click [[:action/inc]]}`: the
 vector of action tuples is dispatched through the one fn you registered
 with `core/set-dispatch!`. The same handler position can carry different
 data across renders without the widget or its signal connection being torn
@@ -58,7 +56,7 @@ Accepted by every tag, in addition to its own:
 | `:margin` | px, all four sides at once |
 | `:margin-start` `:margin-end` `:margin-top` `:margin-bottom` | px, individually |
 | `:halign` `:valign` | `:start` `:end` `:center` `:fill` `:baseline` |
-| `:hexpand` `:vexpand` | boolean — take extra space along that axis |
+| `:hexpand` `:vexpand` | boolean, take extra space along that axis |
 | `:width-request` `:height-request` | px, a minimum |
 | `:class` | vector of CSS class names, e.g. `["error"]` |
 
@@ -104,17 +102,14 @@ through the same `:change` signal.
 | `:editable-label` | `:text` `:editing` `:sensitive` | `:change` |
 
 **`:password-entry` does not take `:placeholder`.** GTK exposes no C setter
-for it on that widget — `placeholder-text` is property-only there — so
-glitter does not accept a prop it cannot honour. It used to, routing all
-three through `gtk_entry_set_placeholder_text`, which asserts `GTK_IS_ENTRY`
-and therefore did nothing at all on `:password-entry` and `:search-entry`.
-`:search-entry` has its own setter and works; `:password-entry` is a real
-gap, gated by `gallery_smoke.clj`.
+for it on that widget (`placeholder-text` is property-only there), so
+glitter does not accept the prop. `:search-entry` has its own setter and
+works.
 
 ### Numbers
 
 Three widgets, all emitting a signal *named* `value-changed`, all needing a
-different getter to read back — which is why glitter keys its value table by
+different getter to read back. That is why glitter keys its value table by
 `[tag signal]` rather than by signal name.
 
 ```clojure
@@ -131,9 +126,8 @@ different getter to read back — which is why glitter keys its value table by
 ```
 
 `:min`/`:max`/`:step` are re-applied on every render, and each reads the
-widget's own current value as its fallback — so changing only `:max` no
-longer clobbers `:min`, which was a real shipped bug (see
-[`gtk-widget-layer.md`](gtk-widget-layer.md)).
+widget's own current value as its fallback, so changing only `:max` leaves
+`:min` alone.
 
 ### Booleans
 
@@ -180,7 +174,7 @@ it:
 How each one decides where a child goes. From
 [`gallery_layout.clj`](../../examples/glitter/gallery_layout.clj).
 
-### Ordered — children append in hiccup order
+### Ordered: children append in hiccup order
 
 ```clojure
 [:box {:spacing 8 :orientation :horizontal}  ; :hbox / :vbox are sugar
@@ -191,9 +185,8 @@ How each one decides where a child goes. From
 [:list-box {:on {:row-selected [[:effect/assoc-in [:row] [:glitter/value]]]}} …]
 ```
 
-`:list-box` and `:flow-box` each wrap every child in an opaque row object,
-which is why a keyed reorder of either had a use-after-dispose bug worth its
-own smoke. `:list-box`'s selection is a row **index**.
+`:list-box` and `:flow-box` each wrap every child in an opaque row object.
+`:list-box`'s selection is a row **index**.
 
 ### Single child
 
@@ -210,7 +203,7 @@ A `:scrolled` child that is not `GtkScrollable` (a `:vbox` is not) gets
 silently wrapped by GTK in its own `GtkViewport`, so the live widget tree
 has one more level than your hiccup does.
 
-### Fixed named slots — position comes from child order
+### Fixed named slots: position comes from child order
 
 ```clojure
 [:center-box {}                 ; exactly three: start, center, end
@@ -226,7 +219,7 @@ has one more level than your hiccup does.
 
 **Do not swap a slot's hiccup TAG while the slots are occupied.** The
 reconciler handles a tag mismatch as insert-new-then-remove-old, and these
-containers have no room to hold both — in `:center-box` that corrupts an
+containers have no room to hold both. In `:center-box` that corrupts an
 unrelated third slot. Change props, or nest a stable wrapper tag one level
 down. Full reasoning in [`limitations.md`](limitations.md).
 
@@ -244,9 +237,9 @@ applier could know what it is about to be attached to.
 ```
 
 `:grid-column` `:grid-row` `:grid-column-span` `:grid-row-span`, and
-`:stack-name` for `:stack`, are **plain, non-namespaced keywords on
-purpose**. `glitter.core` drops namespaced attributes upstream of every
-backend, so `:grid/column` would silently never arrive. They are also read
+`:stack-name` for `:stack`, are plain keywords on purpose.
+`glitter.core` drops namespaced attributes before any backend sees them, so
+`:grid/column` would silently never arrive. They are also read
 only when a child is *first* attached: changing one on a later render does
 not move the child.
 
@@ -293,7 +286,7 @@ you hold state, and a signal keeps them in step. From
 [:header-bar {:show-title-buttons false}
  [:label {:markup "<b>Title</b>"}]
  [:menu-button {:label "menu" :on {:activate [[:action/menu-opened]]}}
-  ;; a menu button's single child is attached as its popover — a real
+  ;; a menu button's single child is attached as its popover, a real
   ;; parenting relationship, not an ordinary tree child
   [:popover {:visible (:menu-open? state) :has-arrow true
              :on {:closed [[:effect/assoc-in [:menu-open?] false]]}}
@@ -322,19 +315,17 @@ Three behaviours here are real GTK, not glitter quirks:
   exactly two dispatches for a view containing one of each. A dispatch count
   of 0 right after mount is the wrong expectation.
 
-  There is a sharper edge to this. `mount!` renders once and *then* installs
-  its watcher (`render!`, then `add-watch`, in that order), and those
-  auto-select dispatches land during that first render — so the state
-  changes with no watcher to notice, and the screen does not update. A view
-  that displays something derived from those dispatches shows a stale value
-  until the next unrelated state change re-renders it. `gallery-chrome`
-  demonstrates this deliberately: its counter reads 0 on a freshly mounted
+  `mount!` renders once and *then* installs its watcher, and those
+  auto-select dispatches fire during that first render, so the state
+  changes with no watcher to notice. A view that displays something derived
+  from them shows a stale value until the next unrelated state change.
+  `gallery-chrome` shows this: its counter reads 0 on a freshly mounted
   window while the atom already holds 2.
 - **`:header-bar`'s `:show-title-buttons` shares your pack-start region**
   with GTK's own window-controls widget, prepended.
 - **Neither bar can `pack_end`**, and neither can reorder its pack-start
   region. `gtk_header_bar_pack_end` prepends into its own end region, so
-  feeding children one at a time — as the reconciler does — would silently
+  feeding children one at a time (as the reconciler does) would silently
   reverse them, with no public API to fix the order afterwards.
 
 `:popover` is opened by `:menu-button`'s own internal click handling, which
@@ -344,7 +335,7 @@ the popover opened and syncs its `:visible` state to match.
 ## Which signals carry a value
 
 `[:glitter/value]` resolves to the value in the right-hand column. Where it
-says **none**, the placeholder resolves to `nil` — read what you need from
+says **none**, the placeholder resolves to `nil`, so read what you need from
 state instead.
 
 | tag | signal | `[:glitter/value]` is |
@@ -392,7 +383,7 @@ state instead.
 
 A signal with GTK's usual `void(widget, user_data)` shape works this way for
 free. **Anything else needs a hand-written branch in
-`glitter.gtk/set-event-handler`** — it cannot be registered as data, because
+`glitter.gtk/set-event-handler`**. It cannot be registered as data, because
 jolt's `foreign-callable` requires literal argtypes at the call site. See
 [`gtk-widget-layer.md`](gtk-widget-layer.md) for the four shapes that
 already needed one, and `CONTRIBUTING.md` for the walkthrough.

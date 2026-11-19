@@ -2,115 +2,64 @@
 
 `nexus.core` is a port of [nexus](https://github.com/cjohansen/nexus)
 (same author as Replicant), a small, toolkit-agnostic action/effect/
-placeholder dispatch engine. It sits directly downstream of
-`core/set-dispatch!` (see [`architecture.md`](architecture.md)): where
-`glitter.core` decides *when* to call a dispatch fn and *what data* to
-hand it, `nexus.core` decides *what to do* with that data once
-`set-dispatch!`'s registered fn receives it. See
-[`porting-and-attribution.md`](porting-and-attribution.md)'s Bucket 4
-for the exact file-by-file porting ledger.
+placeholder dispatch engine. It sits downstream of `core/set-dispatch!`
+(see [`architecture.md`](architecture.md)): `glitter.core` decides when to
+call a dispatch fn and what data to hand it, and `nexus.core` decides what
+to do with that data. See [`porting-and-attribution.md`](porting-and-attribution.md)'s
+Bucket 4 for the file-by-file porting list.
 
 The engine lives in the standalone
 [nexus-jolt](https://github.com/jlt-commons/nexus-jolt) dependency as
 `nexus.core` (dispatch, interpolation, effect execution) and
 `nexus.registry` (the global registry and its `register-*!` fns, required
-as `nxr` in every demo). `glitter.nexus.action-log` stayed with glitter's
-reactive core in [glitter-core](https://github.com/jlt-commons/glitter-core).
-Before that extraction these were `glitter.nexus` and
-`glitter.nexus.registry` inside glitter itself.
+as `nxr` in every demo). `glitter.nexus.action-log` lives in
+[glitter-core](https://github.com/jlt-commons/glitter-core).
 
 ## Why
 
-Every glitter demo before this arc (`counter.clj`, `todo.clj`, `crud.clj`)
-hand-wrote one `case` branch per action kind inside its own
-`execute-actions` fn, manually reading
+Hand-written dispatch needs one `case` branch per action kind, reading
 `(get-in event [:glitter/dom-event :glitter/value])` and `swap!`-ing the
-state atom directly. This works, but (per this project's own design
-spec for the arc) "it's boilerplate that scales linearly with the
-number of interactive fields, and it puts side-effecting `swap!` calls
-in the same function that also has to make domain decisions (should
-this add a task? should this replace the selected person?)."
+state atom directly. That is boilerplate that grows with every interactive
+field, and it mixes side effects with domain decisions.
 
-nexus solves this generically: **actions** are plain data
-(`[:effect/assoc-in [:draft] [:glitter/value]]`) dispatched through a
-registry of **effect** handlers (the ONLY functions allowed to mutate
-anything), and **placeholder** resolvers that substitute event-derived
-values into action data before it's used. Actions that need to make a
-decision based on current state, not just pass an event value through,
-register as **expansions**: pure functions of `(state & args)`
-returning more actions/effects. The whole point: the only place a
-`swap!` (or any side effect) can happen is inside a registered effect
-handler; everything else, including "what should happen when this
-button is clicked," is data a pure function computes.
+With nexus, **actions** are plain data (`[:effect/assoc-in [:draft] [:glitter/value]]`)
+dispatched through a registry of **effect** handlers (the only functions
+allowed to mutate anything) and **placeholder** resolvers that substitute
+event-derived values into action data. Actions that must decide something
+from current state register as **expansions**: pure functions of
+`(state & args)` that return more actions or effects. A `swap!` happens
+only inside a registered effect handler.
 
 ## The four concepts
 
-### Effects: the only place a `swap!` is allowed
+### Effects
 
 An effect handler is a plain function registered under an action-kind
-keyword. `nexus.registry/register-effect!` stores it under
-`[:nexus/effects effect-k]`:
-
-```clojure
-(defn ^{:indent 1} register-effect! [effect-k f]
-  (swap! !registry assoc-in [:nexus/effects effect-k] f))
-```
-
-Every demo in this project registers exactly one effect,
-`:effect/assoc-in`, identical across `flights.clj`, `crud.clj`, and
-`todo.clj`:
+keyword with `nexus.registry/register-effect!`. Every demo registers
+`:effect/assoc-in`:
 
 ```clojure
 (nxr/register-effect! :effect/assoc-in
                       (fn [_ system path v] (swap! system assoc-in path v)))
 ```
 
-`nexus.core/execute-effect` is what actually calls it: it threads
-the effect fn through `run-interceptors` (below), then invokes
-`(apply effect-f (->execute-ctx ctx*) system (next effect))`. The first
-argument (an execute-ctx, ignored by every effect registered in this
-project so far) gives an effect a way to recursively `:dispatch` more
-actions from inside itself, not used by `:effect/assoc-in`, but part
-of why the arg list has a leading, usually-unused context arg.
+`nexus.core/execute-effect` calls it as `(apply effect-f execute-ctx system (next effect))`.
+The leading execute-ctx lets an effect `:dispatch` more actions from inside
+itself. `:effect/assoc-in` ignores it.
 
-### Placeholders: resolving event data into action data
+### Placeholders
 
-Hiccup `:on` data is fixed at the moment `view` runs (see CONTRIBUTING.md
-invariant #8); it can't carry a value that only exists once the user
-types. nexus's placeholder mechanism is the generic version of the
-`:glitter/value`-in-the-event-map trick every demo already needs:
-`nexus.core/interpolate-walk` walks an action's data, and any nested
-vector whose head matches a registered placeholder keyword gets replaced
-by calling that placeholder's function with `dispatch-data` (and the
-placeholder's own trailing args):
+Hiccup `:on` data is fixed when `view` runs (see CONTRIBUTING.md invariant
+#8), so it can't carry a value that only exists once the user types.
+`nexus.core/interpolate-walk` walks an action's data, and any nested vector
+whose head is a registered placeholder keyword is replaced by calling that
+placeholder's fn with the dispatch data and the placeholder's own trailing
+args. That is why `[:effect/assoc-in [:draft] [:glitter/value]]` works as
+`:on` data: `[:glitter/value]` resolves first, and the action becomes
+`[:effect/assoc-in [:draft] "whatever was typed"]`.
 
-```clojure
-(defn ^:no-doc interpolate-walk [placeholders interpolations dispatch-data x]
-  (if (-> x meta :nexus/skip-interpolation)
-    x
-    (let [x' (if (coll? x)
-               (walk/walk #(interpolate-walk placeholders interpolations dispatch-data %) identity x)
-               x)]
-      (if-let [f (when (vector? x')
-                   (get placeholders (first x')))]
-        (let [resolution (apply f dispatch-data (next x'))]
-          (swap! interpolations conj {:placeholder x'
-                                      :resolution resolution})
-          resolution)
-        x'))))
-```
-
-This is why `[:effect/assoc-in [:draft] [:glitter/value]]` works as
-hiccup `:on` data: `[:glitter/value]` is itself a nested vector headed
-by a registered placeholder keyword, so before `:effect/assoc-in`'s fn
-ever runs, `interpolate-1` rewrites the whole action to
-`[:effect/assoc-in [:draft] "whatever was typed"]`. `flights.clj` adds
-a second placeholder, `:fmt/nth`, for its `:drop-down`'s int-index
-selection (mirroring nexus's own `:fmt/long`/`:fmt/number` convention
-(see `dev/counter/core.cljc` and the "Nested placeholders" section of
-upstream's `Readme.md`) adapted because `:drop-down`'s value-fn
-already delivers an int index rather than the raw DOM input string
-`:fmt/long`/`:fmt/number` are built to convert):
+Placeholders nest. `flights.clj` adds `:fmt/nth` for its `:drop-down`,
+whose value-fn delivers an int index rather than a DOM string:
 
 ```clojure
 :nexus/placeholders
@@ -118,37 +67,18 @@ already delivers an int index rather than the raw DOM input string
  :fmt/nth (fn [_ coll idx] (nth coll idx))}
 ```
 
-used as `[:effect/assoc-in [:type] [:fmt/nth [:one-way :roundtrip]
-[:glitter/value]]]`; placeholders nest, so `:glitter/value` resolves
-first (innermost), then `:fmt/nth` indexes into the literal
-`[:one-way :roundtrip]` vector with that resolved int.
+It is used as `[:effect/assoc-in [:type] [:fmt/nth [:one-way :roundtrip]
+[:glitter/value]]]`: `:glitter/value` resolves first, then `:fmt/nth`
+indexes into the literal vector.
 
-### Actions and expansions: pure functions of state, not `swap!`
+### Actions and expansions
 
-An action that needs to *decide* what should happen (not just pass an
-event value through) registers as an expansion:
-`nexus.registry/register-action!` and `register-expansion!` are
-literally the same function body, both writing to
-`[:nexus/expansions action-k]`:
-
-```clojure
-(defn ^{:indent 1} register-action! [action-k f]
-  (swap! !registry assoc-in [:nexus/expansions action-k] f))
-
-(defn ^{:indent 1} register-expansion! [action-k f]
-  (swap! !registry assoc-in [:nexus/expansions action-k] f))
-```
-
-(Verified by reading `nexus.registry` directly; this isn't a
-glitter deviation, it's how upstream `nexus.registry` ships too, kept
-byte-for-byte.) `nexus.core/dispatch-action` checks `:nexus/expansions`
-before `:nexus/effects` when resolving an action kind, so an
-action-expansion fn takes priority over a same-named effect if both
-happen to be registered (none of this project's demos register both
-under the same keyword). `crud.clj`'s `:action/select-row` is a
-representative expansion; a pure function of `(state & args)` that
-reads current state and returns MORE actions rather than mutating
-anything itself:
+An action that needs to decide what happens registers with
+`nexus.registry/register-action!` (identical to `register-expansion!`, as
+upstream ships it). Both write to `[:nexus/expansions action-k]`, and
+`nexus.core/dispatch-action` checks expansions before effects, so an
+expansion wins over a same-named effect. `crud.clj`'s `:action/select-row`
+reads state and returns more actions:
 
 ```clojure
 (nxr/register-action! :action/select-row
@@ -160,103 +90,51 @@ anything itself:
                           [])))
 ```
 
-One live-verified arity gotcha, found while retrofitting `crud.clj`
-(Task 6 of this arc): `[[:action/select-row]]` (the naive hiccup
-`:on` value with no trailing action-tuple data) silently mismatches
-`register-action!`'s 2-arg fn (`state` and `idx`), and the resulting
-exception is swallowed into nexus's own `:errors` accumulator (see
-`try-f`/`log-error` below), not thrown. The fix is
-`[[:action/select-row [:glitter/value]]]`: the placeholder resolves
-`idx` from the dispatched list-box row index *before* the action fn
-runs, giving it the correct 2-arg shape. If an action-expansion silently
-never fires, check `:nexus/on-error`'s log output before assuming the
-action itself is buggy.
+**Arity gotcha.** `[[:action/select-row]]` as `:on` data, with no trailing
+placeholder, mismatches the 2-arg fn (`state` and `idx`). The exception is
+swallowed into nexus's `:errors` accumulator and not thrown. Write
+`[[:action/select-row [:glitter/value]]]` so the placeholder supplies `idx`
+before the fn runs. If an expansion silently never fires, check the
+`:nexus/on-error` log output first.
 
-### Interceptors: the mechanism the whole engine is built on
+### Interceptors
 
-Every dispatch phase (the outer dispatch, each action, each effect)
-runs through `run-interceptors`, which threads state through a stack of
-`before-*`/`after-*` handler pairs, catching exceptions per-step via
-`try-f` (so one interceptor's error doesn't kill the whole dispatch):
-
-```clojure
-(defn ^{:indent 1
-        :no-doc true} run-interceptors [ctx interceptors [before after k]]
-  (letfn [(invoke [f state phase interceptor]
-            (->> (select-keys interceptor [:id])
-                 (into (cond-> {:phase phase}
-                         k (assoc k (get ctx k))))
-                 (try-f state f)))]
-    (loop [state (assoc ctx :queue interceptors :stack ())]
-      (cond
-        (:queue state)
-        (let [interceptor (first (:queue state))
-              state (-> (update state :queue next)
-                        (update :stack conj interceptor))]
-          (recur (invoke (get interceptor before) state (or (:phase interceptor) before) interceptor)))
-
-        (:stack state)
-        (let [interceptor (first (:stack state))
-              state (update state :stack next)]
-          (recur (invoke (get interceptor after) state after interceptor)))
-
-        :else state))))
-```
-
-No demo in this arc registers a custom interceptor: `:nexus/interceptors`
-stays empty in `flights.clj`/`crud.clj`/`todo.clj`. The one concrete
-interceptor in this codebase is `glitter.nexus.action-log`'s
-`get-interceptor` (see below), which any consumer can add via
-`install-logger`, but none currently do.
+Every dispatch phase (the outer dispatch, each action, each effect) runs
+through `run-interceptors`, a stack of `before-*`/`after-*` handler pairs.
+Each step is wrapped in `try-f`, so one interceptor's error doesn't kill
+the dispatch. No demo registers a custom interceptor. The one concrete
+interceptor is `glitter.nexus.action-log`'s `get-interceptor` (see
+[The action-log](#the-action-log)).
 
 ## The glitter-specific wiring convention
 
-`nexus.core`/`nexus.registry` stay 100% toolkit-agnostic,
-faithful to upstream's own separation: `nexus.core` doesn't know about
-the DOM any more than it should know about GTK. Two pieces are
-glitter-specific and deliberately live in **each consuming demo**, not
-in the ported files, mirroring how upstream's own dev example,
-`dev/counter/core.cljc`, registers its own DOM-specific placeholders
-(`:event.target/value`) rather than baking them into `nexus.core`:
+`nexus.core` and `nexus.registry` stay toolkit-agnostic. Two pieces are
+glitter-specific and live in each consuming demo, the same way upstream's
+`dev/counter/core.cljc` registers its own DOM placeholders:
 
 - **The `:glitter/value` placeholder**:
   `(fn [event] (get-in event [:glitter/dom-event :glitter/value]))`.
-  `event` here is the `dispatch-data` argument nexus's `dispatch` was
-  called with, which (per `glitter.core/set-dispatch!`'s contract) is
-  the map `glitter.core/build-event-map` builds
-  (`{:glitter/trigger :glitter.trigger/dom-event :glitter/dom-event e
-  ...}`); `e` is the raw event object `glitter.gtk/set-event-handler`
-  constructs, which stuffs the widget's current value onto it as
-  `:glitter/value` for any value-bearing signal (see
-  [`gtk-widget-layer.md`](gtk-widget-layer.md) and CONTRIBUTING.md invariant
-  #8). This is the SAME value every demo read by hand before this arc;
-  registering it as a nexus placeholder just moves the `get-in` call out
-  of a hand-written dispatch fn and into data.
-- **`:nexus/on-error` → `clojure.tools.logging`**: every demo registers
+  `event` is the map `glitter.core/build-event-map` builds
+  (`{:glitter/trigger :glitter.trigger/dom-event :glitter/dom-event e ...}`),
+  and `e` is the event object `glitter.gtk/set-event-handler` constructs,
+  which puts the widget's current value on it as `:glitter/value` for any
+  value-bearing signal (see [`gtk-widget-layer.md`](gtk-widget-layer.md)
+  and CONTRIBUTING.md invariant #8).
+- **`:nexus/on-error` to `clojure.tools.logging`**: every demo registers
   `(nxr/on-error (fn [_ctx {:keys [err] :as error}] (log/error err
-  "glitter.nexus dispatch error" (dissoc error :err))))`. `nexus.core/
-  log-error` calls this on ANY caught exception anywhere in the dispatch
-  pipeline (a bad effect, a bad expansion, an unresolved effect
-  handler); without it, errors are silently swallowed into
-  `ctx :errors` and never surface anywhere. This is the reason
-  `jolt-lang/logging` (a port of `clojure.tools.logging`) was added to
-  `deps.edn` in this arc.
-
-Both are toolkit-specific choices a Reagent/glimmer app or a
-`nexus.core`-only web app wouldn't share, which is exactly why they
-don't belong in `nexus.core`/`nexus.registry` themselves.
+  "glitter.nexus dispatch error" (dissoc error :err))))`. Without it, any
+  exception caught in the dispatch pipeline (a bad effect, a bad
+  expansion, an unresolved handler) is swallowed into `ctx :errors` and
+  never surfaces. That is why `jolt-lang/logging` is in `deps.edn`.
 
 ## Two consumer shapes
 
-### `flights.clj`: pure effects only
+The choice is per interaction: does it need to read state, or branch on
+dispatch data, before deciding what to do?
 
-`examples/glitter/flights.clj` (the 7GUIs Flight Booker) is the first
-real consumer of `nexus.core`, and every interaction in it
-dispatches at most two effects, never an action expansion: every
-field is a pure `:effect/assoc-in` plus a registered placeholder,
-except the "Try again" button, which dispatches two `:effect/assoc-in`
-calls back to back. Zero hand-written case-dispatch code either way,
-and no `:nexus/actions`/`:nexus/expansions` registered at all:
+**Pure effects only** (`examples/glitter/flights.clj`, the Flight Booker).
+Every field is a pure `:effect/assoc-in` plus a placeholder, and nothing
+registers `:nexus/expansions`:
 
 ```clojure
 [:entry {:text value :hexpand true
@@ -264,34 +142,20 @@ and no `:nexus/actions`/`:nexus/expansions` registered at all:
          :on {:change [[:effect/assoc-in [path] [:glitter/value]]]}}]
 ```
 
-`flights.clj` never calls `nxr/register-system->state!` at all: unlike
-`crud.clj`/`todo.clj` (both call `(nxr/register-system->state! deref)`),
-it doesn't need to. `nexus.core/dispatch`'s own assert
-(`(when (:nexus/expansions nexus) (assert (or (ifn? (:nexus/system->state
-nexus)) (ifn? (:nexus/system+dispatch-data->state nexus))) "Either ...
-must be a function"))`) only fires when `:nexus/expansions` is
-non-nil, and `flights.clj` registers no actions/expansions at all, so
-`:nexus/expansions` stays nil throughout. Every effect in `flights.clj`
-is a direct `assoc-in` on the raw system atom; nothing reads derived
-state back through nexus.
+`flights.clj` never calls `nxr/register-system->state!`.
+`nexus.core/dispatch` asserts that `:nexus/system->state` (or
+`:nexus/system+dispatch-data->state`) is a function only when
+`:nexus/expansions` is non-nil, and here it stays nil.
 
-### `crud.clj`/`todo.clj`/`temperature.clj`/`timer.clj`: action-expansions
+**Action-expansions** (`crud.clj`, `todo.clj`, `temperature.clj`,
+`timer.clj`). Each registers `:nexus/expansions`, so each must also
+register a system->state fn or the first dispatch throws `Assert failed:
+Either :nexus/system+dispatch-data->state or :nexus/system->state must be
+a function`, even when the expansion that runs never reads state.
 
-`crud.clj` and `todo.clj` were both retrofitted onto `nexus.core` in
-this arc (replacing a hand-written `execute-actions` `case` form);
-`temperature.clj` (the 7GUIs Temperature Converter) and `timer.clj`
-(the 7GUIs Timer) were both written against `nexus.core` from the
-start, like `flights.clj` before them. All four register
-`:nexus/expansions` (via `register-action!`/`register-expansion!`
-(see above), the layer `flights.clj` never needs at all), but for a few
-different reasons. `crud.clj`'s
-`:action/select-row`/`:action/create`/`:action/update`/`:action/delete`
-and `todo.clj`'s `:action/toggle`/`:action/add-task` need to READ
-current state to decide what should happen. `todo.clj`'s
-`:action/toggle` is the simplest expansion in the
-codebase; reads the row's CURRENT `:done` value to `not` it, something
-a pure `:effect/assoc-in` literally cannot express since it has no way
-to read state before writing:
+- `crud.clj` and `todo.clj` read current state. `todo.clj`'s
+  `:action/toggle` is the simplest case, since a pure `:effect/assoc-in`
+  can't read a value before writing it:
 
 ```clojure
 (nxr/register-action! :action/toggle
@@ -299,139 +163,55 @@ to read state before writing:
                         [[:effect/assoc-in [:tasks idx :done] (not (get-in state [:tasks idx :done]))]]))
 ```
 
-`temperature.clj`'s single `:action/set-temperature` needs an
-expansion for a different reason: it doesn't read app STATE at all
-(its fn signature is `(fn [_state temps] ...)`, ignoring the first
-arg): it branches on which key is present in the DISPATCH DATA (has
-`:celsius` come through, or `:fahrenheit`?) to decide which field is
-the source and which is derived, something a single bare
-`:effect/assoc-in` can't express either, just for a different reason
-than `crud.clj`/`todo.clj`'s state-reads. Because `nexus.core/dispatch`'s
-assert (quoted above) fires whenever `:nexus/expansions` is non-nil
-at all (regardless of whether the specific expansion that runs
-actually touches state) `temperature.clj` still has to call
-`(nxr/register-system->state! deref)` even though `set-temperature`
-never uses its `state` argument; omitting it throws
-`Assert failed: Either :nexus/system+dispatch-data->state or
-:nexus/system->state must be a function` on the very first dispatch.
+- `temperature.clj`'s `:action/set-temperature` ignores state and branches
+  on which key (`:celsius` or `:fahrenheit`) is present in the dispatch
+  data.
+- `timer.clj`'s `:action/tick` reads `(:now state)` for `:last-tick`.
+  Its `:nexus/system->state` is `(fn [system] (assoc @system :now (System/nanoTime)))`
+  rather than a bare `deref`, so `:now` exists only at dispatch time.
+  `glitter.gtk/mount!`'s `add-watch` re-renders `view` straight from the
+  raw atom value, independent of nexus, so `view` must not read `(:now state)`.
+  It reads `System/nanoTime` itself, as `flights.clj`'s `get-form-state`
+  does for `(t/today)`. Reading `:now` in `view` throws a
+  `NullPointerException` on every tick, which `try-f`/`on-error` swallows,
+  so the display never advances.
 
-`timer.clj`'s two expansions need `:nexus/expansions` for a THIRD
-reason, closer to `crud.clj`/`todo.clj`'s than `temperature.clj`'s:
-`:action/tick`'s `(fn [state] [[:effect/schedule 100 [[:effect/assoc-in
-[:last-tick] (:now state)] [:action/tick]]]])` genuinely reads
-`(:now state)` (a fresh `System/nanoTime` reading, supplied by
-`timer.clj`'s own `:nexus/system->state` (below)) to give `:last-tick`
-a real timestamp instead of `nil`. (The `[:action/tick]` re-schedule
-itself is an unconditional literal, not decided by `(:now state)`:
-`:now`'s only causal effect here is `:last-tick`'s value, not whether
-or how often the loop perpetuates.) `:action/reset`'s `(fn [_state]
-[[:effect/assoc-in [:started] [:clock/now]]])` ignores `state` (same
-shape as `temperature.clj`'s `set-temperature`), but the same
-non-nil-`:nexus/expansions` assert applies regardless of which
-specific expansion runs, so `timer.clj` also has to register a
-`:nexus/system->state` function.
-
-**`timer.clj` is the first demo whose `:nexus/system->state` isn't a
-bare `deref`.** `flights.clj` needs none at all; `crud.clj`/`todo.clj`/
-`temperature.clj` all register `(nxr/register-system->state! deref)`:
-a no-op wrapper satisfying the assert above, since none of their
-expansions need anything beyond the state atom's own stored keys.
-`timer.clj` registers `(fn [system] (assoc @system :now
-(System/nanoTime)))` instead, augmenting the dereffed atom with a
-value the atom itself never stores. **This augmentation is consumed
-by `:action/tick`'s own action-expansion; a dispatch-time read; NOT
-by `view` (a render-time call).** `glitter.gtk/mount!`'s `add-watch`
-re-renders `view` directly off the raw new value of the watched state
-atom (`src/glitter/gtk.clj`), entirely independent of
-`nexus.core`'s dispatch machinery, and unaware
-`:nexus/system->state` even exists; since the atom itself never
-stores a `:now` key
-(only `:started`/`:duration`/`:last-tick` are ever written via
-`:effect/assoc-in`), an early version of `timer.clj`'s `view` that
-tried to read `(:now state)` directly threw a live
-`NullPointerException` on every tick (verified live: 63 occurrences
-over an 8-second run): swallowed by `nexus.core`'s own
-`try-f`/`on-error` handling, so the process didn't crash, but
-`core/reconcile` never ran, and the display never advanced past its
-initial paint. The fix: `view` reads `System/nanoTime` directly
-itself, the same live-fresh-read-at-render-time pattern
-`flights.clj`'s `get-form-state` already established for `(t/today)`
-(see that fn's own comment): a demo's `view` computes what it needs
-fresh, rather than assuming anything nexus computed for a DIFFERENT
-purpose (dispatch-time action-expansion) will also be there at render
-time.
-
-All four demos still register `:effect/assoc-in` and `:glitter/value`
-too (`crud.clj`/`todo.clj` for the fields that ARE pure passthroughs
-(the filter field in `crud.clj`, which dispatches a bare
-`:effect/assoc-in` directly via its `field-row` helper, not an action
-at all; the draft-text field in `todo.clj`); `temperature.clj` has no
-pure-passthrough field at all (both its `:entry` fields route through
-`:action/set-temperature`), but still registers `:effect/assoc-in`
-because `set-temperature`'s own expansion result is built from
-`:effect/assoc-in` tuples, and `:glitter/value` because its
-demo-local `:fmt/number` placeholder nests `[:glitter/value]` inside
-its own placeholder chain (`[:fmt/number [:glitter/value]]`);
-`timer.clj`'s single pure-passthrough interaction is its duration
-`:scale`'s `:on {:value-changed [[:effect/assoc-in [:duration]
-[:glitter/value]]]}}`) a bare `:effect/assoc-in`/`:glitter/value`
-pair, no expansion, dispatched alongside its two action-expansions.
-The two consumer shapes aren't mutually exclusive within one demo;
-they're a per-interaction choice, made by whether that interaction
-needs to read state, or branch on dispatch data, before deciding what
-effects to run.
+All four demos also register `:effect/assoc-in` and `:glitter/value` for
+their plain passthrough fields (`temperature.clj` needs `:glitter/value`
+for its demo-local `:fmt/number` placeholder).
 
 ## Action-expansions are not atomic
 
-Every effect inside an action-expansion (the `crud.clj`/`todo.clj`
-consumer shape above) is dispatched separately, and each one drives its
-own full, synchronous `core/reconcile` before the next effect in the
-same expansion runs, not one render for the whole expansion. This
-follows from two facts already true elsewhere in this project:
-`app.clj`'s `on-gui` runs inline when already on the GTK main thread
-(see CONTRIBUTING.md invariant #6), and every effect in this codebase
-dispatches from a GTK signal callback, which already runs on that
-thread. So there's no batching boundary around an expansion's effects
-the way one hand-written `swap!` implicitly gave the pre-retrofit code.
+Each effect inside an expansion is dispatched separately and drives its
+own synchronous `core/reconcile` before the next one runs. `app.clj`'s
+`on-gui` runs inline on the GTK main thread (CONTRIBUTING.md invariant
+#6), and every effect dispatches from a GTK signal callback on that
+thread, so nothing batches an expansion's effects.
 
-`crud.clj`'s `:action/delete` is the concrete example: it expands into
-4 `:effect/assoc-in` calls (`:people`, `:selected-id`, `:given-name`,
-`:family-name`), so deleting a person drives 4 renders, where the
-pre-retrofit hand-written version computed the whole transition in one
-`swap!` and drove exactly 1. Today this doesn't expose any wrong
-intermediate state: `crud.clj`'s own intermediate delete-render still
-has `:selected-id` pointing at the just-removed person, but `view`'s
-`selected?` derivation (which checks whether that id is still present
-in `:people`) happens to keep the Update/Delete buttons insensitive
-regardless. A future demo built on this pattern should keep the
-possibility in mind: an expansion's effects are N sequential renders,
-not one atomic transition, and an intermediate render CAN observe
-partially-applied state.
+`crud.clj`'s `:action/delete` expands into 4 `:effect/assoc-in` calls
+(`:people`, `:selected-id`, `:given-name`, `:family-name`), so it drives 4
+renders. No wrong state shows today: the intermediate render still has
+`:selected-id` pointing at the removed person, but `view`'s `selected?`
+derivation keeps Update/Delete insensitive. An intermediate render can
+observe partially applied state, so keep that in mind for new demos. A
+coarser effect that batches an expansion into one render would be new
+architecture on top of the port.
 
 ## The action-log
 
-`glitter.nexus.action-log` ports nexus's log-accumulation mechanism
-(the nested `:entries`/`:chronology` tree tracking every dispatch, every
-expanded action, and every executed effect, with per-entry elapsed-time
-measurements (`:dispatch-elapsed`, `:expansion-elapsed`,
-`:effect-elapsed`, each a `{:ms .. :slow? ..}` map from
-`measure-elapsed`)) note that `:expansion-elapsed` is measured from
-the most-recently-started NESTED item's start time, not the entry's
-own, inherited verbatim from upstream nexus (`inspector.cljc`'s
-`after-action`); not "fixed" here because doing so would be an
-undocumented divergence from a faithful port (see the code comment
-above `after-action` in `action_log.clj`). It captures, per top-level
-dispatch: a UUID `:id`, a
-`tick.core/now` timestamp (`:dispatched-at`), the raw `:dispatch-data`
-(and, if present, the `:glitter/dom-event` under `:dom-event`), and a
-nested `:actions` vector where each action's own `:expansions` holds
-the further actions/effects it expanded into; recursively, so a
-`crud.clj`-style `:action/select-row` expanding into three
-`:effect/assoc-in` calls shows up as one top-level action entry with
-three nested expansion entries.
+`glitter.nexus.action-log` (in glitter-core) ports nexus's log-accumulation
+mechanism: a nested `:entries`/`:chronology` tree of every dispatch,
+expanded action and executed effect, with per-entry elapsed-time maps
+(`:dispatch-elapsed`, `:expansion-elapsed`, `:effect-elapsed`, each
+`{:ms .. :slow? ..}`). `:expansion-elapsed` is measured from the
+most-recently-started nested item's start time, as in upstream
+`inspector.cljc`'s `after-action`. It is kept as is to stay a faithful
+port. Each top-level dispatch records a UUID `:id`, a `:dispatched-at`
+timestamp, the raw `:dispatch-data` (plus the `:glitter/dom-event` under
+`:dom-event` when present), and a nested `:actions` vector whose
+`:expansions` hold the further actions and effects.
 
-It's wired in via `install-logger`, which conj's the log's interceptor
-onto a nexus config map:
+`install-logger` conj's the log's interceptor onto a nexus config map:
 
 ```clojure
 (defn install-logger
@@ -440,42 +220,28 @@ onto a nexus config map:
   (update nexus :nexus/interceptors (fnil conj []) (get-interceptor log)))
 ```
 
-No demo in this project currently calls `install-logger`: only
-glitter-core's `test/glitter/nexus/action_log_test.clj`'s own unit tests exercise it
-directly, against small standalone nexus configs. `(pr-str @log)` is
-the current, and only, inspection method; there is no viewer. A GTK4-
-native viewer window (walking `@log`'s `:chronology`/`:entries` tree the
-way a browser-based dataspex panel would) is a natural, separately-
-scoped follow-up once there's a second reason to build one; upstream's
-own equivalent (`nexus.inspector`) is entangled with `dataspex.*`
-rendering-protocol implementations that have no glitter/GTK analogue,
-which is why this port stops at the accumulation mechanism and drops
-every rendering call site (see
+No demo calls it. Only glitter-core's `test/glitter/nexus/action_log_test.clj`
+exercises it. `(pr-str @log)` is the only way to inspect the log, and no
+viewer ships. Upstream's `nexus.inspector` is entangled with `dataspex.*`
+rendering protocols that have no glitter/GTK analogue, so the port stops at
+accumulation and drops the rendering call sites (see
 [`porting-and-attribution.md`](porting-and-attribution.md)'s Bucket 4).
 
 ## The `t/parse-date` leniency finding
 
-`flights.clj`'s date fields need to satisfy the 7GUIs spec's "T is
-colored red when ill-formatted" requirement, which means detecting
-malformed date text reliably. The obvious approach, a bare `t/parse-date`
-call, does NOT work: verified live under this Jolt port (`jolt-lang/time`,
-pulling in `juxt/tick` transitively; see `deps.edn`), `t/parse-date` is
-LENIENT, not strict. Three separate bad inputs against a `"dd.MM.yyyy"`
-formatter, none of which threw:
+`flights.clj` must color a date field red when its text is ill-formatted,
+which needs reliable detection of malformed input. A bare `t/parse-date`
+doesn't give that: under `jolt-lang/time` (which pulls in `juxt/tick`, see
+`deps.edn`) it is lenient. Against a `"dd.MM.yyyy"` formatter, none of
+these threw:
 
-- `"27.03.2014x"` (trailing garbage) silently parsed to `2014-03-27`,
-  ignoring the trailing `x`.
-- `"not-a-date"` silently parsed to `-0001-11-30`.
-- `"31.02.2014"` (February 31st, not a real date) silently rolled over
-  to `2014-03-03`.
+- `"27.03.2014x"` (trailing garbage) parsed to `2014-03-27`.
+- `"not-a-date"` parsed to `-0001-11-30`.
+- `"31.02.2014"` rolled over to `2014-03-03`.
 
-Using `parse-date` naively for the ill-formatted-date check would have
-shipped a feature that never actually triggers. The fix, also verified
-live against all three inputs above plus a fourth
-(`"7.3.2014"`; wrong digit count for the formatter's 2-digit pattern)
-and the valid case, is a round-trip wrapper: parse, then re-format the
-result with the SAME formatter, and reject (`nil`) unless the
-re-formatted string exactly matches the trimmed input:
+The fix is a round-trip wrapper: parse, re-format with the same formatter,
+and return `nil` unless the result equals the trimmed input. It also
+rejects `"7.3.2014"` (wrong digit count):
 
 ```clojure
 (defn parse-date [s]
@@ -489,149 +255,29 @@ re-formatted string exactly matches the trimmed input:
           (catch Exception _ nil))))))
 ```
 
-This is the ONLY date-validation strategy `flights.clj` uses, no
-separate regex-based pre-check. `get-form-state` calls `parse-date` on
-both the departure and return fields; a `nil` result flags that field
-`:invalid?`, which drives both the `:class "error"` CSS styling and the
-Book button's `:sensitive` state. This finding is specific to date
-parsing (a `tick`/`jolt-lang/time` library behavior), not to any GTK
-widget, so it's documented here rather than in
-[`gtk-widget-layer.md`](gtk-widget-layer.md); this is its one and only
-write-up in this project's docs.
+This is the only date validation `flights.clj` uses. `get-form-state` calls
+it on both date fields, and a `nil` result sets `:invalid?`, which drives
+the `:class "error"` styling and the Book button's `:sensitive` state.
 
-It is also structural rather than a version to wait out.
-`jolt/time/fmt.clj`'s `parse-with-pattern` is a hand-rolled field scanner
-whose own comment calls itself "good enough for tick's parse-* with a
-custom formatter"; the library has no `ResolverStyle` or
-`withResolverStyle` anywhere, and `DateTimeFormatterBuilder`'s
-`parseLenient`/`parseCaseInsensitive` are `(fn [b] b)` no-ops. Re-verified
-against jolt v0.7.24 with `jolt-lang/time` at the SHA
-`deps.edn` pins: all four bad inputs above still parse without throwing,
-and the round-trip wrapper still rejects every one of them.
+The leniency is structural. `jolt/time/fmt.clj`'s `parse-with-pattern` is a
+hand-rolled field scanner, the library has no `ResolverStyle`, and
+`DateTimeFormatterBuilder`'s `parseLenient`/`parseCaseInsensitive` are
+no-ops.
 
-## The `(t/today)` is-UTC finding, and its upstream fix
+## Time zones and the jolt floor
 
-A second, unrelated date finding from the same file. Unlike the parse
-leniency above, this one is fixed: it was traced here, fixed upstream in
-[jolt-lang/time#10](https://github.com/jolt-lang/time/pull/10), and released
-as v0.0.7 — the SHA `deps.edn` pins. `flights.clj` calls plain `(t/today)`
-again. It stays written up because the pin is load-bearing, and because how
-it was found is the useful part.
+`flights.clj` defaults its departure field to plain `(t/today)`, which
+answers the machine's local date. That needs `jolt-lang/time` v0.0.7 or
+newer (older versions answered the UTC date and ignored `TZ`) and jolt
+v0.7.24 or newer (earlier jolt leaked `TZ=UTC` from its boot-time libc zone
+probe). The pins in `deps.edn` and the declared floor are well above both.
+Don't add a GLib date helper to work around a wrong date. Check the
+toolchain versions first.
 
-`(t/today)` used to answer the **UTC** date on every machine, ignoring `TZ`
-even when set explicitly. Measured at 07:29 AEST on 2026-08-24, before the fix:
-
-```
-(t/today)                                  => 2026-08-23
-TZ=Australia/Sydney … (t/today)            => 2026-08-23   ; TZ ignored
-(t/date (t/in (t/now) "Australia/Sydney")) => 2026-08-24   ; correct
-```
-
-Flight Booker defaults its departure field to today, so it opened on
-*yesterday* for the first 10 hours of every AEST day — a bug you only notice
-if you happen to look before 10am, in a demo whose whole subject is date
-constraints.
-
-**Two independent defects produced it, and fixing either alone was not
-enough.** That mattered: the first is the one you find immediately, and a
-patch fixing only it left the library *less* self-consistent than the
-uniformly-UTC status quo, failing two of tick's own vendored tests on any
-non-UTC machine.
-
-*No zone discovery.* `ZoneId/systemDefault` and `Clock/systemDefaultZone`
-were two separate hardcoded `(zone-id "Z" 0)` literals, so nothing ever asked
-the machine which zone it was in. They now read what libc reads, in libc's
-order: `TZ`, then `/etc/localtime`, then `/etc/timezone`, still answering
-`"Z"` when none of them says.
-
-*`now` ignored a zone it was given.* The value types live in jolt core, which
-has no zone layer, so core's `now` read epoch millis and split them into
-fields with no offset applied — an explicit zone argument changed nothing:
-
-```
-(LocalDate/now (ZoneId/of "Australia/Sydney"))      => 2026-08-23
-(LocalDateTime/now (ZoneId/of "Australia/Sydney"))  => 2026-08-23T21:47
-(OffsetDateTime/now (ZoneId/of "Australia/Sydney")) => 2026-08-23T21:48Z
-(ZonedDateTime/now (Clock/system (ZoneId/of "…")))  => 2026-08-24T07:48+10:00
-```
-
-`ZonedDateTime/now` was the only member of the family that honoured a zone,
-which is why `(t/in (t/now) …)` was correct while `(t/today)` was not. The
-`Local*` and `OffsetDateTime` ones are now re-registered over core's, the way
-`fmt.clj` already re-registers the formatter-aware `LocalDate/parse`.
-
-### The version floor this leaves behind
-
-A correct local date needs **both** halves, and the second is not
-jolt-lang/time's:
-
-- `jolt-lang/time` **v0.0.7 or newer** — the fix above.
-- **jolt v0.7.24 or newer.** Before
-  [#712](https://github.com/jolt-lang/jolt/pull/712), jolt's own boot-time
-  libc zone probe set `TZ` and never restored it, leaving every process in
-  whichever zone it probed last — `"UTC"`, as it happened. Zone discovery
-  reads `TZ` first, so a leaked `TZ=UTC` makes `systemDefault` answer `Z` and
-  puts `(t/today)` straight back on the UTC date.
-
-Reaching for GLib instead does not dodge that second requirement: `TZ` is
-process-global, so `g_date_time_new_now_local` answered UTC too — measured
-`[2026 8 23 21]` against a real local `[2026 8 24 7]`, and correct again the
-instant `TZ` was unset in-process. glitter carried a GLib `local-today` helper
-for exactly one day, between finding the bug and the upstream fix landing; it
-came out once `(t/today)` was correct, because a rendering library has no
-business shipping a date API.
-
-One measurement worth knowing, and the reason v0.7.24 is the floor rather
-than the release that merely carried #712: fixing the `TZ` leak made every
-zone lookup pay two real `tzset` reloads, since the leak had been leaving
-libc pre-loaded with the last zone probed. That put `(t/today)` at ~1.15ms.
-[#716](https://github.com/jolt-lang/jolt/pull/716) memoizes the probe, and
-v0.7.24 carries both:
-
-```
-(t/today), jolt v0.7.23-12 (#712, no memo)  ~1.15 ms
-(t/today), jolt v0.7.24    (#712 + #716)    ~13.6 us
-```
-
-### The floor is declared, not just written down
-
-`deps.edn` carries `:jolt/min-version "0.7.24"`, so the floor above is
-machine-readable and not only prose. The key comes from
-[jolt#804](https://github.com/jolt-lang/jolt/pull/804): a runtime below the
-declared floor refuses to load the project instead of running it, and the
-floor is read from every dependency's `deps.edn` as well as the project's. A
-library is the natural place to declare one, because it knows what its
-bindings need and the app pulling it in does not.
-
-Be clear about what this buys today, though, because it is less than it
-sounds. The key is honoured only by a jolt that reads it, and the runtime
-that reads it first shipped in v0.8.0, which sits far above 0.7.24, so every
-jolt able to enforce the floor already clears it, and every jolt old enough to
-carry the UTC-date bug ignores the key the way it ignores any key it does not
-recognise. Nothing
-changes for an older Jolt: `jolt flights` still runs there and still defaults
-its departure field to the UTC date.
-
-So the declaration is forward protection rather than a guard that fires now.
-That is the same reason upstream shipped the key before it was needed instead
-of at the next break, and it is why the value here is the floor glitter
-actually has rather than the newest version around.
-
-One limit of the mechanism is worth stating, because jolt's own changelog
-points the other way by using `ffi/write`'s moved argument order as the
-motivating example for the key. **No floor value protects an `ffi/write`
-consumer.** The code that reads `:jolt/min-version` arrived in
-[#804](https://github.com/jolt-lang/jolt/pull/804), whose sole parent is the
-merge commit of [#802](https://github.com/jolt-lang/jolt/pull/802), the change
-that flipped the argument order. One commit, no siblings. So the two
-populations are disjoint by construction: no jolt reads the key and still
-carries the old order, and any runtime that does carry it predates the reader
-and skips the key in silence. A sibling project measured it: released v0.7.29 against a
-project declaring `"0.8.0"` ran 19 of 37 tests, dropped two namespaces
-silently, and exited clean.
-
-That does not weaken the floor above, because the TZ-restore boundary is the
-case the mechanism does handle: runtimes on both sides of v0.7.24 can read the
-key. It only means a floor cannot be used to guard a break older than the
-reader, which is worth knowing before reaching for one to solve a
-write-order-shaped problem.
+`deps.edn` declares `:jolt/min-version "0.8.24"` (jolt-lang/time v0.0.16 and
+later need jolt v0.8.24 and declare no floor themselves; CI pins 0.8.24).
+A runtime below the floor refuses to load the project, and the floor is
+read from every dependency's `deps.edn` as well as the project's. The key
+is no use for guarding a break older than the runtime that reads it, such
+as `ffi/write`'s moved argument order: a jolt that predates the reader
+skips the key silently.
