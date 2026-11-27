@@ -61,7 +61,7 @@
          :git/sha "b6b12097ba973141fe87c1b4d6a27ddcce5d5929"}
         io.github.jolt-lang/time
         {:git/url "https://github.com/jolt-lang/time"
-         :git/sha "ec750bbe1f02050389258292bcc35b95b9eca756"}
+         :git/sha "5104b050e331ff4fadd7488c958bf121ca5c91d9"}
         org.clojure/tools.logging
         {:git/url "https://github.com/jolt-lang/logging"
          :git/sha "35b73131991336d6d008078016f2f87497fa713d"}
